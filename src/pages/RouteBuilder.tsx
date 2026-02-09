@@ -600,10 +600,18 @@ interface SavedDayBuilding {
   property_name: string;
   address: string;
   city: string;
+  state: string;
+  zip_code: string;
   inspection_status: string;
   inspector_notes: string | null;
   is_priority: boolean | null;
   stop_order: number;
+  square_footage: number | null;
+  roof_access_type: string | null;
+  access_location: string | null;
+  lock_gate_codes: string | null;
+  special_equipment: string[] | null;
+  special_notes: string | null;
 }
 
 interface SavedDay {
@@ -618,6 +626,7 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
   const [plans, setPlans] = useState<SavedRoutePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [expandedBuilding, setExpandedBuilding] = useState<string | null>(null);
   const [days, setDays] = useState<SavedDay[]>([]);
   const [loadingDays, setLoadingDays] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SavedRoutePlan | null>(null);
@@ -664,7 +673,7 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
     const dayIds = dayRows.map((d) => d.id);
     const { data: rpb } = await supabase
       .from("route_plan_buildings")
-      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, inspection_status, inspector_notes, is_priority)")
+      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes)")
       .in("route_plan_day_id", dayIds)
       .order("stop_order");
 
@@ -680,10 +689,18 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
           property_name: r.buildings.property_name,
           address: r.buildings.address,
           city: r.buildings.city,
+          state: r.buildings.state,
+          zip_code: r.buildings.zip_code,
           inspection_status: r.buildings.inspection_status || "pending",
           inspector_notes: r.buildings.inspector_notes,
           is_priority: r.buildings.is_priority,
           stop_order: r.stop_order,
+          square_footage: r.buildings.square_footage,
+          roof_access_type: r.buildings.roof_access_type,
+          access_location: r.buildings.access_location,
+          lock_gate_codes: r.buildings.lock_gate_codes,
+          special_equipment: r.buildings.special_equipment,
+          special_notes: r.buildings.special_notes,
         })),
     }));
 
@@ -691,13 +708,12 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
     setLoadingDays(false);
   };
 
-  const handleStatusClick = (buildingId: string, currentStatus: string) => {
-    const next = STATUS_CYCLE[currentStatus] || "complete";
-    if (next === "skipped" || next === "needs_revisit") {
-      setNoteDialog({ id: buildingId, status: next });
+  const handleStatusChange = (buildingId: string, newStatus: string) => {
+    if (newStatus === "skipped" || newStatus === "needs_revisit") {
+      setNoteDialog({ id: buildingId, status: newStatus });
       setNoteText("");
     } else {
-      updateStatus(buildingId, next);
+      updateStatus(buildingId, newStatus);
     }
   };
 
@@ -816,19 +832,46 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
                               <div className="space-y-1">
                                 {day.buildings.map((b) => {
                                   const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
+                                  const isBuildingExpanded = expandedBuilding === b.id;
                                   return (
-                                    <div key={b.id} className="flex items-center justify-between p-2 rounded-md bg-background border border-border">
-                                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        <span className="text-xs text-muted-foreground font-mono">#{b.stop_order}</span>
-                                        <span className="text-sm font-medium truncate">{b.property_name}</span>
-                                        {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1 py-0">P</Badge>}
+                                    <div key={b.id} className="rounded-md bg-background border border-border overflow-hidden">
+                                      <div className="flex items-center justify-between p-2">
+                                        <button
+                                          className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                                          onClick={() => setExpandedBuilding(isBuildingExpanded ? null : b.id)}
+                                        >
+                                          <span className="text-xs text-muted-foreground font-mono">#{b.stop_order}</span>
+                                          <span className="text-sm font-medium truncate">{b.property_name}</span>
+                                          {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1 py-0">P</Badge>}
+                                          {isBuildingExpanded ? <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                        </button>
+                                        <Select value={b.inspection_status} onValueChange={(val) => handleStatusChange(b.id, val)}>
+                                          <SelectTrigger className={`h-7 w-[130px] text-xs border-0 ${cfg.badge} shrink-0`}>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent className="bg-popover z-50">
+                                            {Object.entries(STATUS_CONFIG).map(([key, val]) => (
+                                              <SelectItem key={key} value={key} className="text-xs">
+                                                {val.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
                                       </div>
-                                      <Badge
-                                        className={`${cfg.badge} border-0 text-xs cursor-pointer shrink-0`}
-                                        onClick={() => handleStatusClick(b.id, b.inspection_status)}
-                                      >
-                                        {cfg.label}
-                                      </Badge>
+                                      {isBuildingExpanded && (
+                                        <div className="px-3 pb-3 border-t border-border pt-2 space-y-1.5 text-xs">
+                                          <div className="text-muted-foreground">{b.address}, {b.city}, {b.state} {b.zip_code}</div>
+                                          {b.square_footage && <div><span className="text-muted-foreground">Sq Ft:</span> {b.square_footage.toLocaleString()}</div>}
+                                          {b.roof_access_type && <div><span className="text-muted-foreground">Roof Access:</span> {b.roof_access_type.replace(/_/g, " ")}</div>}
+                                          {b.access_location && <div><span className="text-muted-foreground">Access Location:</span> {b.access_location}</div>}
+                                          {b.lock_gate_codes && <div><span className="text-muted-foreground">Codes:</span> <span className="font-mono">{b.lock_gate_codes}</span></div>}
+                                          {b.special_equipment && b.special_equipment.length > 0 && <div><span className="text-muted-foreground">Equipment:</span> {b.special_equipment.join(", ")}</div>}
+                                          {b.special_notes && <div><span className="text-muted-foreground">Notes:</span> {b.special_notes}</div>}
+                                          {b.inspector_notes && (
+                                            <div className="p-1.5 rounded bg-muted"><span className="text-muted-foreground">Inspector Notes:</span> {b.inspector_notes}</div>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
