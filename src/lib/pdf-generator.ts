@@ -21,6 +21,9 @@ export interface BuildingData {
   requires_escort: boolean | null;
   special_equipment: string[] | null;
   special_notes: string | null;
+  property_manager_name: string | null;
+  property_manager_phone: string | null;
+  property_manager_email: string | null;
 }
 
 export interface DayData {
@@ -268,22 +271,27 @@ export function generateInspectorPDF(
       { align: "right" }
     );
 
-    const body = day.buildings.map((b) => [
-      String(b.stop_order),
-      b.property_name,
-      `${b.address}\n${b.city}, ${b.state} ${b.zip_code}`,
-      formatSF(b.square_footage),
-      b.roof_group || "—",
-      b.building_code || "—",
-      formatAccessType(b.roof_access_type),
-      b.access_location || "—",
-      b.lock_gate_codes || "—",
-      getSpecialReq(b),
-      b.special_notes || "—",
-    ]);
+    const body = day.buildings.map((b) => {
+      const pmParts: string[] = [];
+      if (b.property_manager_name) pmParts.push(b.property_manager_name);
+      if (b.property_manager_phone) pmParts.push(b.property_manager_phone);
+      return [
+        String(b.stop_order),
+        b.property_name,
+        `${b.address}\n${b.city}, ${b.state} ${b.zip_code}`,
+        formatSF(b.square_footage),
+        b.roof_group || "—",
+        b.building_code || "—",
+        formatAccessType(b.roof_access_type),
+        b.access_location || "—",
+        b.lock_gate_codes || "—",
+        getSpecialReq(b),
+        pmParts.join("\n") || "—",
+        b.special_notes || "—",
+      ];
+    });
 
     // Column widths: total landscape letter ~756pt usable
-    // Stop(5%) Prop(12%) Addr(13%) SF(5%) Mkt(6%) Code(6%) AccType(7%) AccLoc(16%) Codes(12%) Spec(9%) Notes(9%)
     const usable = lw - 60;
     const cw = (pct: number) => usable * pct;
 
@@ -301,12 +309,13 @@ export function generateInspectorPDF(
           "Access Location",
           "Codes",
           "Special Req",
+          "PM Contact",
           "Notes",
         ],
       ],
       body,
       styles: {
-        fontSize: 9,
+        fontSize: 8,
         cellPadding: 3,
         overflow: "linebreak",
         minCellHeight: 20,
@@ -317,21 +326,22 @@ export function generateInspectorPDF(
         fillColor: [50, 50, 50],
         textColor: 255,
         fontStyle: "bold",
-        fontSize: 8,
+        fontSize: 7,
       },
       alternateRowStyles: { fillColor: [248, 248, 248] },
       columnStyles: {
-        0: { cellWidth: cw(0.05), halign: "center" },
-        1: { cellWidth: cw(0.12) },
-        2: { cellWidth: cw(0.13) },
-        3: { cellWidth: cw(0.05), halign: "right" },
+        0: { cellWidth: cw(0.04), halign: "center" },
+        1: { cellWidth: cw(0.10) },
+        2: { cellWidth: cw(0.12) },
+        3: { cellWidth: cw(0.04), halign: "right" },
         4: { cellWidth: cw(0.06) },
-        5: { cellWidth: cw(0.06) },
+        5: { cellWidth: cw(0.05) },
         6: { cellWidth: cw(0.07) },
-        7: { cellWidth: cw(0.16), fontStyle: "bold" },
-        8: { cellWidth: cw(0.12), fontStyle: "bold" },
-        9: { cellWidth: cw(0.09) },
-        10: { cellWidth: cw(0.09) },
+        7: { cellWidth: cw(0.14), fontStyle: "bold" },
+        8: { cellWidth: cw(0.10), fontStyle: "bold" },
+        9: { cellWidth: cw(0.08) },
+        10: { cellWidth: cw(0.10) },
+        11: { cellWidth: cw(0.10) },
       },
       didParseCell(data) {
         if (data.section !== "body") return;

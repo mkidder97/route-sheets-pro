@@ -301,6 +301,9 @@ export default function Buildings() {
                                 {b.access_location && <div><span className="text-muted-foreground">Access Location:</span> {b.access_location}</div>}
                                 {b.lock_gate_codes && <div><span className="text-muted-foreground">Codes:</span> <span className="font-mono">{b.lock_gate_codes}</span></div>}
                                 {b.special_equipment && b.special_equipment.length > 0 && <div><span className="text-muted-foreground">Equipment:</span> {b.special_equipment.join(", ")}</div>}
+                                {b.property_manager_name && <div><span className="text-muted-foreground">PM:</span> {b.property_manager_name}</div>}
+                                {b.property_manager_phone && <div><span className="text-muted-foreground">PM Phone:</span> <a href={`tel:${b.property_manager_phone}`} className="text-primary hover:underline">{b.property_manager_phone}</a></div>}
+                                {b.property_manager_email && <div><span className="text-muted-foreground">PM Email:</span> <a href={`mailto:${b.property_manager_email}`} className="text-primary hover:underline">{b.property_manager_email}</a></div>}
                                 {b.special_notes && <div className="sm:col-span-2"><span className="text-muted-foreground">Notes:</span> {b.special_notes}</div>}
                               </div>
                               {b.inspector_notes && (

@@ -35,6 +35,9 @@ function buildingRow(b: BuildingData, stopNumber?: number) {
     "Needs Ladder": needsLadder ? "YES" : "",
     "Needs CAD/Core": needsCadCore ? "YES" : "",
     "Other Equipment": otherEquipment.join(", "),
+    "PM Name": b.property_manager_name || "",
+    "PM Phone": b.property_manager_phone || "",
+    "PM Email": b.property_manager_email || "",
     Notes: b.special_notes || "",
   };
 }
@@ -58,6 +61,9 @@ const detailColWidths = [
   { wch: 12 }, // Needs Ladder
   { wch: 14 }, // Needs CAD/Core
   { wch: 18 }, // Other Equipment
+  { wch: 20 }, // PM Name
+  { wch: 16 }, // PM Phone
+  { wch: 24 }, // PM Email
   { wch: 70 }, // Notes
 ];
 

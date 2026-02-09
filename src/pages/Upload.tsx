@@ -191,6 +191,9 @@ export default function UploadPage() {
           requires_escort: b.requires_escort,
           special_equipment: b.special_equipment.length > 0 ? b.special_equipment : null,
           is_priority: b.is_priority,
+          property_manager_name: b.property_manager_name || null,
+          property_manager_phone: b.property_manager_phone || null,
+          property_manager_email: b.property_manager_email || null,
         }));
 
         const { error } = await supabase.from("buildings").insert(batch);

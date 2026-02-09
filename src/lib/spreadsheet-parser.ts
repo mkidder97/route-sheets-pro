@@ -23,6 +23,9 @@ export const SYSTEM_FIELDS: SystemField[] = [
   { key: "roof_access", label: "Roof Access Type", required: false, dbColumn: "roof_access" },
   { key: "access_location", label: "Access Location", required: false, dbColumn: "access_location" },
   { key: "codes_notes", label: "Codes / Notes", required: false, dbColumn: "codes_notes" },
+  { key: "property_manager_name", label: "Property Manager Name", required: false, dbColumn: "property_manager_name" },
+  { key: "property_manager_phone", label: "PM Phone #", required: false, dbColumn: "property_manager_phone" },
+  { key: "property_manager_email", label: "PM Email", required: false, dbColumn: "property_manager_email" },
 ];
 
 // Fuzzy matching keywords per system field
@@ -43,6 +46,9 @@ const FUZZY_MAP: Record<string, string[]> = {
   roof_access: ["roof access", "access type", "access method", "roof access type"],
   access_location: ["access location", "access", "location description", "directions"],
   codes_notes: ["codes", "notes", "gate", "lock", "special", "comments"],
+  property_manager_name: ["property manager", "pm name", "manager name", "pm", "manager"],
+  property_manager_phone: ["pm phone", "phone", "manager phone", "pm #", "phone #", "pm phone #"],
+  property_manager_email: ["pm email", "manager email", "email"],
 };
 
 export function fuzzyMatchColumns(headers: string[]): Record<string, string> {
@@ -215,6 +221,9 @@ export interface ParsedBuilding {
   requires_escort: boolean;
   special_equipment: string[];
   is_priority: boolean;
+  property_manager_name: string;
+  property_manager_phone: string;
+  property_manager_email: string;
   _warnings: string[];
 }
 
@@ -272,6 +281,9 @@ export function mapRowToBuilding(
     requires_escort: flags.requires_escort,
     special_equipment: flags.special_equipment,
     is_priority: flags.is_priority,
+    property_manager_name: get("property_manager_name"),
+    property_manager_phone: get("property_manager_phone"),
+    property_manager_email: get("property_manager_email"),
     _warnings: warnings,
   };
 }
