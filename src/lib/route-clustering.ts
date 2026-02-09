@@ -80,24 +80,21 @@ export async function generateClusters(
     }
   }
 
-  // Separate priority from regular
-  const priority = mapped.filter((b) => b.is_priority);
-  const regular = mapped.filter((b) => !b.is_priority);
-
-  // Sort by 3-digit zip prefix, then apply greedy nearest-neighbor
-  const sorted = greedyNearestNeighbor([...regular], startCoords);
-
-  // Merge priority buildings into the sorted list at geographically sensible positions
-  const merged = insertPriorityBuildings(sorted, priority);
-
-  // Group advance-notice buildings together where possible
-  const reordered = groupAdvanceNotice(merged);
+  // Sort ALL buildings by nearest-neighbor geography (no priority/notice separation)
+  const sorted = greedyNearestNeighbor([...mapped], startCoords);
 
   // Slice into daily chunks
   const dayChunks: ClusterBuilding[][] = [];
-  for (let i = 0; i < reordered.length; i += buildingsPerDay) {
-    dayChunks.push(reordered.slice(i, i + buildingsPerDay));
+  for (let i = 0; i < sorted.length; i += buildingsPerDay) {
+    dayChunks.push(sorted.slice(i, i + buildingsPerDay));
   }
+
+  // Bias priority-heavy chunks toward early days
+  dayChunks.sort((a, b) => {
+    const countA = a.filter((x) => x.is_priority).length;
+    const countB = b.filter((x) => x.is_priority).length;
+    return countB - countA;
+  });
 
   // Re-apply nearest-neighbor within each daily chunk for optimal stop order
   const refined = dayChunks.map((chunk) => nearestNeighborChain(chunk, startCoords));
@@ -188,50 +185,6 @@ function nearestNeighborChain(buildings: ClusterBuilding[], startCoords?: { lat:
   return result;
 }
 
-function insertPriorityBuildings(
-  sorted: ClusterBuilding[],
-  priority: ClusterBuilding[]
-): ClusterBuilding[] {
-  if (priority.length === 0) return sorted;
-
-  const result = [...sorted];
-
-  for (const pb of priority) {
-    if (pb.lat == null || pb.lng == null) {
-      // No coords — insert at beginning
-      result.unshift(pb);
-      continue;
-    }
-
-    // Find the closest building in the sorted list
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < result.length; i++) {
-      const b = result[i];
-      if (b.lat == null || b.lng == null) continue;
-      const dist = haversineDistance(pb.lat, pb.lng, b.lat, b.lng);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-      }
-    }
-    result.splice(bestIdx, 0, pb);
-  }
-
-  return result;
-}
-
-function groupAdvanceNotice(buildings: ClusterBuilding[]): ClusterBuilding[] {
-  // Move advance-notice buildings to even-numbered positions in the sequence
-  // so they fall on days with a buffer day before them
-  const notice = buildings.filter((b) => b.requires_advance_notice);
-  const rest = buildings.filter((b) => !b.requires_advance_notice);
-
-  if (notice.length === 0) return buildings;
-
-  // Interleave: put notice buildings later in the sequence
-  return [...rest, ...notice];
-}
 
 function refineByAccessType(chunk: ClusterBuilding[]): ClusterBuilding[] {
   // Within a day's chunk, group by access type for fewer equipment swaps

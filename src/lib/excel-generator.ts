@@ -51,14 +51,14 @@ const detailColWidths = [
   { wch: 10 }, // Bldg Code
   { wch: 8 },  // Priority
   { wch: 16 }, // Access Type
-  { wch: 32 }, // Access Location
+  { wch: 40 }, // Access Location
   { wch: 28 }, // Codes (Lock/Gate)
   { wch: 12 }, // Needs Escort
   { wch: 12 }, // 24H Notice
   { wch: 12 }, // Needs Ladder
   { wch: 14 }, // Needs CAD/Core
   { wch: 18 }, // Other Equipment
-  { wch: 30 }, // Notes
+  { wch: 50 }, // Notes
 ];
 
 export function generateInspectorExcel(
