@@ -148,12 +148,27 @@ export default function UploadPage() {
         }
       }
 
-      // 5. Insert buildings in batches
+      // 5. Record the upload first so we have an upload_id for buildings
+      const firstClientId = Object.values(clientMap)[0] ?? null;
+      const { data: uploadRecord, error: uploadError } = await supabase
+        .from("uploads")
+        .insert({
+          file_name: file?.name ?? "unknown",
+          row_count: parsedBuildings.length,
+          status: "complete",
+          client_id: firstClientId,
+        })
+        .select("id")
+        .single();
+      if (uploadError) throw uploadError;
+
+      // 6. Insert buildings in batches with upload_id
       const BATCH_SIZE = 50;
       let insertedCount = 0;
 
       for (let i = 0; i < parsedBuildings.length; i += BATCH_SIZE) {
         const batch = parsedBuildings.slice(i, i + BATCH_SIZE).map((b) => ({
+          upload_id: uploadRecord.id,
           client_id: clientMap[b.client_name] ?? Object.values(clientMap)[0],
           region_id: regionMap[b.market_region] ?? Object.values(regionMap)[0],
           inspector_id: inspectorMap[b.inspector_name] ?? null,
@@ -182,15 +197,6 @@ export default function UploadPage() {
         if (error) throw error;
         insertedCount += batch.length;
       }
-
-      // 6. Record the upload
-      const firstClientId = Object.values(clientMap)[0] ?? null;
-      await supabase.from("uploads").insert({
-        file_name: file?.name ?? "unknown",
-        row_count: insertedCount,
-        status: "complete",
-        client_id: firstClientId,
-      });
 
       setImportResult({
         buildings: insertedCount,

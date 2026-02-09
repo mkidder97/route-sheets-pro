@@ -1,9 +1,21 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2, MapPin, Upload, Users, ArrowUpRight, Clock } from "lucide-react";
+import { Building2, MapPin, Upload, Users, Clock, Trash2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 interface StatsData {
   clients: number;
@@ -33,46 +45,118 @@ export default function Dashboard() {
   const [stats, setStats] = useState<StatsData>({ clients: 0, regions: 0, buildings: 0, inspectors: 0 });
   const [regions, setRegions] = useState<RegionRow[]>([]);
   const [uploads, setUploads] = useState<UploadRow[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<UploadRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadData = async () => {
+    const [clientsRes, regionsRes, buildingsRes, inspectorsRes] = await Promise.all([
+      supabase.from("clients").select("id", { count: "exact", head: true }),
+      supabase.from("regions").select("id, name, status, clients(name)"),
+      supabase.from("buildings").select("id", { count: "exact", head: true }),
+      supabase.from("inspectors").select("id", { count: "exact", head: true }),
+    ]);
+
+    setStats({
+      clients: clientsRes.count ?? 0,
+      regions: regionsRes.data?.length ?? 0,
+      buildings: buildingsRes.count ?? 0,
+      inspectors: inspectorsRes.count ?? 0,
+    });
+
+    if (regionsRes.data) {
+      const regionsWithCounts = await Promise.all(
+        regionsRes.data.map(async (r: any) => {
+          const { count } = await supabase
+            .from("buildings")
+            .select("id", { count: "exact", head: true })
+            .eq("region_id", r.id);
+          return { ...r, building_count: count ?? 0 };
+        })
+      );
+      setRegions(regionsWithCounts);
+    }
+
+    const uploadsRes = await supabase
+      .from("uploads")
+      .select("id, file_name, row_count, status, created_at, clients(name)")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    setUploads((uploadsRes.data as any) ?? []);
+  };
 
   useEffect(() => {
-    async function load() {
-      const [clientsRes, regionsRes, buildingsRes, inspectorsRes] = await Promise.all([
-        supabase.from("clients").select("id", { count: "exact", head: true }),
-        supabase.from("regions").select("id, name, status, clients(name)"),
-        supabase.from("buildings").select("id", { count: "exact", head: true }),
-        supabase.from("inspectors").select("id", { count: "exact", head: true }),
-      ]);
+    loadData();
+  }, []);
 
-      setStats({
-        clients: clientsRes.count ?? 0,
-        regions: regionsRes.data?.length ?? 0,
-        buildings: buildingsRes.count ?? 0,
-        inspectors: inspectorsRes.count ?? 0,
-      });
+  const handleDeleteUpload = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
 
-      // Get building counts per region
-      if (regionsRes.data) {
-        const regionsWithCounts = await Promise.all(
-          regionsRes.data.map(async (r: any) => {
+    try {
+      // 1. Find building IDs for this upload
+      const { data: buildings } = await supabase
+        .from("buildings")
+        .select("id")
+        .eq("upload_id", deleteTarget.id);
+
+      const buildingIds = buildings?.map((b) => b.id) ?? [];
+
+      if (buildingIds.length > 0) {
+        // 2. Delete route_plan_buildings referencing these buildings
+        await supabase
+          .from("route_plan_buildings")
+          .delete()
+          .in("building_id", buildingIds);
+
+        // 3. Clean up empty route_plan_days and route_plans
+        const { data: allDays } = await supabase
+          .from("route_plan_days")
+          .select("id, route_plan_id, route_plan_buildings(id)");
+
+        if (allDays) {
+          const emptyDayIds = allDays
+            .filter((d: any) => !d.route_plan_buildings || d.route_plan_buildings.length === 0)
+            .map((d: any) => d.id);
+
+          if (emptyDayIds.length > 0) {
+            await supabase.from("route_plan_days").delete().in("id", emptyDayIds);
+          }
+
+          // Find route_plans that now have no days
+          const orphanedPlanIds = [
+            ...new Set(
+              allDays
+                .filter((d: any) => emptyDayIds.includes(d.id))
+                .map((d: any) => d.route_plan_id)
+            ),
+          ];
+
+          for (const planId of orphanedPlanIds) {
             const { count } = await supabase
-              .from("buildings")
+              .from("route_plan_days")
               .select("id", { count: "exact", head: true })
-              .eq("region_id", r.id);
-            return { ...r, building_count: count ?? 0 };
-          })
-        );
-        setRegions(regionsWithCounts);
+              .eq("route_plan_id", planId);
+            if (count === 0) {
+              await supabase.from("route_plans").delete().eq("id", planId);
+            }
+          }
+        }
       }
 
-      const uploadsRes = await supabase
-        .from("uploads")
-        .select("id, file_name, row_count, status, created_at, clients(name)")
-        .order("created_at", { ascending: false })
-        .limit(5);
-      setUploads((uploadsRes.data as any) ?? []);
+      // 4. Delete the upload (cascade removes buildings)
+      const { error } = await supabase.from("uploads").delete().eq("id", deleteTarget.id);
+      if (error) throw error;
+
+      toast.success(`Deleted ${deleteTarget.file_name} and ${buildingIds.length} buildings`);
+      setDeleteTarget(null);
+      await loadData();
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      toast.error(`Delete failed: ${err.message}`);
+    } finally {
+      setDeleting(false);
     }
-    load();
-  }, []);
+  };
 
   const statCards = [
     { label: "Active Clients", value: stats.clients, icon: Building2, color: "text-primary" },
@@ -184,8 +268,18 @@ export default function Dashboard() {
                         </p>
                       </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(u.created_at).toLocaleDateString()}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(u.created_at).toLocaleDateString()}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteTarget(u)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -194,6 +288,31 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete upload?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{deleteTarget?.row_count} buildings</strong> from{" "}
+              <strong>{deleteTarget?.file_name}</strong> and remove any associated route plan data.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteUpload}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
