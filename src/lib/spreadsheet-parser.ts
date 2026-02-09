@@ -154,6 +154,30 @@ export function detectFlags(row: Record<string, string>, scheduledWeekKey?: stri
   return flags;
 }
 
+// Extract numeric lock/gate codes from free-text fields
+// Looks for patterns like "code 0512", "Code: 2001", "CODE 2-4-6-8", "Lock Box Code 6454"
+export function extractLockCodes(text: string): string {
+  if (!text) return "";
+  // Match 4-8 digit sequences near code-related keywords
+  const codePattern = /(?:code[s]?\s*(?:is|:)?\s*)(\d[\d\s\-]{2,9}\d)/gi;
+  const codes: string[] = [];
+  let match;
+  while ((match = codePattern.exec(text)) !== null) {
+    // Normalize: remove spaces/dashes to get the raw digits, then keep if 4-8 digits
+    const raw = match[1].replace(/[\s\-]/g, "");
+    if (raw.length >= 4 && raw.length <= 8) {
+      codes.push(raw);
+    }
+  }
+  // Also pick up standalone 4-digit codes preceded by "code" keyword loosely
+  // Handle "or XXXX" patterns after an initial code match
+  const orPattern = /\bor\s+(\d{4,8})\b/gi;
+  while ((match = orPattern.exec(text)) !== null) {
+    if (!codes.includes(match[1])) codes.push(match[1]);
+  }
+  return [...new Set(codes)].join(", ");
+}
+
 // Classify roof access type from description
 export function classifyRoofAccess(description: string): string {
   const d = description.toLowerCase();
@@ -209,6 +233,10 @@ export function mapRowToBuilding(
   const accessLocation = get("access_location");
   const codesNotes = get("codes_notes");
 
+  // Extract numeric codes (4-8 digits) from all text fields
+  const allAccessText = [roofAccessDesc, accessLocation, codesNotes].filter(Boolean).join(" ");
+  const extractedCodes = extractLockCodes(allAccessText);
+
   // Combine access/codes/notes for full picture
   const combinedNotes = [accessLocation, codesNotes].filter(Boolean).join(" | ");
 
@@ -238,7 +266,7 @@ export function mapRowToBuilding(
     roof_access_type: classifyRoofAccess(roofAccessDesc),
     roof_access_description: roofAccessDesc,
     access_location: accessLocation,
-    lock_gate_codes: codesNotes,
+    lock_gate_codes: extractedCodes,
     special_notes: combinedNotes,
     requires_advance_notice: flags.requires_advance_notice,
     requires_escort: flags.requires_escort,
