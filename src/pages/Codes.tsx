@@ -14,8 +14,8 @@ import { KeyRound, Search } from "lucide-react";
 
 interface CodeEntry {
   id: string;
-  property_name: string;
   code: string;
+  properties: string[];
   client_name: string;
   region_name: string;
 }
@@ -44,23 +44,31 @@ export default function Codes() {
 
       if (!buildings) { setLoading(false); return; }
 
-      // Extract numeric 4-8 digit codes from all access-related fields
+      // Extract unique numeric 4-8 digit codes, deduplicated across buildings
       const codeRegex = /\b\d{4,8}\b/g;
-      const mapped: CodeEntry[] = [];
+      // Key: "code|client|region" → { code, properties[], client, region }
+      const codeMap = new Map<string, { code: string; properties: Set<string>; client_name: string; region_name: string }>();
       for (const b of buildings as any[]) {
         const allText = [b.lock_gate_codes, b.roof_access_description, b.access_location].filter(Boolean).join(" ");
         const matches = allText.match(codeRegex);
         if (!matches) continue;
-        for (const code of matches) {
-          mapped.push({
-            id: `${b.id}-${code}`,
-            property_name: b.property_name,
-            code,
-            client_name: b.clients?.name ?? "Unknown",
-            region_name: b.regions?.name ?? "Unknown",
-          });
+        const client = b.clients?.name ?? "Unknown";
+        const region = b.regions?.name ?? "Unknown";
+        for (const code of new Set(matches)) {
+          const key = `${code}|${client}|${region}`;
+          if (!codeMap.has(key)) {
+            codeMap.set(key, { code, properties: new Set(), client_name: client, region_name: region });
+          }
+          codeMap.get(key)!.properties.add(b.property_name);
         }
       }
+      const mapped: CodeEntry[] = [...codeMap.entries()].map(([key, v]) => ({
+        id: key,
+        code: v.code,
+        properties: [...v.properties],
+        client_name: v.client_name,
+        region_name: v.region_name,
+      }));
 
       setEntries(mapped);
       setFiltered(mapped);
@@ -92,7 +100,7 @@ export default function Codes() {
       const q = search.toLowerCase();
       result = result.filter(
         (e) =>
-          e.property_name.toLowerCase().includes(q) ||
+          e.properties.some(p => p.toLowerCase().includes(q)) ||
           e.code.includes(q)
       );
     }
@@ -163,7 +171,7 @@ export default function Codes() {
           {filtered.map((entry) => (
             <div key={entry.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-card border border-border">
               <code className="text-lg font-mono font-bold text-primary tracking-wider">{entry.code}</code>
-              <span className="text-sm text-muted-foreground truncate">{entry.property_name}</span>
+              <span className="text-sm text-muted-foreground truncate">{entry.properties.length} {entry.properties.length === 1 ? "property" : "properties"}</span>
               <div className="ml-auto flex gap-1.5 shrink-0">
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{entry.client_name}</Badge>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">{entry.region_name}</Badge>
