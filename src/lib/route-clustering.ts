@@ -30,7 +30,8 @@ function toBuildingWithCoords(b: ClusterBuilding) {
 
 export async function generateClusters(
   buildings: Tables<'buildings'>[],
-  buildingsPerDay: number
+  buildingsPerDay: number,
+  startLocation?: string
 ): Promise<{ clusters: DayCluster[]; unresolved: string[] }> {
   const centroids = await loadZipCentroids();
   const unresolved: string[] = [];
@@ -68,12 +69,23 @@ export async function generateClusters(
     };
   });
 
+  // Resolve start location coordinates if provided
+  let startCoords: { lat: number; lng: number } | null = null;
+  if (startLocation) {
+    // Check if it's a zip code (5 digits)
+    const zipMatch = startLocation.match(/\b(\d{5})\b/);
+    if (zipMatch) {
+      const coords = getCoordinates(centroids, zipMatch[1]);
+      if (coords) startCoords = coords;
+    }
+  }
+
   // Separate priority from regular
   const priority = mapped.filter((b) => b.is_priority);
   const regular = mapped.filter((b) => !b.is_priority);
 
   // Sort by 3-digit zip prefix, then apply greedy nearest-neighbor
-  const sorted = greedyNearestNeighbor([...regular]);
+  const sorted = greedyNearestNeighbor([...regular], startCoords);
 
   // Merge priority buildings into the sorted list at geographically sensible positions
   const merged = insertPriorityBuildings(sorted, priority);
@@ -99,7 +111,7 @@ export async function generateClusters(
   return { clusters, unresolved: [...new Set(unresolved)] };
 }
 
-function greedyNearestNeighbor(buildings: ClusterBuilding[]): ClusterBuilding[] {
+function greedyNearestNeighbor(buildings: ClusterBuilding[], startCoords?: { lat: number; lng: number } | null): ClusterBuilding[] {
   if (buildings.length <= 1) return buildings;
 
   // Primary sort by 3-digit zip prefix to create regional groups
@@ -119,19 +131,29 @@ function greedyNearestNeighbor(buildings: ClusterBuilding[]): ClusterBuilding[] 
   }
 
   const result: ClusterBuilding[] = [];
-  for (const group of groups.values()) {
-    result.push(...nearestNeighborChain(group));
+  for (const [i, group] of [...groups.values()].entries()) {
+    // Pass startCoords only to the first group
+    result.push(...nearestNeighborChain(group, i === 0 ? startCoords : null));
   }
 
   return result;
 }
 
-function nearestNeighborChain(buildings: ClusterBuilding[]): ClusterBuilding[] {
+function nearestNeighborChain(buildings: ClusterBuilding[], startCoords?: { lat: number; lng: number } | null): ClusterBuilding[] {
   if (buildings.length <= 1) return buildings;
 
   const remaining = [...buildings];
-  // Start from northernmost building
-  remaining.sort((a, b) => (b.lat ?? 0) - (a.lat ?? 0));
+
+  // If start coords provided, sort by distance from start; otherwise start from northernmost
+  if (startCoords) {
+    remaining.sort((a, b) => {
+      const distA = (a.lat != null && a.lng != null) ? haversineDistance(startCoords.lat, startCoords.lng, a.lat, a.lng) : Infinity;
+      const distB = (b.lat != null && b.lng != null) ? haversineDistance(startCoords.lat, startCoords.lng, b.lat, b.lng) : Infinity;
+      return distA - distB;
+    });
+  } else {
+    remaining.sort((a, b) => (b.lat ?? 0) - (a.lat ?? 0));
+  }
   const result: ClusterBuilding[] = [remaining.shift()!];
 
   while (remaining.length > 0) {
