@@ -58,7 +58,7 @@ const detailColWidths = [
   { wch: 12 }, // Needs Ladder
   { wch: 14 }, // Needs CAD/Core
   { wch: 18 }, // Other Equipment
-  { wch: 50 }, // Notes
+  { wch: 70 }, // Notes
 ];
 
 export function generateInspectorExcel(
@@ -74,6 +74,18 @@ export function generateInspectorExcel(
 
   const mainWs = XLSX.utils.json_to_sheet(allRows);
   mainWs["!cols"] = detailColWidths;
+
+  // Enable word-wrap on all cells so long notes aren't truncated
+  const range = XLSX.utils.decode_range(mainWs["!ref"] || "A1");
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (mainWs[addr]) {
+        if (!mainWs[addr].s) mainWs[addr].s = {};
+        mainWs[addr].s.alignment = { wrapText: true, vertical: "top" };
+      }
+    }
+  }
   XLSX.utils.book_append_sheet(wb, mainWs, "Route Schedule");
 
   return wb;
