@@ -1,21 +1,39 @@
 
 
-# Fix Excel Export: Flat Building List
+# Fix Route Clustering: Remove Geographic-Breaking Logic
 
-## The Problem
-The Excel export is currently organized around "days" with a Day column, a Summary tab, and per-day tabs. This is wrong. The output should mirror the original uploaded spreadsheet -- a single flat list of every building with all its details, just re-sorted into the optimized route order.
+## Problem
+Two functions in `src/lib/route-clustering.ts` break geographic grouping:
 
-## What Changes
+1. **`insertPriorityBuildings()`** splices priority buildings into arbitrary positions, splitting clusters (e.g., Live Oak buildings separated by Grand Prairie)
+2. **`groupAdvanceNotice()`** pulls advance-notice buildings out of their geographic position and appends them at the end
 
-### `src/lib/excel-generator.ts`
+## Changes to `src/lib/route-clustering.ts`
 
-1. **Remove** the Summary tab entirely
-2. **Remove** the per-day tabs entirely
-3. **Remove** the "Day" column from the building row
-4. **Keep** a single sheet called "Route Schedule" with one row per building, in route order
-5. The columns will be the same building-level fields minus "Day":
-   - Stop #, Property Name, Address, City, State, Zip, SF, Market/Group, Bldg Code, Priority, Access Type, Access Location, Codes (Lock/Gate), Needs Escort, 24H Notice, Needs Ladder, Needs CAD/Core, Other Equipment, Notes
-6. **Update** column widths array to remove the Day entry
+### 1. Remove priority separation entirely
+- Stop splitting buildings into `priority` and `regular` arrays (lines ~80-81)
+- Feed ALL buildings (priority and regular) into `greedyNearestNeighbor()` together
+- Remove the call to `insertPriorityBuildings()` (line ~87)
+- Delete the `insertPriorityBuildings()` function
 
-This gives the inspector a clean spreadsheet that looks just like what was originally uploaded, but in the optimized route sequence.
+### 2. Remove `groupAdvanceNotice()` call
+- Remove the call on line ~90 so buildings stay in geographic order
+- Delete the `groupAdvanceNotice()` function
+
+### 3. Bias priority-heavy clusters toward early days
+After chunking into daily groups, sort the day chunks so that chunks with more priority buildings come first:
+- Count priority buildings per chunk
+- Sort chunks: higher priority count = earlier day number
+- This puts priority-dense geographic clusters on Day 1-2 without breaking the within-cluster route order
+
+### 4. Also widen Excel columns
+In `src/lib/excel-generator.ts`, increase:
+- Notes: 30 -> 50
+- Access Location: 32 -> 40
+
+## Result
+- All buildings sorted by pure nearest-neighbor geography
+- No zigzagging caused by priority or advance-notice shuffling
+- Priority clusters naturally land earlier in the schedule
+- Excel columns wide enough for field use
 
