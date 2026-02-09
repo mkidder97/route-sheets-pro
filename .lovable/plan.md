@@ -1,55 +1,43 @@
 
 
-# Fix: Zip Code Tiebreaker in Nearest-Neighbor + Remove Priority Reorder for Schedule Excel
+# Fix: Sort Individual Buildings (Not Days) in Schedule Excel
 
 ## Root Cause
 
-Two issues combine to put Wildlife 11 (Grand Prairie, 75050) between Live Oak buildings (The Colony, 75056):
+The current Excel generator sorts **day chunks** by their first building's geography, then flattens buildings within each day in their original order. But Wildlife 11 (75050, Grand Prairie) is saved **inside the same day chunk** as Live Oak buildings (75056, The Colony) -- because that's how the route builder grouped them (5 buildings per day).
 
-### Issue 1: No tiebreaker for same-centroid buildings
-All Live Oak buildings have no actual lat/lng, so they all resolve to the identical 75056 zip centroid point. Wildlife 11 resolves to the 75050 centroid, which is nearby. When the nearest-neighbor algorithm picks the next building, it sees distance=0 for remaining Live Oak buildings AND a very small distance for Wildlife 11. Without a tiebreaker, Wildlife 11 can slip in between Live Oak buildings.
+Sorting days by first building doesn't fix this because Wildlife 11 is mixed into a day with Live Oak buildings. No amount of day-level sorting will separate it.
 
-### Issue 2: Priority chunk reordering breaks geographic sequence
-After the global nearest-neighbor sort, buildings are sliced into daily chunks, then those chunks are re-sorted by priority count (line 93-97). This shuffles the geographic order of chunks. When the Excel generator flattens all chunks with continuous stop numbers (1-N), the geographic sequence is broken.
+## The Fix
 
-## Fix
+In `src/lib/excel-generator.ts`, change the flattening logic to:
 
-### Change 1: Add zip code tiebreaker to `nearestNeighborChain` in `src/lib/route-clustering.ts`
+1. Extract ALL buildings from ALL days into a single flat array
+2. Sort that flat array by state, then city, then zip code
+3. Assign continuous stop numbers (1 through N) on the sorted result
 
-When two candidates have similar distances (within ~1 mile, which covers same-centroid and very nearby centroids), prefer the candidate with the **same zip code** as the current building. This keeps same-zip buildings together.
+This completely ignores day boundaries for the schedule Excel, which is correct -- the office staff doesn't care about day groupings, they need a geographically organized master list.
+
+### Changes to `src/lib/excel-generator.ts`
+
+Replace the current approach (sort days, then flatMap buildings) with:
 
 ```text
-In the inner loop of nearestNeighborChain:
-- When a candidate distance is within 1 mile of the best distance found so far
-- AND the candidate shares the same zip_code as the last building in the chain
-- AND the current best does NOT share the same zip
-- Then prefer the same-zip candidate (update bestIdx)
+1. Flatten: collect every building from every day into one array
+2. Sort the flat array by: state -> city -> zip_code -> property_name
+3. Assign stop numbers 1..N
+4. Generate rows
 ```
 
-### Change 2: Remove priority chunk reordering for schedule use
+This guarantees all 75056 (The Colony) buildings are together, all 75050 (Grand Prairie) buildings are together, etc. No building from a different zip can ever appear between buildings of the same zip.
 
-The priority reordering (sorting day chunks by priority count) makes sense for the Route Builder (inspector perspective) but breaks the continuous geographic order needed for the schedule Excel.
+## Why Previous Fixes Didn't Work
 
-The approach: keep the priority sort in `generateClusters` (it's used by Route Builder), but in the Excel generator, re-sort the days by their original geographic order before flattening. Since we don't have the original order stored, the simpler fix is to move the priority sort logic so it only applies when the data is used for route builder context, not schedule context.
+- **Zip tiebreaker in nearest-neighbor**: Only helps when generating new routes. The schedule reads already-saved route data from the database, so the tiebreaker doesn't apply at export time.
+- **Day-level geographic sort**: Moves whole day chunks around but can't fix interleaving within a single day chunk.
+- **sortByPriority flag**: Only affects future route generation, not already-saved data.
 
-Specifically: the `generateClusters` function will accept an optional `sortByPriority` parameter (default `true`). The Schedules page will pass `false` so chunks stay in geographic order. The Route Builder continues to pass `true` (or use the default).
+## Files Changed
 
-### Files Changed
-
-1. **`src/lib/route-clustering.ts`**
-   - Add zip-code tiebreaker logic to `nearestNeighborChain`
-   - Add optional `sortByPriority` parameter to `generateClusters`
-
-2. **`src/pages/RouteBuilder.tsx`** (or wherever it calls `generateClusters`)
-   - No change needed (uses default `sortByPriority=true`)
-
-3. **`src/pages/Schedules.tsx`**
-   - If it calls `generateClusters`, pass `sortByPriority: false`
-   - If it only reads from the database (already-saved route plans), the fix is in how the data was saved — verify the save path
-
-## Expected Result
-- All Live Oak buildings group together without Wildlife 11 interrupting
-- Same-city, same-zip buildings always cluster as a block
-- Schedule Excel shows a logical geographic sequence with continuous stop numbers
-- Route Builder still prioritizes days with priority buildings first
+1. **`src/lib/excel-generator.ts`** -- Replace day-level sort + flatMap with building-level sort
 
