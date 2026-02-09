@@ -495,8 +495,12 @@ function BuildingRow({
     exterior_ladder: "Ext. Ladder",
     interior_ladder: "Int. Ladder",
     ground_level: "Ground",
-    other: "Other",
+    other: "",
   };
+
+  const displayAccess = building.roof_access_type
+    ? (accessLabel[building.roof_access_type] || building.roof_access_type)
+    : null;
 
   return (
     <div
@@ -519,9 +523,9 @@ function BuildingRow({
         {building.square_footage && (
           <span>{(building.square_footage / 1000).toFixed(0)}k sqft</span>
         )}
-        {building.roof_access_type && (
+        {displayAccess && (
           <Badge variant="outline" className="text-[10px]">
-            {accessLabel[building.roof_access_type] ?? building.roof_access_type}
+            {displayAccess}
           </Badge>
         )}
       </div>

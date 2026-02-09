@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import UploadPage from "./pages/Upload";
 import Schedules from "./pages/Schedules";
 import RouteBuilder from "./pages/RouteBuilder";
+import Codes from "./pages/Codes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/upload" element={<UploadPage />} />
             <Route path="/schedules" element={<Schedules />} />
             <Route path="/route-builder" element={<RouteBuilder />} />
+            <Route path="/codes" element={<Codes />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
