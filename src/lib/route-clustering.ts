@@ -31,7 +31,8 @@ function toBuildingWithCoords(b: ClusterBuilding) {
 export async function generateClusters(
   buildings: Tables<'buildings'>[],
   buildingsPerDay: number,
-  startLocation?: string
+  startLocation?: string,
+  sortByPriority: boolean = true
 ): Promise<{ clusters: DayCluster[]; unresolved: string[] }> {
   const centroids = await loadZipCentroids();
   const unresolved: string[] = [];
@@ -89,12 +90,14 @@ export async function generateClusters(
     dayChunks.push(sorted.slice(i, i + buildingsPerDay));
   }
 
-  // Bias priority-heavy chunks toward early days
-  dayChunks.sort((a, b) => {
-    const countA = a.filter((x) => x.is_priority).length;
-    const countB = b.filter((x) => x.is_priority).length;
-    return countB - countA;
-  });
+  // Bias priority-heavy chunks toward early days (only for route builder)
+  if (sortByPriority) {
+    dayChunks.sort((a, b) => {
+      const countA = a.filter((x) => x.is_priority).length;
+      const countB = b.filter((x) => x.is_priority).length;
+      return countB - countA;
+    });
+  }
 
   // Re-apply nearest-neighbor within each daily chunk for optimal stop order
   const refined = dayChunks.map((chunk) => nearestNeighborChain(chunk, startCoords));
@@ -151,6 +154,14 @@ function nearestNeighborChain(buildings: ClusterBuilding[], startCoords?: { lat:
       if (candidate.lat == null || candidate.lng == null) continue;
       const dist = haversineDistance(last.lat, last.lng, candidate.lat, candidate.lng);
       if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      } else if (
+        dist < bestDist + 1.6 &&
+        candidate.zip_code === last.zip_code &&
+        remaining[bestIdx]?.zip_code !== last.zip_code
+      ) {
+        // Tiebreaker: prefer same zip code when distances are within ~1 mile
         bestDist = dist;
         bestIdx = i;
       }
