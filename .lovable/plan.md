@@ -1,33 +1,55 @@
 
 
-# Fix Route Ordering: Remove Zip Prefix Grouping
+# Fix: Zip Code Tiebreaker in Nearest-Neighbor + Remove Priority Reorder for Schedule Excel
 
 ## Root Cause
 
-The `greedyNearestNeighbor()` function in `src/lib/route-clustering.ts` (lines 119-145) splits buildings into groups by the first 3 digits of the zip code, then runs nearest-neighbor sorting independently within each group. The groups are concatenated in arbitrary order.
+Two issues combine to put Wildlife 11 (Grand Prairie, 75050) between Live Oak buildings (The Colony, 75056):
 
-This causes two problems:
-- Buildings in the same city can have different 3-digit prefixes and get separated
-- The boundary between groups creates jumps -- the last building of one group may be far from the first building of the next
+### Issue 1: No tiebreaker for same-centroid buildings
+All Live Oak buildings have no actual lat/lng, so they all resolve to the identical 75056 zip centroid point. Wildlife 11 resolves to the 75050 centroid, which is nearby. When the nearest-neighbor algorithm picks the next building, it sees distance=0 for remaining Live Oak buildings AND a very small distance for Wildlife 11. Without a tiebreaker, Wildlife 11 can slip in between Live Oak buildings.
 
-## The Fix
+### Issue 2: Priority chunk reordering breaks geographic sequence
+After the global nearest-neighbor sort, buildings are sliced into daily chunks, then those chunks are re-sorted by priority count (line 93-97). This shuffles the geographic order of chunks. When the Excel generator flattens all chunks with continuous stop numbers (1-N), the geographic sequence is broken.
 
-Replace `greedyNearestNeighbor()` with a direct call to `nearestNeighborChain()` on ALL buildings at once. The nearest-neighbor algorithm naturally clusters nearby buildings together without needing artificial zip-based grouping.
+## Fix
 
-### Changes to `src/lib/route-clustering.ts`
+### Change 1: Add zip code tiebreaker to `nearestNeighborChain` in `src/lib/route-clustering.ts`
 
-1. **Replace the `greedyNearestNeighbor` function body** -- remove the 3-digit prefix grouping logic and just call `nearestNeighborChain(buildings, startCoords)` directly
-2. **Delete the unused `refineByAccessType` function** (dead code cleanup)
+When two candidates have similar distances (within ~1 mile, which covers same-centroid and very nearby centroids), prefer the candidate with the **same zip code** as the current building. This keeps same-zip buildings together.
 
-### Also fix Notes column in `src/lib/excel-generator.ts`
+```text
+In the inner loop of nearestNeighborChain:
+- When a candidate distance is within 1 mile of the best distance found so far
+- AND the candidate shares the same zip_code as the last building in the chain
+- AND the current best does NOT share the same zip
+- Then prefer the same-zip candidate (update bestIdx)
+```
 
-The community `xlsx` library (SheetJS) does not support cell styling (the `.s` property) in the free/open-source version. The `wrapText` code added previously has no effect. Instead:
-- Ensure the column width is generous (already set to 70)
-- No further action needed from code -- the user should widen the column manually in Excel if 70 chars isn't enough, or we can increase it further
+### Change 2: Remove priority chunk reordering for schedule use
 
-## Result
+The priority reordering (sorting day chunks by priority count) makes sense for the Route Builder (inspector perspective) but breaks the continuous geographic order needed for the schedule Excel.
 
-- One continuous nearest-neighbor chain across all buildings
-- Same-city buildings stay together naturally
-- No artificial zip-prefix boundaries breaking the route
+The approach: keep the priority sort in `generateClusters` (it's used by Route Builder), but in the Excel generator, re-sort the days by their original geographic order before flattening. Since we don't have the original order stored, the simpler fix is to move the priority sort logic so it only applies when the data is used for route builder context, not schedule context.
+
+Specifically: the `generateClusters` function will accept an optional `sortByPriority` parameter (default `true`). The Schedules page will pass `false` so chunks stay in geographic order. The Route Builder continues to pass `true` (or use the default).
+
+### Files Changed
+
+1. **`src/lib/route-clustering.ts`**
+   - Add zip-code tiebreaker logic to `nearestNeighborChain`
+   - Add optional `sortByPriority` parameter to `generateClusters`
+
+2. **`src/pages/RouteBuilder.tsx`** (or wherever it calls `generateClusters`)
+   - No change needed (uses default `sortByPriority=true`)
+
+3. **`src/pages/Schedules.tsx`**
+   - If it calls `generateClusters`, pass `sortByPriority: false`
+   - If it only reads from the database (already-saved route plans), the fix is in how the data was saved — verify the save path
+
+## Expected Result
+- All Live Oak buildings group together without Wildlife 11 interrupting
+- Same-city, same-zip buildings always cluster as a block
+- Schedule Excel shows a logical geographic sequence with continuous stop numbers
+- Route Builder still prioritizes days with priority buildings first
 
