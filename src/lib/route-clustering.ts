@@ -102,11 +102,19 @@ export async function generateClusters(
   // Re-apply nearest-neighbor within each daily chunk for optimal stop order
   const refined = dayChunks.map((chunk) => nearestNeighborChain(chunk, startCoords));
 
-  const clusters: DayCluster[] = refined.map((chunk, i) => ({
-    dayNumber: i + 1,
-    buildings: chunk,
-    estimatedDistanceMiles: estimateRouteDistance(chunk.map(toBuildingWithCoords)),
-  }));
+  const clusters: DayCluster[] = refined.map((chunk, i) => {
+    const stops = chunk.map(toBuildingWithCoords);
+    // Include distance from start location to first stop for every day
+    let startToFirst = 0;
+    if (startCoords && stops.length > 0 && stops[0].lat != null && stops[0].lng != null) {
+      startToFirst = haversineDistance(startCoords.lat, startCoords.lng, stops[0].lat, stops[0].lng);
+    }
+    return {
+      dayNumber: i + 1,
+      buildings: chunk,
+      estimatedDistanceMiles: Math.round((startToFirst + estimateRouteDistance(stops)) * 10) / 10,
+    };
+  });
 
   return { clusters, unresolved: [...new Set(unresolved)] };
 }

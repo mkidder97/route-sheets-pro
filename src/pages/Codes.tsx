@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -10,19 +10,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { KeyRound, Search, Building2 } from "lucide-react";
+import { KeyRound, Search } from "lucide-react";
 
 interface CodeEntry {
   id: string;
   property_name: string;
-  address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  lock_gate_codes: string | null;
-  access_location: string | null;
-  roof_access_description: string | null;
-  roof_access_type: string | null;
+  code: string;
   client_name: string;
   region_name: string;
 }
@@ -51,22 +44,23 @@ export default function Codes() {
 
       if (!buildings) { setLoading(false); return; }
 
-      const mapped: CodeEntry[] = buildings
-        .filter((b: any) => b.lock_gate_codes || b.access_location || b.roof_access_description)
-        .map((b: any) => ({
-          id: b.id,
-          property_name: b.property_name,
-          address: b.address,
-          city: b.city,
-          state: b.state,
-          zip_code: b.zip_code,
-          lock_gate_codes: b.lock_gate_codes,
-          access_location: b.access_location,
-          roof_access_description: b.roof_access_description,
-          roof_access_type: b.roof_access_type,
-          client_name: b.clients?.name ?? "Unknown",
-          region_name: b.regions?.name ?? "Unknown",
-        }));
+      // Extract numeric 4-8 digit codes from lock_gate_codes field
+      const codeRegex = /\b\d{4,8}\b/g;
+      const mapped: CodeEntry[] = [];
+      for (const b of buildings as any[]) {
+        const raw = b.lock_gate_codes ?? "";
+        const matches = raw.match(codeRegex);
+        if (!matches) continue;
+        for (const code of matches) {
+          mapped.push({
+            id: `${b.id}-${code}`,
+            property_name: b.property_name,
+            code,
+            client_name: b.clients?.name ?? "Unknown",
+            region_name: b.regions?.name ?? "Unknown",
+          });
+        }
+      }
 
       setEntries(mapped);
       setFiltered(mapped);
@@ -99,30 +93,19 @@ export default function Codes() {
       result = result.filter(
         (e) =>
           e.property_name.toLowerCase().includes(q) ||
-          e.address.toLowerCase().includes(q) ||
-          e.city.toLowerCase().includes(q) ||
-          (e.lock_gate_codes ?? "").toLowerCase().includes(q) ||
-          (e.access_location ?? "").toLowerCase().includes(q) ||
-          (e.roof_access_description ?? "").toLowerCase().includes(q)
+          e.code.includes(q)
       );
     }
 
     setFiltered(result);
   }, [entries, selectedClient, selectedRegion, search]);
 
-  const accessLabel: Record<string, string> = {
-    roof_hatch: "Hatch",
-    exterior_ladder: "Ext. Ladder",
-    interior_ladder: "Int. Ladder",
-    ground_level: "Ground",
-  };
-
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Codes & Access</h1>
+        <h1 className="text-3xl font-bold">Lockbox Codes</h1>
         <p className="text-muted-foreground mt-1">
-          Quick reference for gate codes, lock codes, and access instructions by property
+          Quick reference for lockbox codes by client and region
         </p>
       </div>
 
@@ -162,7 +145,7 @@ export default function Codes() {
       </div>
 
       <p className="text-sm text-muted-foreground">
-        {filtered.length} {filtered.length === 1 ? "property" : "properties"} with access info
+        {filtered.length} {filtered.length === 1 ? "code" : "codes"} found
       </p>
 
       {/* Results */}
@@ -172,57 +155,20 @@ export default function Codes() {
         <Card className="bg-card border-border">
           <CardContent className="py-12 text-center">
             <KeyRound className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground">No access codes or instructions found.</p>
+            <p className="text-muted-foreground">No lockbox codes found.</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-2">
           {filtered.map((entry) => (
-            <Card key={entry.id} className="bg-card border-border">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0 space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{entry.property_name}</span>
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {entry.client_name}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        {entry.region_name}
-                      </Badge>
-                      {entry.roof_access_type && entry.roof_access_type !== "other" && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {accessLabel[entry.roof_access_type] ?? entry.roof_access_type}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {entry.address}, {entry.city}, {entry.state} {entry.zip_code}
-                    </p>
-
-                    <div className="flex flex-col gap-1 mt-2">
-                      {entry.lock_gate_codes && (
-                        <div className="flex items-start gap-2 text-sm">
-                          <KeyRound className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                          <span><span className="font-medium">Codes:</span> {entry.lock_gate_codes}</span>
-                        </div>
-                      )}
-                      {entry.access_location && (
-                        <div className="flex items-start gap-2 text-sm">
-                          <Building2 className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                          <span><span className="font-medium">Access:</span> {entry.access_location}</span>
-                        </div>
-                      )}
-                      {entry.roof_access_description && (
-                        <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <span className="ml-5.5">{entry.roof_access_description}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div key={entry.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-card border border-border">
+              <code className="text-lg font-mono font-bold text-primary tracking-wider">{entry.code}</code>
+              <span className="text-sm text-muted-foreground truncate">{entry.property_name}</span>
+              <div className="ml-auto flex gap-1.5 shrink-0">
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{entry.client_name}</Badge>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{entry.region_name}</Badge>
+              </div>
+            </div>
           ))}
         </div>
       )}
