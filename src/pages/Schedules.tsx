@@ -244,6 +244,9 @@ export default function Schedules() {
         requires_escort: rpb.buildings.requires_escort,
         special_equipment: rpb.buildings.special_equipment,
         special_notes: rpb.buildings.special_notes,
+        property_manager_name: rpb.buildings.property_manager_name,
+        property_manager_phone: rpb.buildings.property_manager_phone,
+        property_manager_email: rpb.buildings.property_manager_email,
       }));
 
       result.push({
