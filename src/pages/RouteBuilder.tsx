@@ -612,6 +612,9 @@ interface SavedDayBuilding {
   lock_gate_codes: string | null;
   special_equipment: string[] | null;
   special_notes: string | null;
+  property_manager_name: string | null;
+  property_manager_phone: string | null;
+  property_manager_email: string | null;
 }
 
 interface SavedDay {
@@ -628,6 +631,7 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [expandedBuilding, setExpandedBuilding] = useState<string | null>(null);
   const [days, setDays] = useState<SavedDay[]>([]);
+  const [hideComplete, setHideComplete] = useState(false);
   const [loadingDays, setLoadingDays] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SavedRoutePlan | null>(null);
 
@@ -673,7 +677,7 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
     const dayIds = dayRows.map((d) => d.id);
     const { data: rpb } = await supabase
       .from("route_plan_buildings")
-      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes)")
+      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes, property_manager_name, property_manager_phone, property_manager_email)")
       .in("route_plan_day_id", dayIds)
       .order("stop_order");
 
@@ -701,6 +705,9 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
           lock_gate_codes: r.buildings.lock_gate_codes,
           special_equipment: r.buildings.special_equipment,
           special_notes: r.buildings.special_notes,
+          property_manager_name: r.buildings.property_manager_name,
+          property_manager_phone: r.buildings.property_manager_phone,
+          property_manager_email: r.buildings.property_manager_email,
         })),
     }));
 
@@ -807,14 +814,20 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
                       <p className="text-sm text-muted-foreground text-center py-4">No days in this route.</p>
                     ) : (
                       <>
-                        {/* Overall progress */}
+                        {/* Overall progress + hide toggle */}
                         <div className="flex items-center gap-3">
                           <Progress value={allBuildings.length > 0 ? (totalComplete / allBuildings.length) * 100 : 0} className="h-2 flex-1" />
                           <span className="text-sm font-medium text-muted-foreground">{totalComplete}/{allBuildings.length} complete</span>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <Switch id={`hide-complete-${expandedPlan}`} checked={hideComplete} onCheckedChange={setHideComplete} />
+                          <Label htmlFor={`hide-complete-${expandedPlan}`} className="text-xs cursor-pointer">Hide completed</Label>
+                        </div>
 
                         {days.map((day) => {
                           const dayComplete = day.buildings.filter((b) => b.inspection_status === "complete").length;
+                          const visibleBuildings = hideComplete ? day.buildings.filter((b) => b.inspection_status !== "complete") : day.buildings;
+                          if (hideComplete && visibleBuildings.length === 0) return null;
                           return (
                             <div key={day.id} className="space-y-2">
                               <div className="flex items-center justify-between">
@@ -830,7 +843,7 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
                                 <span className="text-xs text-muted-foreground">{dayComplete}/{day.buildings.length}</span>
                               </div>
                               <div className="space-y-1">
-                                {day.buildings.map((b) => {
+                                {visibleBuildings.map((b) => {
                                   const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
                                   const isBuildingExpanded = expandedBuilding === b.id;
                                   return (
@@ -867,6 +880,14 @@ function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
                                           {b.lock_gate_codes && <div><span className="text-muted-foreground">Codes:</span> <span className="font-mono">{b.lock_gate_codes}</span></div>}
                                           {b.special_equipment && b.special_equipment.length > 0 && <div><span className="text-muted-foreground">Equipment:</span> {b.special_equipment.join(", ")}</div>}
                                           {b.special_notes && <div><span className="text-muted-foreground">Notes:</span> {b.special_notes}</div>}
+                                          {(b.property_manager_name || b.property_manager_phone || b.property_manager_email) && (
+                                            <div className="p-1.5 rounded bg-accent/50 space-y-0.5">
+                                              <div className="font-medium text-foreground">Property Manager</div>
+                                              {b.property_manager_name && <div>{b.property_manager_name}</div>}
+                                              {b.property_manager_phone && <div><a href={`tel:${b.property_manager_phone}`} className="text-primary underline">{b.property_manager_phone}</a></div>}
+                                              {b.property_manager_email && <div><a href={`mailto:${b.property_manager_email}`} className="text-primary underline">{b.property_manager_email}</a></div>}
+                                            </div>
+                                          )}
                                           {b.inspector_notes && (
                                             <div className="p-1.5 rounded bg-muted"><span className="text-muted-foreground">Inspector Notes:</span> {b.inspector_notes}</div>
                                           )}
