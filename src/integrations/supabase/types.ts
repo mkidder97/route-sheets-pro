@@ -372,6 +372,7 @@ export type Database = {
         Row: {
           client_id: string | null
           created_at: string
+          deleted_at: string | null
           file_name: string
           id: string
           row_count: number
@@ -380,6 +381,7 @@ export type Database = {
         Insert: {
           client_id?: string | null
           created_at?: string
+          deleted_at?: string | null
           file_name: string
           id?: string
           row_count?: number
@@ -388,6 +390,7 @@ export type Database = {
         Update: {
           client_id?: string | null
           created_at?: string
+          deleted_at?: string | null
           file_name?: string
           id?: string
           row_count?: number
