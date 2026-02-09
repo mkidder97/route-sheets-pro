@@ -45,6 +45,7 @@ export type Database = {
           state: string
           stop_number: string | null
           updated_at: string
+          upload_id: string | null
           zip_code: string
         }
         Insert: {
@@ -77,6 +78,7 @@ export type Database = {
           state: string
           stop_number?: string | null
           updated_at?: string
+          upload_id?: string | null
           zip_code: string
         }
         Update: {
@@ -109,6 +111,7 @@ export type Database = {
           state?: string
           stop_number?: string | null
           updated_at?: string
+          upload_id?: string | null
           zip_code?: string
         }
         Relationships: [
@@ -131,6 +134,13 @@ export type Database = {
             columns: ["region_id"]
             isOneToOne: false
             referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buildings_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
             referencedColumns: ["id"]
           },
         ]
