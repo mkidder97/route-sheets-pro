@@ -1,39 +1,33 @@
 
 
-# Fix Route Clustering: Remove Geographic-Breaking Logic
+# Fix Route Ordering: Remove Zip Prefix Grouping
 
-## Problem
-Two functions in `src/lib/route-clustering.ts` break geographic grouping:
+## Root Cause
 
-1. **`insertPriorityBuildings()`** splices priority buildings into arbitrary positions, splitting clusters (e.g., Live Oak buildings separated by Grand Prairie)
-2. **`groupAdvanceNotice()`** pulls advance-notice buildings out of their geographic position and appends them at the end
+The `greedyNearestNeighbor()` function in `src/lib/route-clustering.ts` (lines 119-145) splits buildings into groups by the first 3 digits of the zip code, then runs nearest-neighbor sorting independently within each group. The groups are concatenated in arbitrary order.
 
-## Changes to `src/lib/route-clustering.ts`
+This causes two problems:
+- Buildings in the same city can have different 3-digit prefixes and get separated
+- The boundary between groups creates jumps -- the last building of one group may be far from the first building of the next
 
-### 1. Remove priority separation entirely
-- Stop splitting buildings into `priority` and `regular` arrays (lines ~80-81)
-- Feed ALL buildings (priority and regular) into `greedyNearestNeighbor()` together
-- Remove the call to `insertPriorityBuildings()` (line ~87)
-- Delete the `insertPriorityBuildings()` function
+## The Fix
 
-### 2. Remove `groupAdvanceNotice()` call
-- Remove the call on line ~90 so buildings stay in geographic order
-- Delete the `groupAdvanceNotice()` function
+Replace `greedyNearestNeighbor()` with a direct call to `nearestNeighborChain()` on ALL buildings at once. The nearest-neighbor algorithm naturally clusters nearby buildings together without needing artificial zip-based grouping.
 
-### 3. Bias priority-heavy clusters toward early days
-After chunking into daily groups, sort the day chunks so that chunks with more priority buildings come first:
-- Count priority buildings per chunk
-- Sort chunks: higher priority count = earlier day number
-- This puts priority-dense geographic clusters on Day 1-2 without breaking the within-cluster route order
+### Changes to `src/lib/route-clustering.ts`
 
-### 4. Also widen Excel columns
-In `src/lib/excel-generator.ts`, increase:
-- Notes: 30 -> 50
-- Access Location: 32 -> 40
+1. **Replace the `greedyNearestNeighbor` function body** -- remove the 3-digit prefix grouping logic and just call `nearestNeighborChain(buildings, startCoords)` directly
+2. **Delete the unused `refineByAccessType` function** (dead code cleanup)
+
+### Also fix Notes column in `src/lib/excel-generator.ts`
+
+The community `xlsx` library (SheetJS) does not support cell styling (the `.s` property) in the free/open-source version. The `wrapText` code added previously has no effect. Instead:
+- Ensure the column width is generous (already set to 70)
+- No further action needed from code -- the user should widen the column manually in Excel if 70 chars isn't enough, or we can increase it further
 
 ## Result
-- All buildings sorted by pure nearest-neighbor geography
-- No zigzagging caused by priority or advance-notice shuffling
-- Priority clusters naturally land earlier in the schedule
-- Excel columns wide enough for field use
+
+- One continuous nearest-neighbor chain across all buildings
+- Same-city buildings stay together naturally
+- No artificial zip-prefix boundaries breaking the route
 
