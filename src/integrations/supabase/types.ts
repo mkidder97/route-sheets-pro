@@ -21,14 +21,18 @@ export type Database = {
           building_code: string | null
           city: string
           client_id: string
+          completion_date: string | null
           created_at: string
           id: string
           inspection_date: string | null
+          inspection_status: string
           inspector_id: string | null
+          inspector_notes: string | null
           is_priority: boolean | null
           latitude: number | null
           lock_gate_codes: string | null
           longitude: number | null
+          photo_url: string | null
           property_name: string
           region_id: string
           requires_advance_notice: boolean | null
@@ -54,14 +58,18 @@ export type Database = {
           building_code?: string | null
           city: string
           client_id: string
+          completion_date?: string | null
           created_at?: string
           id?: string
           inspection_date?: string | null
+          inspection_status?: string
           inspector_id?: string | null
+          inspector_notes?: string | null
           is_priority?: boolean | null
           latitude?: number | null
           lock_gate_codes?: string | null
           longitude?: number | null
+          photo_url?: string | null
           property_name: string
           region_id: string
           requires_advance_notice?: boolean | null
@@ -87,14 +95,18 @@ export type Database = {
           building_code?: string | null
           city?: string
           client_id?: string
+          completion_date?: string | null
           created_at?: string
           id?: string
           inspection_date?: string | null
+          inspection_status?: string
           inspector_id?: string | null
+          inspector_notes?: string | null
           is_priority?: boolean | null
           latitude?: number | null
           lock_gate_codes?: string | null
           longitude?: number | null
+          photo_url?: string | null
           property_name?: string
           region_id?: string
           requires_advance_notice?: boolean | null

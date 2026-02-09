@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Building2, MapPin, Upload, Users, Clock, Trash2, Loader2, RotateCcw } from "lucide-react";
+import { CompletionProgress } from "@/components/dashboard/CompletionProgress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -292,6 +293,9 @@ export default function Dashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Completion Progress */}
+      <CompletionProgress />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Region Progress */}
