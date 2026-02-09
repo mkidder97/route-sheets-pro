@@ -157,9 +157,13 @@ export function detectFlags(row: Record<string, string>, scheduledWeekKey?: stri
 // Classify roof access type from description
 export function classifyRoofAccess(description: string): string {
   const d = description.toLowerCase();
-  if (/roof\s*hatch/i.test(d)) return "roof_hatch";
+  if (/interior\s*(roof\s*)?hatch/i.test(d)) return "interior_ladder";
+  if (/roof\s*hatch|interior\s*hatch|\bhatch\b/i.test(d)) return "roof_hatch";
+  if (/exterior\s*(wall\s*)?(mounted\s*)?ladder|wall\s*mounted\s*ladder/i.test(d)) return "exterior_ladder";
+  if (/ladder\s*with\s*cage|caged?\s*ladder/i.test(d)) return "exterior_ladder";
   if (/exterior\s*ladder/i.test(d)) return "exterior_ladder";
-  if (/interior\s*(ladder|roof\s*hatch)/i.test(d)) return "interior_ladder";
+  if (/interior\s*ladder/i.test(d)) return "interior_ladder";
+  if (/\bladder\b|need\s*ladder|need\s*\d+/i.test(d)) return "exterior_ladder";
   if (/ground\s*level/i.test(d)) return "ground_level";
   return "other";
 }
