@@ -3,6 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -12,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation } from "lucide-react";
 import { generateClusters, type DayCluster, type ClusterBuilding } from "@/lib/route-clustering";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -29,6 +32,8 @@ export default function RouteBuilder() {
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedInspector, setSelectedInspector] = useState("");
   const [buildingsPerDay, setBuildingsPerDay] = useState(5);
+  const [useStartLocation, setUseStartLocation] = useState(false);
+  const [startLocation, setStartLocation] = useState("");
 
   // Results
   const [clusters, setClusters] = useState<DayCluster[]>([]);
@@ -79,7 +84,8 @@ export default function RouteBuilder() {
         return;
       }
 
-      const { clusters: generated, unresolved } = await generateClusters(buildings, buildingsPerDay);
+      const startLoc = useStartLocation ? startLocation.trim() : undefined;
+      const { clusters: generated, unresolved } = await generateClusters(buildings, buildingsPerDay, startLoc);
       setClusters(generated);
       setUnresolvedZips(unresolved);
       setUnassigned([]);
@@ -94,7 +100,7 @@ export default function RouteBuilder() {
       toast.error(`Generation failed: ${err.message}`);
       setStep("params");
     }
-  }, [selectedRegion, selectedInspector, buildingsPerDay]);
+  }, [selectedRegion, selectedInspector, buildingsPerDay, useStartLocation, startLocation]);
 
   // Drag handlers
   const handleDragStart = (building: ClusterBuilding, fromDay: number | null) => {
@@ -303,7 +309,36 @@ export default function RouteBuilder() {
               <p className="text-xs text-muted-foreground">Target number of inspections per day (3–8)</p>
             </div>
 
-            <Button onClick={handleGenerate} disabled={!selectedRegion} className="mt-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="start-location"
+                  checked={useStartLocation}
+                  onCheckedChange={setUseStartLocation}
+                />
+                <Label htmlFor="start-location" className="text-sm font-medium cursor-pointer">
+                  <div className="flex items-center gap-1.5">
+                    <Navigation className="h-4 w-4" />
+                    Set starting location
+                  </div>
+                </Label>
+              </div>
+              {useStartLocation && (
+                <div className="space-y-1.5">
+                  <Input
+                    placeholder="Enter zip code or address (e.g. 75050 or 123 Main St, Dallas, TX)"
+                    value={startLocation}
+                    onChange={(e) => setStartLocation(e.target.value)}
+                    className="max-w-md"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Routes will be optimized starting from this location each day
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Button onClick={handleGenerate} disabled={!selectedRegion || (useStartLocation && !startLocation.trim())} className="mt-4">
               Generate Routes <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </CardContent>
