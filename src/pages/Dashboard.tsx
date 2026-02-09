@@ -200,6 +200,40 @@ export default function Dashboard() {
       const { error } = await supabase.from("uploads").delete().eq("id", upload.id);
       if (error) throw error;
 
+      // Clean up orphaned inspectors (not referenced by any remaining building)
+      const { data: usedInspectors } = await supabase.from("buildings").select("inspector_id");
+      const usedInspectorIds = new Set((usedInspectors ?? []).map((b) => b.inspector_id).filter(Boolean));
+      const { data: allInspectors } = await supabase.from("inspectors").select("id");
+      for (const insp of allInspectors ?? []) {
+        if (!usedInspectorIds.has(insp.id)) {
+          await supabase.from("inspectors").delete().eq("id", insp.id);
+        }
+      }
+
+      // Clean up orphaned regions (not referenced by any remaining building)
+      const { data: usedRegions } = await supabase.from("buildings").select("region_id");
+      const usedRegionIds = new Set((usedRegions ?? []).map((b) => b.region_id));
+      const { data: allRegions } = await supabase.from("regions").select("id");
+      for (const reg of allRegions ?? []) {
+        if (!usedRegionIds.has(reg.id)) {
+          await supabase.from("regions").delete().eq("id", reg.id);
+        }
+      }
+
+      // Clean up orphaned clients (not referenced by any remaining building or region)
+      const { data: usedByBuildings } = await supabase.from("buildings").select("client_id");
+      const { data: usedByRegions } = await supabase.from("regions").select("client_id");
+      const usedClientIds = new Set([
+        ...(usedByBuildings ?? []).map((b) => b.client_id),
+        ...(usedByRegions ?? []).map((r) => r.client_id),
+      ]);
+      const { data: allClients } = await supabase.from("clients").select("id");
+      for (const client of allClients ?? []) {
+        if (!usedClientIds.has(client.id)) {
+          await supabase.from("clients").delete().eq("id", client.id);
+        }
+      }
+
       toast.success(`Permanently deleted ${upload.file_name} and ${buildingIds.length} buildings`);
       await loadData();
     } catch (err: any) {
