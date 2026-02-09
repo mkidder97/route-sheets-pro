@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +7,8 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -13,15 +16,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation, ChevronDown, ChevronUp, Trash2, Eye, Smartphone } from "lucide-react";
 import { generateClusters, type DayCluster, type ClusterBuilding } from "@/lib/route-clustering";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Step = "params" | "generating" | "review" | "saving" | "done";
 
+const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
+  pending: { label: "Pending", badge: "bg-muted text-muted-foreground" },
+  in_progress: { label: "In Progress", badge: "bg-info/20 text-info" },
+  complete: { label: "Complete", badge: "bg-success/20 text-success" },
+  skipped: { label: "Skipped", badge: "bg-warning/20 text-warning" },
+  needs_revisit: { label: "Needs Revisit", badge: "bg-destructive/20 text-destructive" },
+};
+
+const STATUS_CYCLE: Record<string, string> = {
+  pending: "complete",
+  complete: "skipped",
+  skipped: "needs_revisit",
+  needs_revisit: "pending",
+  in_progress: "complete",
+};
+
 export default function RouteBuilder() {
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>("params");
 
   // Parameters
@@ -471,12 +508,20 @@ export default function RouteBuilder() {
             <p className="text-muted-foreground mt-2">
               {totalBuildings} buildings organized into {clusters.filter((c) => c.buildings.length > 0).length} days
             </p>
-            <Button className="mt-6" onClick={() => { setStep("params"); setClusters([]); setUnassigned([]); }}>
-              Create Another Plan
-            </Button>
+            <div className="flex gap-3 mt-6">
+              <Button variant="outline" onClick={() => { setStep("params"); setClusters([]); setUnassigned([]); }}>
+                Create Another Plan
+              </Button>
+              <Button onClick={() => { setStep("params"); setClusters([]); setUnassigned([]); }}>
+                View Saved Routes ↓
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      {/* ── SAVED ROUTES ── */}
+      <SavedRoutes navigate={navigate} />
     </div>
   );
 }
@@ -535,5 +580,315 @@ function BuildingRow({
         </button>
       )}
     </div>
+  );
+}
+
+// ── SAVED ROUTES COMPONENT ──
+
+interface SavedRoutePlan {
+  id: string;
+  name: string;
+  created_at: string;
+  buildings_per_day: number;
+  clients: { name: string } | null;
+  regions: { name: string } | null;
+  inspectors: { name: string } | null;
+}
+
+interface SavedDayBuilding {
+  id: string;
+  property_name: string;
+  address: string;
+  city: string;
+  inspection_status: string;
+  inspector_notes: string | null;
+  is_priority: boolean | null;
+  stop_order: number;
+}
+
+interface SavedDay {
+  id: string;
+  day_number: number;
+  day_date: string;
+  estimated_distance_miles: number | null;
+  buildings: SavedDayBuilding[];
+}
+
+function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
+  const [plans, setPlans] = useState<SavedRoutePlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [days, setDays] = useState<SavedDay[]>([]);
+  const [loadingDays, setLoadingDays] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SavedRoutePlan | null>(null);
+
+  // Status note dialog
+  const [noteDialog, setNoteDialog] = useState<{ id: string; status: string } | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    loadPlans();
+  }, []);
+
+  const loadPlans = async () => {
+    const { data } = await supabase
+      .from("route_plans")
+      .select("id, name, created_at, buildings_per_day, clients(name), regions(name), inspectors(name)")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setPlans((data as SavedRoutePlan[]) || []);
+    setLoading(false);
+  };
+
+  const toggleExpand = async (planId: string) => {
+    if (expandedPlan === planId) {
+      setExpandedPlan(null);
+      return;
+    }
+    setExpandedPlan(planId);
+    setLoadingDays(true);
+
+    const { data: dayRows } = await supabase
+      .from("route_plan_days")
+      .select("id, day_number, day_date, estimated_distance_miles")
+      .eq("route_plan_id", planId)
+      .order("day_number");
+
+    if (!dayRows || dayRows.length === 0) {
+      setDays([]);
+      setLoadingDays(false);
+      return;
+    }
+
+    const dayIds = dayRows.map((d) => d.id);
+    const { data: rpb } = await supabase
+      .from("route_plan_buildings")
+      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, inspection_status, inspector_notes, is_priority)")
+      .in("route_plan_day_id", dayIds)
+      .order("stop_order");
+
+    const result: SavedDay[] = dayRows.map((d) => ({
+      id: d.id,
+      day_number: d.day_number,
+      day_date: d.day_date,
+      estimated_distance_miles: d.estimated_distance_miles ? Number(d.estimated_distance_miles) : null,
+      buildings: ((rpb || []) as any[])
+        .filter((r) => r.route_plan_day_id === d.id)
+        .map((r) => ({
+          id: r.buildings.id,
+          property_name: r.buildings.property_name,
+          address: r.buildings.address,
+          city: r.buildings.city,
+          inspection_status: r.buildings.inspection_status || "pending",
+          inspector_notes: r.buildings.inspector_notes,
+          is_priority: r.buildings.is_priority,
+          stop_order: r.stop_order,
+        })),
+    }));
+
+    setDays(result);
+    setLoadingDays(false);
+  };
+
+  const handleStatusClick = (buildingId: string, currentStatus: string) => {
+    const next = STATUS_CYCLE[currentStatus] || "complete";
+    if (next === "skipped" || next === "needs_revisit") {
+      setNoteDialog({ id: buildingId, status: next });
+      setNoteText("");
+    } else {
+      updateStatus(buildingId, next);
+    }
+  };
+
+  const updateStatus = async (id: string, status: string, notes?: string) => {
+    setSaving(true);
+    const update: Record<string, unknown> = {
+      inspection_status: status,
+      completion_date: status === "complete" ? new Date().toISOString() : null,
+    };
+    if (notes !== undefined) update.inspector_notes = notes;
+
+    const { error } = await supabase.from("buildings").update(update).eq("id", id);
+    if (error) {
+      toast.error("Failed to update status");
+    } else {
+      toast.success(`Updated to ${STATUS_CONFIG[status]?.label || status}`);
+      setDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          buildings: d.buildings.map((b) =>
+            b.id === id
+              ? { ...b, inspection_status: status, inspector_notes: (notes ?? b.inspector_notes) }
+              : b
+          ),
+        }))
+      );
+    }
+    setSaving(false);
+    setNoteDialog(null);
+    setNoteText("");
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    // Delete route_plan_buildings, days, then plan
+    const { data: dayRows } = await supabase
+      .from("route_plan_days")
+      .select("id")
+      .eq("route_plan_id", deleteTarget.id);
+    if (dayRows && dayRows.length > 0) {
+      await supabase.from("route_plan_buildings").delete().in("route_plan_day_id", dayRows.map((d) => d.id));
+      await supabase.from("route_plan_days").delete().eq("route_plan_id", deleteTarget.id);
+    }
+    await supabase.from("route_plans").delete().eq("id", deleteTarget.id);
+    toast.success("Route deleted");
+    setDeleteTarget(null);
+    setExpandedPlan(null);
+    loadPlans();
+  };
+
+  if (loading) return null;
+  if (plans.length === 0) return null;
+
+  const allBuildings = days.flatMap((d) => d.buildings);
+  const totalComplete = allBuildings.filter((b) => b.inspection_status === "complete").length;
+
+  return (
+    <>
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-lg">Saved Routes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {plans.map((plan) => {
+            const isExpanded = expandedPlan === plan.id;
+            return (
+              <div key={plan.id} className="border border-border rounded-lg overflow-hidden">
+                <button
+                  className="w-full text-left p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+                  onClick={() => toggleExpand(plan.id)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{plan.name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {(plan.clients as any)?.name} • {(plan.regions as any)?.name} • {(plan.inspectors as any)?.name || "—"}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 shrink-0">
+                    <span className="text-xs text-muted-foreground">{new Date(plan.created_at).toLocaleDateString()}</span>
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-border p-4 space-y-4">
+                    {loadingDays ? (
+                      <div className="flex justify-center py-6">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      </div>
+                    ) : days.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">No days in this route.</p>
+                    ) : (
+                      <>
+                        {/* Overall progress */}
+                        <div className="flex items-center gap-3">
+                          <Progress value={allBuildings.length > 0 ? (totalComplete / allBuildings.length) * 100 : 0} className="h-2 flex-1" />
+                          <span className="text-sm font-medium text-muted-foreground">{totalComplete}/{allBuildings.length} complete</span>
+                        </div>
+
+                        {days.map((day) => {
+                          const dayComplete = day.buildings.filter((b) => b.inspection_status === "complete").length;
+                          return (
+                            <div key={day.id} className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-semibold">Day {day.day_number}</span>
+                                  <span className="text-xs text-muted-foreground">{day.day_date}</span>
+                                  {day.estimated_distance_miles && (
+                                    <Badge variant="outline" className="text-[10px] gap-1">
+                                      <MapPin className="h-3 w-3" />~{day.estimated_distance_miles} mi
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground">{dayComplete}/{day.buildings.length}</span>
+                              </div>
+                              <div className="space-y-1">
+                                {day.buildings.map((b) => {
+                                  const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
+                                  return (
+                                    <div key={b.id} className="flex items-center justify-between p-2 rounded-md bg-background border border-border">
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <span className="text-xs text-muted-foreground font-mono">#{b.stop_order}</span>
+                                        <span className="text-sm font-medium truncate">{b.property_name}</span>
+                                        {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1 py-0">P</Badge>}
+                                      </div>
+                                      <Badge
+                                        className={`${cfg.badge} border-0 text-xs cursor-pointer shrink-0`}
+                                        onClick={() => handleStatusClick(b.id, b.inspection_status)}
+                                      >
+                                        {cfg.label}
+                                      </Badge>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/field?plan=${plan.id}`)}>
+                        <Smartphone className="h-4 w-4 mr-1" /> Field View
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteTarget(plan)}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Delete
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      {/* Note dialog */}
+      <Dialog open={!!noteDialog} onOpenChange={(o) => !o && setNoteDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {noteDialog?.status === "skipped" ? "Why was this skipped?" : "What needs revisiting?"}
+            </DialogTitle>
+          </DialogHeader>
+          <Textarea placeholder="Enter notes (required)..." value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={3} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteDialog(null)}>Cancel</Button>
+            <Button disabled={!noteText.trim() || saving} onClick={() => { if (noteDialog) updateStatus(noteDialog.id, noteDialog.status, noteText.trim()); }}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this route?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deleteTarget?.name}" and all its day/building assignments. Building status data is preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -21,13 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -41,10 +33,6 @@ import {
   FileSpreadsheet,
   PackageOpen,
   Users,
-  CheckCircle2,
-  SkipForward,
-  AlertTriangle,
-  Eye,
 } from "lucide-react";
 import { format } from "date-fns";
 import type { Tables } from "@/integrations/supabase/types";
@@ -59,7 +47,7 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import * as XLSX from "xlsx";
 
-type Step = "config" | "preview" | "generate" | "status";
+type Step = "config" | "preview" | "generate";
 
 interface InspectorPreview {
   inspector: Tables<"inspectors">;
@@ -68,25 +56,6 @@ interface InspectorPreview {
   routePlanId: string;
 }
 
-interface StatusBuilding {
-  id: string;
-  property_name: string;
-  address: string;
-  city: string;
-  inspection_status: string;
-  inspector_notes: string | null;
-  is_priority: boolean | null;
-  stop_order: number;
-  day_number: number;
-}
-
-const STATUS_COLORS: Record<string, { badge: string; row: string; icon: React.ReactNode }> = {
-  pending: { badge: "bg-muted text-muted-foreground", row: "", icon: null },
-  in_progress: { badge: "bg-info/20 text-info", row: "bg-info/5", icon: null },
-  complete: { badge: "bg-success/20 text-success", row: "bg-success/5", icon: <CheckCircle2 className="h-3.5 w-3.5 text-success" /> },
-  skipped: { badge: "bg-warning/20 text-warning", row: "bg-warning/5", icon: <SkipForward className="h-3.5 w-3.5 text-warning" /> },
-  needs_revisit: { badge: "bg-destructive/20 text-destructive", row: "bg-destructive/5", icon: <AlertTriangle className="h-3.5 w-3.5 text-destructive" /> },
-};
 
 export default function Schedules() {
   const [step, setStep] = useState<Step>("config");
@@ -114,12 +83,6 @@ export default function Schedules() {
   // History
   const [history, setHistory] = useState<any[]>([]);
 
-  // Status view
-  const [statusBuildings, setStatusBuildings] = useState<StatusBuilding[]>([]);
-  const [statusPlanId, setStatusPlanId] = useState("");
-  const [noteDialog, setNoteDialog] = useState<{ id: string; status: string } | null>(null);
-  const [noteText, setNoteText] = useState("");
-  const [savingStatus, setSavingStatus] = useState(false);
 
   // Load clients
   useEffect(() => {
@@ -415,89 +378,9 @@ export default function Schedules() {
     endDate,
   ]);
 
+
   const canProceed =
     selectedClient && selectedRegion && selectedInspector;
-
-  // Load buildings with status for a route plan
-  const loadStatusView = async (planId: string) => {
-    setStatusPlanId(planId);
-    const { data: days } = await supabase
-      .from("route_plan_days")
-      .select("id, day_number")
-      .eq("route_plan_id", planId)
-      .order("day_number");
-
-    if (!days || days.length === 0) return;
-
-    const allBuildings: StatusBuilding[] = [];
-    for (const day of days) {
-      const { data: rpb } = await supabase
-        .from("route_plan_buildings")
-        .select("stop_order, buildings(id, property_name, address, city, inspection_status, inspector_notes, is_priority)")
-        .eq("route_plan_day_id", day.id)
-        .order("stop_order");
-
-      if (rpb) {
-        for (const r of rpb as any[]) {
-          allBuildings.push({
-            id: r.buildings.id,
-            property_name: r.buildings.property_name,
-            address: r.buildings.address,
-            city: r.buildings.city,
-            inspection_status: r.buildings.inspection_status || "pending",
-            inspector_notes: r.buildings.inspector_notes,
-            is_priority: r.buildings.is_priority,
-            stop_order: r.stop_order,
-            day_number: day.day_number,
-          });
-        }
-      }
-    }
-    setStatusBuildings(allBuildings);
-    setStep("status");
-  };
-
-  const toggleBuildingStatus = async (id: string, newStatus: string, notes?: string) => {
-    setSavingStatus(true);
-    const update: any = {
-      inspection_status: newStatus,
-      completion_date: newStatus === "complete" ? new Date().toISOString() : null,
-    };
-    if (notes !== undefined) update.inspector_notes = notes;
-
-    const { error } = await supabase.from("buildings").update(update).eq("id", id);
-    if (error) {
-      toast.error("Failed to update");
-    } else {
-      setStatusBuildings((prev) =>
-        prev.map((b) =>
-          b.id === id ? { ...b, inspection_status: newStatus, inspector_notes: notes ?? b.inspector_notes } : b
-        )
-      );
-      toast.success(`Updated to ${newStatus.replace("_", " ")}`);
-    }
-    setSavingStatus(false);
-    setNoteDialog(null);
-    setNoteText("");
-  };
-
-  const handleStatusClick = (id: string, currentStatus: string) => {
-    // Cycle through: pending -> complete -> skipped -> needs_revisit -> pending
-    const cycle: Record<string, string> = {
-      pending: "complete",
-      complete: "skipped",
-      skipped: "needs_revisit",
-      needs_revisit: "pending",
-      in_progress: "complete",
-    };
-    const next = cycle[currentStatus] || "complete";
-    if (next === "skipped" || next === "needs_revisit") {
-      setNoteDialog({ id, status: next });
-      setNoteText("");
-    } else {
-      toggleBuildingStatus(id, next);
-    }
-  };
 
   return (
     <div className="space-y-8">
@@ -721,15 +604,6 @@ export default function Schedules() {
               <Button variant="outline" onClick={() => setStep("config")}>
                 <ArrowLeft className="h-4 w-4 mr-2" /> Back
               </Button>
-              {inspectorPreviews.length === 1 && (
-                <Button
-                  variant="outline"
-                  onClick={() => loadStatusView(inspectorPreviews[0].routePlanId)}
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  View & Track Status
-                </Button>
-              )}
               <Button onClick={handleGenerate}>
                 <Download className="h-4 w-4 mr-2" />
                 Generate{" "}
@@ -742,124 +616,6 @@ export default function Schedules() {
         </Card>
       )}
 
-      {/* ── STATUS VIEW ── */}
-      {step === "status" && (
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Eye className="h-5 w-5" />
-                Building Status Tracker
-              </span>
-              <Badge variant="outline" className="text-sm">
-                {statusBuildings.filter((b) => b.inspection_status === "complete").length}/
-                {statusBuildings.length} complete
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Click a building to cycle its status: Pending → Complete → Skipped → Needs Revisit → Pending
-            </p>
-
-            {/* Group by day */}
-            {Array.from(new Set(statusBuildings.map((b) => b.day_number)))
-              .sort((a, b) => a - b)
-              .map((dayNum) => {
-                const dayBuildings = statusBuildings.filter((b) => b.day_number === dayNum);
-                const dayComplete = dayBuildings.filter((b) => b.inspection_status === "complete").length;
-                return (
-                  <div key={dayNum} className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold">Day {dayNum}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {dayComplete}/{dayBuildings.length} complete
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      {dayBuildings.map((b) => {
-                        const cfg = STATUS_COLORS[b.inspection_status] || STATUS_COLORS.pending;
-                        return (
-                          <button
-                            key={b.id}
-                            className={`w-full text-left p-3 rounded-lg border border-border transition-all hover:border-primary/40 ${cfg.row}`}
-                            disabled={savingStatus}
-                            onClick={() => handleStatusClick(b.id, b.inspection_status)}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="text-xs text-muted-foreground font-mono">
-                                  #{b.stop_order}
-                                </span>
-                                {cfg.icon}
-                                <span className="font-medium text-sm truncate">
-                                  {b.property_name}
-                                </span>
-                                {b.is_priority && (
-                                  <Badge variant="destructive" className="text-[10px] px-1 py-0">
-                                    P
-                                  </Badge>
-                                )}
-                              </div>
-                              <Badge className={`${cfg.badge} border-0 text-xs shrink-0`}>
-                                {b.inspection_status.replace("_", " ")}
-                              </Badge>
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-0.5 ml-8 truncate">
-                              {b.address}, {b.city}
-                            </div>
-                            {b.inspector_notes && (
-                              <div className="text-xs mt-1 ml-8 text-muted-foreground italic">
-                                {b.inspector_notes}
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-            <div className="flex gap-3 mt-4">
-              <Button variant="outline" onClick={() => setStep("preview")}>
-                <ArrowLeft className="h-4 w-4 mr-2" /> Back to Preview
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Note dialog for skipped/needs_revisit */}
-      <Dialog open={!!noteDialog} onOpenChange={(o) => !o && setNoteDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {noteDialog?.status === "skipped" ? "Why was this skipped?" : "What needs revisiting?"}
-            </DialogTitle>
-          </DialogHeader>
-          <Textarea
-            placeholder="Enter notes (required)..."
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            rows={3}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNoteDialog(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!noteText.trim() || savingStatus}
-              onClick={() => {
-                if (noteDialog) toggleBuildingStatus(noteDialog.id, noteDialog.status, noteText.trim());
-              }}
-            >
-              {savingStatus && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ── STEP 3: GENERATING ── */}
       {step === "generate" && (

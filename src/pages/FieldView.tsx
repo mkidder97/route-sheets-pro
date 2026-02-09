@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +56,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 };
 
 export default function FieldView() {
+  const [searchParams] = useSearchParams();
+  const planFromUrl = searchParams.get("plan");
   const [buildings, setBuildings] = useState<FieldBuilding[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -82,7 +85,12 @@ export default function FieldView() {
       .limit(20);
     if (data) {
       setRoutePlans(data);
-      if (data.length > 0) setSelectedPlan(data[0].id);
+      // Use plan from URL if available, otherwise first plan
+      if (planFromUrl && data.some((p: any) => p.id === planFromUrl)) {
+        setSelectedPlan(planFromUrl);
+      } else if (data.length > 0) {
+        setSelectedPlan(data[0].id);
+      }
     }
     if (!data || data.length === 0) setLoading(false);
   };
