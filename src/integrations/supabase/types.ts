@@ -169,6 +169,68 @@ export type Database = {
         }
         Relationships: []
       }
+      generated_documents: {
+        Row: {
+          client_id: string
+          created_at: string
+          file_name: string
+          format: string
+          id: string
+          inspector_id: string | null
+          region_id: string
+          route_plan_id: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          file_name: string
+          format?: string
+          id?: string
+          inspector_id?: string | null
+          region_id: string
+          route_plan_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          file_name?: string
+          format?: string
+          id?: string
+          inspector_id?: string | null
+          region_id?: string
+          route_plan_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_documents_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "inspectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_documents_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_documents_route_plan_id_fkey"
+            columns: ["route_plan_id"]
+            isOneToOne: false
+            referencedRelation: "route_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspectors: {
         Row: {
           created_at: string
