@@ -33,6 +33,9 @@ export type Database = {
           lock_gate_codes: string | null
           longitude: number | null
           photo_url: string | null
+          property_manager_email: string | null
+          property_manager_name: string | null
+          property_manager_phone: string | null
           property_name: string
           region_id: string
           requires_advance_notice: boolean | null
@@ -70,6 +73,9 @@ export type Database = {
           lock_gate_codes?: string | null
           longitude?: number | null
           photo_url?: string | null
+          property_manager_email?: string | null
+          property_manager_name?: string | null
+          property_manager_phone?: string | null
           property_name: string
           region_id: string
           requires_advance_notice?: boolean | null
@@ -107,6 +113,9 @@ export type Database = {
           lock_gate_codes?: string | null
           longitude?: number | null
           photo_url?: string | null
+          property_manager_email?: string | null
+          property_manager_name?: string | null
+          property_manager_phone?: string | null
           property_name?: string
           region_id?: string
           requires_advance_notice?: boolean | null
