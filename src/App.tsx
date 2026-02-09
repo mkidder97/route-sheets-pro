@@ -8,6 +8,8 @@ import Dashboard from "./pages/Dashboard";
 import UploadPage from "./pages/Upload";
 import Schedules from "./pages/Schedules";
 import RouteBuilder from "./pages/RouteBuilder";
+import Buildings from "./pages/Buildings";
+import Inspectors from "./pages/Inspectors";
 import Codes from "./pages/Codes";
 import FieldView from "./pages/FieldView";
 import NotFound from "./pages/NotFound";
@@ -26,6 +28,8 @@ const App = () => (
             <Route path="/upload" element={<UploadPage />} />
             <Route path="/schedules" element={<Schedules />} />
             <Route path="/route-builder" element={<RouteBuilder />} />
+            <Route path="/buildings" element={<Buildings />} />
+            <Route path="/inspectors" element={<Inspectors />} />
             <Route path="/codes" element={<Codes />} />
             <Route path="/field" element={<FieldView />} />
             <Route path="*" element={<NotFound />} />
