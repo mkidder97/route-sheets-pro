@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2, MapPin, Upload, Users, Clock, Trash2, Loader2 } from "lucide-react";
+import { Building2, MapPin, Upload, Users, Clock, Trash2, Loader2, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -38,6 +38,7 @@ interface UploadRow {
   row_count: number;
   status: string;
   created_at: string;
+  deleted_at: string | null;
   clients: { name: string } | null;
 }
 
@@ -45,8 +46,10 @@ export default function Dashboard() {
   const [stats, setStats] = useState<StatsData>({ clients: 0, regions: 0, buildings: 0, inspectors: 0 });
   const [regions, setRegions] = useState<RegionRow[]>([]);
   const [uploads, setUploads] = useState<UploadRow[]>([]);
+  const [deletedUploads, setDeletedUploads] = useState<UploadRow[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<UploadRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
 
   const loadData = async () => {
     const [clientsRes, regionsRes, buildingsRes, inspectorsRes] = await Promise.all([
@@ -76,12 +79,23 @@ export default function Dashboard() {
       setRegions(regionsWithCounts);
     }
 
+    // Active uploads (not soft-deleted)
     const uploadsRes = await supabase
       .from("uploads")
-      .select("id, file_name, row_count, status, created_at, clients(name)")
+      .select("id, file_name, row_count, status, created_at, deleted_at, clients(name)")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(5);
     setUploads((uploadsRes.data as any) ?? []);
+
+    // Recently deleted uploads
+    const deletedRes = await supabase
+      .from("uploads")
+      .select("id, file_name, row_count, status, created_at, deleted_at, clients(name)")
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false })
+      .limit(10);
+    setDeletedUploads((deletedRes.data as any) ?? []);
   };
 
   useEffect(() => {
@@ -93,22 +107,62 @@ export default function Dashboard() {
     setDeleting(true);
 
     try {
-      // 1. Find building IDs for this upload
+      // Soft-delete: set deleted_at timestamp
+      const { error } = await supabase
+        .from("uploads")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", deleteTarget.id);
+      if (error) throw error;
+
+      toast.success(`Deleted ${deleteTarget.file_name}. You can restore it from Recently Deleted.`);
+      setDeleteTarget(null);
+      await loadData();
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      toast.error(`Delete failed: ${err.message}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleRestore = async (upload: UploadRow) => {
+    setRestoring(upload.id);
+    try {
+      const { error } = await supabase
+        .from("uploads")
+        .update({ deleted_at: null })
+        .eq("id", upload.id);
+      if (error) throw error;
+
+      toast.success(`Restored ${upload.file_name}`);
+      await loadData();
+    } catch (err: any) {
+      console.error("Restore error:", err);
+      toast.error(`Restore failed: ${err.message}`);
+    } finally {
+      setRestoring(null);
+    }
+  };
+
+  const handlePermanentDelete = async (upload: UploadRow) => {
+    setRestoring(upload.id);
+    try {
+      // Find building IDs for this upload
       const { data: buildings } = await supabase
         .from("buildings")
         .select("id")
-        .eq("upload_id", deleteTarget.id);
+        .eq("upload_id", upload.id);
 
       const buildingIds = buildings?.map((b) => b.id) ?? [];
 
       if (buildingIds.length > 0) {
-        // 2. Delete route_plan_buildings referencing these buildings
+        // Delete route_plan_buildings referencing these buildings
         await supabase
           .from("route_plan_buildings")
           .delete()
           .in("building_id", buildingIds);
 
-        // 3. Clean up empty route_plan_days and route_plans
+        // Clean up empty route_plan_days
         const { data: allDays } = await supabase
           .from("route_plan_days")
           .select("id, route_plan_id, route_plan_buildings(id)");
@@ -122,7 +176,6 @@ export default function Dashboard() {
             await supabase.from("route_plan_days").delete().in("id", emptyDayIds);
           }
 
-          // Find route_plans that now have no days
           const orphanedPlanIds = [
             ...new Set(
               allDays
@@ -143,18 +196,17 @@ export default function Dashboard() {
         }
       }
 
-      // 4. Delete the upload (cascade removes buildings)
-      const { error } = await supabase.from("uploads").delete().eq("id", deleteTarget.id);
+      // Hard delete the upload (cascade removes buildings)
+      const { error } = await supabase.from("uploads").delete().eq("id", upload.id);
       if (error) throw error;
 
-      toast.success(`Deleted ${deleteTarget.file_name} and ${buildingIds.length} buildings`);
-      setDeleteTarget(null);
+      toast.success(`Permanently deleted ${upload.file_name} and ${buildingIds.length} buildings`);
       await loadData();
     } catch (err: any) {
-      console.error("Delete error:", err);
+      console.error("Permanent delete error:", err);
       toast.error(`Delete failed: ${err.message}`);
     } finally {
-      setDeleting(false);
+      setRestoring(null);
     }
   };
 
@@ -169,6 +221,16 @@ export default function Dashboard() {
     if (s === "complete") return "bg-success/20 text-success border-success/30";
     if (s === "in_progress") return "bg-primary/20 text-primary border-primary/30";
     return "bg-muted text-muted-foreground border-border";
+  };
+
+  const timeAgo = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
   };
 
   return (
@@ -289,15 +351,69 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* Recently Deleted */}
+      {deletedUploads.length > 0 && (
+        <Card className="bg-card border-border border-destructive/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-destructive" />
+              Recently Deleted
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {deletedUploads.map((u) => (
+                <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-destructive/5 border border-destructive/10">
+                  <div className="flex items-center gap-3">
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">{u.file_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {u.row_count} rows • Deleted {u.deleted_at ? timeAgo(u.deleted_at) : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => handleRestore(u)}
+                      disabled={restoring === u.id}
+                    >
+                      {restoring === u.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      ) : (
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                      )}
+                      Restore
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs text-destructive hover:text-destructive"
+                      onClick={() => handlePermanentDelete(u)}
+                      disabled={restoring === u.id}
+                    >
+                      Delete Forever
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete upload?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete <strong>{deleteTarget?.row_count} buildings</strong> from{" "}
-              <strong>{deleteTarget?.file_name}</strong> and remove any associated route plan data.
-              This action cannot be undone.
+              This will remove <strong>{deleteTarget?.row_count} buildings</strong> from{" "}
+              <strong>{deleteTarget?.file_name}</strong> from active data. You can restore it from
+              the Recently Deleted section.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
