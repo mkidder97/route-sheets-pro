@@ -226,6 +226,138 @@ export type Database = {
           },
         ]
       }
+      route_plan_buildings: {
+        Row: {
+          building_id: string
+          id: string
+          route_plan_day_id: string
+          stop_order: number
+        }
+        Insert: {
+          building_id: string
+          id?: string
+          route_plan_day_id: string
+          stop_order?: number
+        }
+        Update: {
+          building_id?: string
+          id?: string
+          route_plan_day_id?: string
+          stop_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_plan_buildings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_plan_buildings_route_plan_day_id_fkey"
+            columns: ["route_plan_day_id"]
+            isOneToOne: false
+            referencedRelation: "route_plan_days"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      route_plan_days: {
+        Row: {
+          day_date: string
+          day_number: number
+          estimated_distance_miles: number | null
+          id: string
+          route_plan_id: string
+        }
+        Insert: {
+          day_date: string
+          day_number: number
+          estimated_distance_miles?: number | null
+          id?: string
+          route_plan_id: string
+        }
+        Update: {
+          day_date?: string
+          day_number?: number
+          estimated_distance_miles?: number | null
+          id?: string
+          route_plan_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_plan_days_route_plan_id_fkey"
+            columns: ["route_plan_id"]
+            isOneToOne: false
+            referencedRelation: "route_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      route_plans: {
+        Row: {
+          buildings_per_day: number
+          client_id: string
+          created_at: string
+          end_date: string
+          id: string
+          inspector_id: string
+          name: string
+          region_id: string
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          buildings_per_day?: number
+          client_id: string
+          created_at?: string
+          end_date: string
+          id?: string
+          inspector_id: string
+          name: string
+          region_id: string
+          start_date: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          buildings_per_day?: number
+          client_id?: string
+          created_at?: string
+          end_date?: string
+          id?: string
+          inspector_id?: string
+          name?: string
+          region_id?: string
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_plans_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_plans_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "inspectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_plans_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       uploads: {
         Row: {
           client_id: string | null
