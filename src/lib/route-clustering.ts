@@ -99,8 +99,8 @@ export async function generateClusters(
     dayChunks.push(reordered.slice(i, i + buildingsPerDay));
   }
 
-  // Refine: within each chunk, prefer same access types together
-  const refined = dayChunks.map((chunk) => refineByAccessType(chunk));
+  // Re-apply nearest-neighbor within each daily chunk for optimal stop order
+  const refined = dayChunks.map((chunk) => nearestNeighborChain(chunk, startCoords));
 
   const clusters: DayCluster[] = refined.map((chunk, i) => ({
     dayNumber: i + 1,
