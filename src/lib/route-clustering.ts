@@ -117,31 +117,7 @@ export async function generateClusters(
 }
 
 function greedyNearestNeighbor(buildings: ClusterBuilding[], startCoords?: { lat: number; lng: number } | null): ClusterBuilding[] {
-  if (buildings.length <= 1) return buildings;
-
-  // Primary sort by 3-digit zip prefix to create regional groups
-  buildings.sort((a, b) => {
-    const prefixA = a.zip_code.substring(0, 3);
-    const prefixB = b.zip_code.substring(0, 3);
-    if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
-    return 0;
-  });
-
-  // Within each prefix group, apply nearest-neighbor
-  const groups = new Map<string, ClusterBuilding[]>();
-  for (const b of buildings) {
-    const prefix = b.zip_code.substring(0, 3);
-    if (!groups.has(prefix)) groups.set(prefix, []);
-    groups.get(prefix)!.push(b);
-  }
-
-  const result: ClusterBuilding[] = [];
-  for (const [i, group] of [...groups.values()].entries()) {
-    // Pass startCoords only to the first group
-    result.push(...nearestNeighborChain(group, i === 0 ? startCoords : null));
-  }
-
-  return result;
+  return nearestNeighborChain(buildings, startCoords);
 }
 
 function nearestNeighborChain(buildings: ClusterBuilding[], startCoords?: { lat: number; lng: number } | null): ClusterBuilding[] {
@@ -183,14 +159,4 @@ function nearestNeighborChain(buildings: ClusterBuilding[], startCoords?: { lat:
   }
 
   return result;
-}
-
-
-function refineByAccessType(chunk: ClusterBuilding[]): ClusterBuilding[] {
-  // Within a day's chunk, group by access type for fewer equipment swaps
-  return [...chunk].sort((a, b) => {
-    const typeA = a.roof_access_type ?? 'zzz';
-    const typeB = b.roof_access_type ?? 'zzz';
-    return typeA.localeCompare(typeB);
-  });
 }
