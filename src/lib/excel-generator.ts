@@ -67,9 +67,23 @@ export function generateInspectorExcel(
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
+  // Re-sort days by geography (first building's zip) so the flat list
+  // follows a continuous geographic sequence, regardless of priority reordering
+  const sortedDays = [...days].sort((a, b) => {
+    const aFirst = a.buildings[0];
+    const bFirst = b.buildings[0];
+    if (!aFirst || !bFirst) return 0;
+    // Sort by state, then city, then zip for geographic continuity
+    const stateComp = (aFirst.state || "").localeCompare(bFirst.state || "");
+    if (stateComp !== 0) return stateComp;
+    const cityComp = (aFirst.city || "").localeCompare(bFirst.city || "");
+    if (cityComp !== 0) return cityComp;
+    return (aFirst.zip_code || "").localeCompare(bFirst.zip_code || "");
+  });
+
   // Single flat list of all buildings in route order with continuous stop numbers
   let stopCounter = 0;
-  const allRows = days.flatMap((d) =>
+  const allRows = sortedDays.flatMap((d) =>
     d.buildings.map((b) => {
       stopCounter += 1;
       return buildingRow(b, stopCounter);
