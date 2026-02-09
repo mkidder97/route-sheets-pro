@@ -68,7 +68,7 @@ export default function Codes() {
         properties: [...v.properties],
         client_name: v.client_name,
         region_name: v.region_name,
-      }));
+      })).sort((a, b) => b.properties.length - a.properties.length);
 
       setEntries(mapped);
       setFiltered(mapped);
