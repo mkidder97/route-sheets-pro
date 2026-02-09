@@ -44,12 +44,12 @@ export default function Codes() {
 
       if (!buildings) { setLoading(false); return; }
 
-      // Extract numeric 4-8 digit codes from lock_gate_codes field
+      // Extract numeric 4-8 digit codes from all access-related fields
       const codeRegex = /\b\d{4,8}\b/g;
       const mapped: CodeEntry[] = [];
       for (const b of buildings as any[]) {
-        const raw = b.lock_gate_codes ?? "";
-        const matches = raw.match(codeRegex);
+        const allText = [b.lock_gate_codes, b.roof_access_description, b.access_location].filter(Boolean).join(" ");
+        const matches = allText.match(codeRegex);
         if (!matches) continue;
         for (const code of matches) {
           mapped.push({
