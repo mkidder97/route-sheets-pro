@@ -7,7 +7,7 @@ function formatAccessType(t: string | null): string {
   return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function buildingRow(b: BuildingData, dayNumber: number, dayDate: string) {
+function buildingRow(b: BuildingData) {
   const equipment = (b.special_equipment || []).map((e) => e.toLowerCase());
   const needsLadder = equipment.some((e) => e.includes("ladder") || e.includes("little giant"));
   const needsCadCore = equipment.some((e) => e.includes("cad") || e.includes("core") || e.includes("key"));
@@ -17,7 +17,6 @@ function buildingRow(b: BuildingData, dayNumber: number, dayDate: string) {
   });
 
   return {
-    Day: `Day ${dayNumber}`,
     "Stop #": b.stop_order,
     "Property Name": b.property_name,
     Address: b.address,
@@ -41,7 +40,6 @@ function buildingRow(b: BuildingData, dayNumber: number, dayDate: string) {
 }
 
 const detailColWidths = [
-  { wch: 7 },  // Day
   { wch: 7 },  // Stop #
   { wch: 24 }, // Property Name
   { wch: 28 }, // Address
@@ -69,46 +67,14 @@ export function generateInspectorExcel(
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // Summary tab
-  const summaryData = days.map((d) => {
-    const cities = [...new Set(d.buildings.map((b) => b.city))].join(", ");
-    const totalSF = d.buildings.reduce((s, b) => s + (b.square_footage || 0), 0);
-    return {
-      Day: `Day ${d.day_number}`,
-      Date: d.day_date ? format(new Date(d.day_date + "T00:00:00"), "EEE, MMM d") : "",
-      "# Buildings": d.buildings.length,
-      Cities: cities,
-      "Total SF": totalSF,
-      "Has Priority": d.buildings.some((b) => b.is_priority) ? "YES" : "",
-      "Est. Miles": d.estimated_distance_miles ?? "",
-    };
-  });
-
-  const summaryWs = XLSX.utils.json_to_sheet(summaryData);
-  summaryWs["!cols"] = [
-    { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 30 },
-    { wch: 12 }, { wch: 12 }, { wch: 10 },
-  ];
-  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
-
-  // Main "Route Schedule" tab — all buildings in route order, building-by-building
+  // Single flat list of all buildings in route order
   const allRows = days.flatMap((d) =>
-    d.buildings.map((b) => buildingRow(b, d.day_number, d.day_date))
+    d.buildings.map((b) => buildingRow(b))
   );
 
   const mainWs = XLSX.utils.json_to_sheet(allRows);
   mainWs["!cols"] = detailColWidths;
   XLSX.utils.book_append_sheet(wb, mainWs, "Route Schedule");
-
-  // Per-day tabs for quick reference
-  for (const day of days) {
-    const dayLabel = `Day ${day.day_number}`;
-    const rows = day.buildings.map((b) => buildingRow(b, day.day_number, day.day_date));
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = detailColWidths;
-    XLSX.utils.book_append_sheet(wb, ws, dayLabel);
-  }
 
   return wb;
 }
