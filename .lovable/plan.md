@@ -1,110 +1,73 @@
 
 
-# Restructure: Buildings, Inspectors, Saved Routes with Synced Status Tracking, Mobile Layout
+# Add Property Manager Info Everywhere
 
-## Key Clarification: Shared Status
-
-When a user updates a building's status from the Saved Routes section in Route Builder, it writes directly to the `buildings` table (`inspection_status`, `completion_date`, `inspector_notes`). The Buildings page reads from the same table. So status is always in sync -- there is one source of truth.
+## Problem
+The original Excel upload has PM columns ("Property Manager", "PM Phone #"), but the upload pipeline doesn't map them. So PM data never gets saved, and even though the Route Builder dropdown already has code to show PM info, it's always empty. The PDF and Excel generators also don't include PM fields, and the Buildings page expanded row doesn't show PM info.
 
 ## Changes
 
-### 1. Create Buildings Page (`src/pages/Buildings.tsx`)
+### 1. Upload Pipeline -- `src/lib/spreadsheet-parser.ts`
 
-Searchable, filterable table of all buildings with inline status management:
+Add 3 new entries to `SYSTEM_FIELDS`:
+- `property_manager_name` (label: "Property Manager Name")
+- `property_manager_phone` (label: "PM Phone #")
+- `property_manager_email` (label: "PM Email")
 
-- **Search bar** filtering by property name, address, city, zip
-- **Filter dropdowns**: client, region, inspector, inspection status
-- **Table columns**: Property Name, Address, City, State, Zip, Status, Priority, Inspector
-- **Inline status cycling**: click status badge to toggle (pending -> complete -> skipped -> needs_revisit -> pending), updates `buildings.inspection_status` in database
-- **Note dialog**: required when marking skipped or needs_revisit, saves to `buildings.inspector_notes`
-- **Expandable row**: shows codes, access info, notes, square footage, special equipment, editable inspector_notes
-- **Summary bar at top**: total buildings, completed count/percentage, priority completion count
+Add fuzzy matching keywords to `FUZZY_MAP`:
+- `property_manager_name`: ["property manager", "pm name", "manager name", "pm", "manager"]
+- `property_manager_phone`: ["pm phone", "phone", "manager phone", "pm #", "phone #", "pm phone #"]
+- `property_manager_email`: ["pm email", "manager email", "email"]
 
-### 2. Create Inspectors Page (`src/pages/Inspectors.tsx`)
+Add the 3 fields to `ParsedBuilding` interface and extract them in `mapRowToBuilding`.
 
-Inspector management with progress stats:
+### 2. Upload Insert -- `src/pages/Upload.tsx`
 
-- **Table**: name, region, building count, completion %, priority count
-- **Add inspector**: dialog with name and region select
-- **Edit inspector**: inline name edit, region reassignment
-- **Delete inspector**: confirmation, warns if buildings assigned
-- **Expandable detail**: progress bar, assigned buildings grouped by status
+Add the 3 PM fields to the building insert batch (around line 170-194):
+- `property_manager_name: b.property_manager_name || null`
+- `property_manager_phone: b.property_manager_phone || null`
+- `property_manager_email: b.property_manager_email || null`
 
-### 3. Add Saved Routes to Route Builder (`src/pages/RouteBuilder.tsx`)
+### 3. PDF Generator -- `src/lib/pdf-generator.ts`
 
-A "Saved Routes" section below the route generation flow:
+Add PM fields to `BuildingData` interface:
+- `property_manager_name: string | null`
+- `property_manager_phone: string | null`
+- `property_manager_email: string | null`
 
-- **List all route plans**: name, client, region, inspector, date, total buildings, completion stats (X/Y complete)
-- **Expand a route** to see day-by-day breakdown:
-  - Per-day completion count ("3/5 complete") and progress bar
-  - Building list with color-coded status badges
-  - Click status badge to cycle -- writes to `buildings.inspection_status` (same table the Buildings page reads)
-  - Note dialog for skipped/needs_revisit -- writes to `buildings.inspector_notes`
-  - Completion date auto-set when marked complete -- writes to `buildings.completion_date`
-- **"Open in Field View"** button per route: navigates to `/field?plan={id}`
-- **Delete route** with confirmation
-- Update "done" step to link to the saved route
+Add a "PM Contact" column to the daily route sheet table, showing name and phone on separate lines.
 
-### 4. Status Data Flow
+### 4. Excel Generator -- `src/lib/excel-generator.ts`
 
-All three views (Buildings page, Saved Routes in Route Builder, Field View) read and write the same columns on the `buildings` table:
+Add 3 new columns to the `buildingRow` function output:
+- "PM Name"
+- "PM Phone"
+- "PM Email"
 
-```text
-buildings.inspection_status  -- the status value
-buildings.completion_date    -- set when marked complete
-buildings.inspector_notes    -- notes for skipped/revisit
-buildings.photo_url          -- placeholder for future photo upload
-```
+Add matching column widths to `detailColWidths`.
 
-No separate status tables needed. Any status change in Saved Routes is immediately visible on the Buildings page and vice versa.
+### 5. Schedules Data Fetch -- `src/pages/Schedules.tsx`
 
-### 5. Update Field View (`src/pages/FieldView.tsx`)
+Update the building mapping (around line 228-247) to include the 3 PM fields when building the `BuildingData` objects from the database query.
 
-- Read `plan` query parameter from URL to auto-select a route plan
-- Keep dropdown for manual selection as fallback
+### 6. Buildings Page Expanded Row -- `src/pages/Buildings.tsx`
 
-### 6. Clean Up Schedules (`src/pages/Schedules.tsx`)
+Add PM contact section to the expanded detail view (around line 294-305), showing name, clickable phone link, and clickable email link -- same pattern as Route Builder.
 
-- Remove status tracking step, status state, toggle logic, note dialog, STATUS_COLORS
-- Remove "View & Track Status" button
-- Schedules remains focused on document generation only
+## No Database Changes
+The `property_manager_name`, `property_manager_phone`, and `property_manager_email` columns already exist on the `buildings` table.
 
-### 7. Navigation Updates
-
-- **Remove** Field View from sidebar (accessed via Route Builder saved routes)
-- Keep `/field` route in router
-
-### 8. Mobile-Friendly Layout
-
-**`src/components/AppLayout.tsx`**:
-- Mobile top bar with hamburger menu button
-- Sidebar hidden by default on small screens, opens as sheet/drawer overlay
-- Reduced padding on mobile
-
-**All pages**:
-- Tables wrapped with `overflow-x-auto`
-- Grids stack on mobile
-- Compact spacing on small screens
-
-### 9. Register Routes (`src/App.tsx`)
-
-- Add `/buildings` route
-- Add `/inspectors` route
+## After This Change
+Re-uploading the Excel will populate PM data. All views (Buildings page, Route Builder dropdown, PDF, Excel) will display it.
 
 ## Files
 
 | File | Action |
 |------|--------|
-| `src/pages/Buildings.tsx` | Create |
-| `src/pages/Inspectors.tsx` | Create |
-| `src/pages/RouteBuilder.tsx` | Add saved routes with status tracking |
-| `src/pages/FieldView.tsx` | Read plan query param |
-| `src/pages/Schedules.tsx` | Remove status tracking |
-| `src/components/AppSidebar.tsx` | Remove Field View nav item |
-| `src/components/AppLayout.tsx` | Mobile hamburger layout |
-| `src/App.tsx` | Add new routes |
-
-## No Database Changes
-
-All columns (`inspection_status`, `completion_date`, `inspector_notes`, `photo_url`) already exist on the `buildings` table from the previous migration.
+| `src/lib/spreadsheet-parser.ts` | Add PM fields to SYSTEM_FIELDS, FUZZY_MAP, ParsedBuilding, mapRowToBuilding |
+| `src/pages/Upload.tsx` | Add PM fields to insert batch |
+| `src/lib/pdf-generator.ts` | Add PM fields to BuildingData, add PM column to daily route table |
+| `src/lib/excel-generator.ts` | Add PM columns to spreadsheet output |
+| `src/pages/Schedules.tsx` | Include PM fields in building data mapping |
+| `src/pages/Buildings.tsx` | Show PM info in expanded row |
 
