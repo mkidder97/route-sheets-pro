@@ -7,7 +7,7 @@ function formatAccessType(t: string | null): string {
   return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function buildingRow(b: BuildingData) {
+function buildingRow(b: BuildingData, stopNumber?: number) {
   const equipment = (b.special_equipment || []).map((e) => e.toLowerCase());
   const needsLadder = equipment.some((e) => e.includes("ladder") || e.includes("little giant"));
   const needsCadCore = equipment.some((e) => e.includes("cad") || e.includes("core") || e.includes("key"));
@@ -17,7 +17,7 @@ function buildingRow(b: BuildingData) {
   });
 
   return {
-    "Stop #": b.stop_order,
+    "Stop #": stopNumber ?? b.stop_order,
     "Property Name": b.property_name,
     Address: b.address,
     City: b.city,
@@ -67,9 +67,13 @@ export function generateInspectorExcel(
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // Single flat list of all buildings in route order
+  // Single flat list of all buildings in route order with continuous stop numbers
+  let stopCounter = 0;
   const allRows = days.flatMap((d) =>
-    d.buildings.map((b) => buildingRow(b))
+    d.buildings.map((b) => {
+      stopCounter += 1;
+      return buildingRow(b, stopCounter);
+    })
   );
 
   const mainWs = XLSX.utils.json_to_sheet(allRows);
