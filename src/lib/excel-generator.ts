@@ -67,28 +67,20 @@ export function generateInspectorExcel(
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // Re-sort days by geography (first building's zip) so the flat list
-  // follows a continuous geographic sequence, regardless of priority reordering
-  const sortedDays = [...days].sort((a, b) => {
-    const aFirst = a.buildings[0];
-    const bFirst = b.buildings[0];
-    if (!aFirst || !bFirst) return 0;
-    // Sort by state, then city, then zip for geographic continuity
-    const stateComp = (aFirst.state || "").localeCompare(bFirst.state || "");
+  // Flatten all buildings across all days and sort by geography
+  const allBuildings = days.flatMap((d) => d.buildings);
+
+  allBuildings.sort((a, b) => {
+    const stateComp = (a.state || "").localeCompare(b.state || "");
     if (stateComp !== 0) return stateComp;
-    const cityComp = (aFirst.city || "").localeCompare(bFirst.city || "");
+    const cityComp = (a.city || "").localeCompare(b.city || "");
     if (cityComp !== 0) return cityComp;
-    return (aFirst.zip_code || "").localeCompare(bFirst.zip_code || "");
+    const zipComp = (a.zip_code || "").localeCompare(b.zip_code || "");
+    if (zipComp !== 0) return zipComp;
+    return (a.property_name || "").localeCompare(b.property_name || "");
   });
 
-  // Single flat list of all buildings in route order with continuous stop numbers
-  let stopCounter = 0;
-  const allRows = sortedDays.flatMap((d) =>
-    d.buildings.map((b) => {
-      stopCounter += 1;
-      return buildingRow(b, stopCounter);
-    })
-  );
+  const allRows = allBuildings.map((b, idx) => buildingRow(b, idx + 1));
 
   const mainWs = XLSX.utils.json_to_sheet(allRows);
   mainWs["!cols"] = detailColWidths;
