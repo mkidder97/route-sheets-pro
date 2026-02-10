@@ -118,8 +118,8 @@ export function detectFlags(row: Record<string, string>, scheduledWeekKey?: stri
     is_priority: false,
   };
 
-  // Advance notice
-  if (/24[\s-]*hour|advance\s*notice/i.test(allText)) {
+  // Advance notice — comprehensive patterns for real-world variations
+  if (/24[\s.\-]*h(?:ou)?rs?\.?|advance\s*notice|notice\s*(?:is\s*)?required|(?:must\s*(?:have|set|make)\s*)?appointment|schedule\s*(?:in\s*advance|visit|appointment)|call\s*(?:ahead|before|prior|to\s*schedule|pm\s*to\s*schedule)|notify\s*(?:before|prior)/i.test(allText)) {
     flags.requires_advance_notice = true;
   }
 

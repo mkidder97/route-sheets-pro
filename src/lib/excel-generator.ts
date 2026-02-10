@@ -7,7 +7,7 @@ function formatAccessType(t: string | null): string {
   return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function buildingRow(b: BuildingData, stopNumber?: number) {
+function buildingRow(b: BuildingData, stopNumber?: number, dayNumber?: number) {
   const equipment = (b.special_equipment || []).map((e) => e.toLowerCase());
   const needsLadder = equipment.some((e) => e.includes("ladder") || e.includes("little giant"));
   const needsCadCore = equipment.some((e) => e.includes("cad") || e.includes("core") || e.includes("key"));
@@ -16,7 +16,13 @@ function buildingRow(b: BuildingData, stopNumber?: number) {
     return !l.includes("ladder") && !l.includes("little giant") && !l.includes("cad") && !l.includes("core") && !l.includes("key");
   });
 
+  const base: Record<string, string | number> = {};
+  if (dayNumber !== undefined) {
+    base["Day"] = dayNumber;
+  }
+
   return {
+    ...base,
     "Stop #": stopNumber ?? b.stop_order,
     "Property Name": b.property_name,
     Address: b.address,
@@ -67,31 +73,60 @@ const detailColWidths = [
   { wch: 70 }, // Notes
 ];
 
+const allBuildingsColWidths = [
+  { wch: 6 },  // Day
+  ...detailColWidths,
+];
+
 export function generateInspectorExcel(
   days: DayData[],
   meta: DocumentMetadata
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // Flatten all buildings across all days and sort by geography
-  const allBuildings = days.flatMap((d) => d.buildings);
+  // --- Summary sheet ---
+  const summaryRows = days.map((day, idx) => {
+    const cities = [...new Set(day.buildings.map((b) => b.city).filter(Boolean))];
+    const totalSF = day.buildings.reduce((sum, b) => sum + (b.square_footage || 0), 0);
+    const hasPriority = day.buildings.some((b) => b.is_priority);
+    const advanceCount = day.buildings.filter((b) => b.requires_advance_notice).length;
+    const escortCount = day.buildings.filter((b) => b.requires_escort).length;
+    const notes: string[] = [];
+    if (advanceCount > 0) notes.push(`${advanceCount} need advance notice`);
+    if (escortCount > 0) notes.push(`${escortCount} need escort`);
 
-  allBuildings.sort((a, b) => {
-    const stateComp = (a.state || "").localeCompare(b.state || "");
-    if (stateComp !== 0) return stateComp;
-    const cityComp = (a.city || "").localeCompare(b.city || "");
-    if (cityComp !== 0) return cityComp;
-    const zipComp = (a.zip_code || "").localeCompare(b.zip_code || "");
-    if (zipComp !== 0) return zipComp;
-    return (a.property_name || "").localeCompare(b.property_name || "");
+    return {
+      "Day": idx + 1,
+      "Date": day.day_date ? format(new Date(day.day_date), "MM/dd/yyyy") : "",
+      "Buildings": day.buildings.length,
+      "Cities": cities.join(", "),
+      "Total SF": totalSF || "",
+      "Priority": hasPriority ? "YES" : "",
+      "Notes": notes.join("; "),
+    };
   });
 
-  const allRows = allBuildings.map((b, idx) => buildingRow(b, idx + 1));
+  const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
+  summaryWs["!cols"] = [
+    { wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 40 }, { wch: 12 }, { wch: 8 }, { wch: 40 },
+  ];
+  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
 
-  const mainWs = XLSX.utils.json_to_sheet(allRows);
-  mainWs["!cols"] = detailColWidths;
+  // --- Per-day sheets (preserve route order, no sorting) ---
+  days.forEach((day, idx) => {
+    const rows = day.buildings.map((b, i) => buildingRow(b, i + 1));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = detailColWidths;
+    XLSX.utils.book_append_sheet(wb, ws, `Day ${idx + 1}`);
+  });
 
-  XLSX.utils.book_append_sheet(wb, mainWs, "Route Schedule");
+  // --- All Buildings sheet (concatenated in route order, Day column prepended) ---
+  const allRows = days.flatMap((day, dayIdx) =>
+    day.buildings.map((b, i) => buildingRow(b, i + 1, dayIdx + 1))
+  );
+  const allWs = XLSX.utils.json_to_sheet(allRows);
+  allWs["!cols"] = allBuildingsColWidths;
+  XLSX.utils.book_append_sheet(wb, allWs, "All Buildings");
 
   return wb;
 }
