@@ -522,7 +522,7 @@ export default function RouteBuilder() {
       )}
 
       {/* ── SAVED ROUTES ── */}
-      <SavedRoutes navigate={navigate} />
+      <SavedRoutes />
     </div>
   );
 }
