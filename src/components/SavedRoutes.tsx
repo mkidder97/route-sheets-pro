@@ -7,13 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -32,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Smartphone, Check, Navigation } from "lucide-react";
+import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Smartphone, Check, Navigation, SkipForward, AlertTriangle } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
   pending: { label: "Pending", badge: "bg-muted text-muted-foreground" },
@@ -102,6 +95,16 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
   const [noteDialog, setNoteDialog] = useState<{ id: string; status: string } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const openNavigation = (address: string, city: string, state: string, zipCode: string) => {
+    const addr = encodeURIComponent(`${address}, ${city}, ${state} ${zipCode}`);
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const url = isIOS
+      ? `maps://maps.apple.com/?daddr=${addr}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${addr}`;
+    window.open(url, "_blank");
+  };
+
 
   useEffect(() => {
     loadPlans();
@@ -501,23 +504,59 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                                             </div>
                                           )}
 
-                                          {/* Navigate placeholder */}
-                                          <Button variant="outline" className="w-full" disabled>
-                                            <Navigation className="h-4 w-4 mr-2" /> Navigate (coming soon)
+                                          {/* Navigate button */}
+                                          <Button
+                                            variant="outline"
+                                            className="w-full"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openNavigation(b.address, b.city, b.state, b.zip_code);
+                                            }}
+                                          >
+                                            <Navigation className="h-4 w-4 mr-2" /> Navigate
                                           </Button>
 
-                                          {/* Status dropdown */}
-                                          <div className="pt-1">
-                                            <Select value={b.inspection_status} onValueChange={(val) => handleStatusChange(b.id, val)}>
-                                              <SelectTrigger className={`h-8 text-xs ${cfg.badge}`}>
-                                                <SelectValue />
-                                              </SelectTrigger>
-                                              <SelectContent className="bg-popover z-50">
-                                                {Object.entries(STATUS_CONFIG).map(([key, val]) => (
-                                                  <SelectItem key={key} value={key} className="text-xs">{val.label}</SelectItem>
-                                                ))}
-                                              </SelectContent>
-                                            </Select>
+                                          {/* Status tap buttons */}
+                                          <div className="grid grid-cols-3 gap-2 pt-1">
+                                            <Button
+                                              className={`h-12 flex-col gap-1 border ${
+                                                b.inspection_status === "complete"
+                                                  ? "bg-success/30 text-success border-success/50 ring-2 ring-success/30"
+                                                  : "bg-success/10 text-success border-success/30 hover:bg-success/20"
+                                              }`}
+                                              variant="ghost"
+                                              disabled={saving}
+                                              onClick={(e) => { e.stopPropagation(); handleStatusChange(b.id, "complete"); }}
+                                            >
+                                              <Check className="h-5 w-5" />
+                                              <span className="text-[11px]">Done</span>
+                                            </Button>
+                                            <Button
+                                              className={`h-12 flex-col gap-1 border ${
+                                                b.inspection_status === "skipped"
+                                                  ? "bg-warning/30 text-warning border-warning/50 ring-2 ring-warning/30"
+                                                  : "bg-warning/10 text-warning border-warning/30 hover:bg-warning/20"
+                                              }`}
+                                              variant="ghost"
+                                              disabled={saving}
+                                              onClick={(e) => { e.stopPropagation(); handleStatusChange(b.id, "skipped"); }}
+                                            >
+                                              <SkipForward className="h-5 w-5" />
+                                              <span className="text-[11px]">Skip</span>
+                                            </Button>
+                                            <Button
+                                              className={`h-12 flex-col gap-1 border ${
+                                                b.inspection_status === "needs_revisit"
+                                                  ? "bg-destructive/30 text-destructive border-destructive/50 ring-2 ring-destructive/30"
+                                                  : "bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20"
+                                              }`}
+                                              variant="ghost"
+                                              disabled={saving}
+                                              onClick={(e) => { e.stopPropagation(); handleStatusChange(b.id, "needs_revisit"); }}
+                                            >
+                                              <AlertTriangle className="h-5 w-5" />
+                                              <span className="text-[11px]">Revisit</span>
+                                            </Button>
                                           </div>
                                         </div>
                                       )}
