@@ -1,73 +1,75 @@
 
 
-# Add Property Manager Info Everywhere
+# Fix Excel Generator Sort Bug and 24H Notice Detection
 
-## Problem
-The original Excel upload has PM columns ("Property Manager", "PM Phone #"), but the upload pipeline doesn't map them. So PM data never gets saved, and even though the Route Builder dropdown already has code to show PM info, it's always empty. The PDF and Excel generators also don't include PM fields, and the Buildings page expanded row doesn't show PM info.
+## What's Wrong
 
-## Changes
+**Bug 1**: The Excel download sorts buildings alphabetically by city instead of keeping the optimized geographic route order from the clustering engine. This makes the Excel useless as a field guide since it doesn't match the actual driving route.
 
-### 1. Upload Pipeline -- `src/lib/spreadsheet-parser.ts`
+**Bug 2**: The 24-hour advance notice detection misses common abbreviations like "24 hr notice", "MUST HAVE APPOINTMENT", and "call to schedule" -- so buildings that need advance coordination don't get flagged.
 
-Add 3 new entries to `SYSTEM_FIELDS`:
-- `property_manager_name` (label: "Property Manager Name")
-- `property_manager_phone` (label: "PM Phone #")
-- `property_manager_email` (label: "PM Email")
+## What Will Change
 
-Add fuzzy matching keywords to `FUZZY_MAP`:
-- `property_manager_name`: ["property manager", "pm name", "manager name", "pm", "manager"]
-- `property_manager_phone`: ["pm phone", "phone", "manager phone", "pm #", "phone #", "pm phone #"]
-- `property_manager_email`: ["pm email", "manager email", "email"]
+### File 1: `src/lib/excel-generator.ts` -- Multi-sheet structure, no re-sorting
 
-Add the 3 fields to `ParsedBuilding` interface and extract them in `mapRowToBuilding`.
+- **Remove** the alphabetical `.sort()` block (lines 79-87) entirely
+- **Restructure** the workbook to create multiple sheets:
+  - **"Summary"** sheet: One row per day showing Day #, Date, Building Count, Cities covered, Total SF, has priority buildings, notes about advance notice/escort needs
+  - **"Day 1", "Day 2", ...** sheets: Each day's buildings in their geographic route order with stop numbers 1, 2, 3... per day
+  - **"All Buildings"** sheet: Every building across all days in route order (Day 1 first, then Day 2, etc.) with a "Day" column prepended; stop numbers reset per day
+- Buildings are **never re-sorted** -- the order from `days[].buildings[]` is preserved exactly as the clustering engine produced it
 
-### 2. Upload Insert -- `src/pages/Upload.tsx`
+### File 2: `src/lib/spreadsheet-parser.ts` -- Broader advance notice detection
 
-Add the 3 PM fields to the building insert batch (around line 170-194):
-- `property_manager_name: b.property_manager_name || null`
-- `property_manager_phone: b.property_manager_phone || null`
-- `property_manager_email: b.property_manager_email || null`
+- **Replace** the regex on line 122 with a comprehensive pattern that catches:
+  - "24 hr", "24 hr.", "24 hrs", "24-hr" (abbreviations)
+  - "appointment", "must have appointment", "set appointment"
+  - "call ahead", "call to schedule", "call PM to schedule"
+  - "notice required", "schedule in advance", "notify before"
+- The existing "24 hour" and "advance notice" patterns continue to work
 
-### 3. PDF Generator -- `src/lib/pdf-generator.ts`
+### Files NOT Changed
 
-Add PM fields to `BuildingData` interface:
-- `property_manager_name: string | null`
-- `property_manager_phone: string | null`
-- `property_manager_email: string | null`
+- `src/lib/route-clustering.ts` -- clustering algorithm is correct
+- `src/lib/geo-utils.ts` -- working fine
+- `src/lib/pdf-generator.ts` -- working fine
+- `src/pages/Schedules.tsx` -- passes data correctly already
 
-Add a "PM Contact" column to the daily route sheet table, showing name and phone on separate lines.
+## Technical Details
 
-### 4. Excel Generator -- `src/lib/excel-generator.ts`
+### Excel Sheet Structure
 
-Add 3 new columns to the `buildingRow` function output:
-- "PM Name"
-- "PM Phone"
-- "PM Email"
+```text
+Workbook
+ +-- "Summary" sheet (1 row per day)
+ |     Day | Date | Buildings | Cities | Total SF | Priority | Notes
+ +-- "Day 1" sheet (buildings in route order, stop 1..N)
+ +-- "Day 2" sheet
+ +-- ...
+ +-- "All Buildings" sheet (all days concatenated, Day column added)
+```
 
-Add matching column widths to `detailColWidths`.
+### Updated Advance Notice Regex
 
-### 5. Schedules Data Fetch -- `src/pages/Schedules.tsx`
+```text
+/24[\s.-]*h(?:ou)?rs?\.?|advance\s*notice|notice\s*(?:is\s*)?required|(?:must\s*(?:have|set|make)\s*)?appointment|schedule\s*(?:in\s*advance|visit|appointment)|call\s*(?:ahead|before|prior|to\s*schedule|pm\s*to\s*schedule)|notify\s*(?:before|prior)/i
+```
 
-Update the building mapping (around line 228-247) to include the 3 PM fields when building the `BuildingData` objects from the database query.
+### Summary Sheet Row Logic
 
-### 6. Buildings Page Expanded Row -- `src/pages/Buildings.tsx`
+For each day, compute:
+- Unique cities from that day's buildings
+- Sum of square footage
+- Whether any building has `is_priority`
+- Count of buildings needing advance notice or escort
 
-Add PM contact section to the expanded detail view (around line 294-305), showing name, clickable phone link, and clickable email link -- same pattern as Route Builder.
+### Column Structure
 
-## No Database Changes
-The `property_manager_name`, `property_manager_phone`, and `property_manager_email` columns already exist on the `buildings` table.
+The existing column structure and widths remain unchanged for all building sheets. The "All Buildings" sheet adds one extra "Day" column at the beginning, shifting all other columns right by one.
 
 ## After This Change
-Re-uploading the Excel will populate PM data. All views (Buildings page, Route Builder dropdown, PDF, Excel) will display it.
 
-## Files
-
-| File | Action |
-|------|--------|
-| `src/lib/spreadsheet-parser.ts` | Add PM fields to SYSTEM_FIELDS, FUZZY_MAP, ParsedBuilding, mapRowToBuilding |
-| `src/pages/Upload.tsx` | Add PM fields to insert batch |
-| `src/lib/pdf-generator.ts` | Add PM fields to BuildingData, add PM column to daily route table |
-| `src/lib/excel-generator.ts` | Add PM columns to spreadsheet output |
-| `src/pages/Schedules.tsx` | Include PM fields in building data mapping |
-| `src/pages/Buildings.tsx` | Show PM info in expanded row |
+- Re-uploading the Atlanta spreadsheet will correctly flag "24 hr notice" and "appointment" buildings
+- Generating an Excel from Schedules will produce day-grouped sheets in geographic route order
+- The PDF and Excel will show matching stop orders per day
 
