@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Smartphone, Check } from "lucide-react";
+import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Smartphone, Check, Navigation } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
   pending: { label: "Pending", badge: "bg-muted text-muted-foreground" },
@@ -411,26 +411,77 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                                         )}
                                       </button>
                                       {isBuildingExpanded && (
-                                        <div className="px-3 pb-3 border-t border-border pt-2 space-y-1.5 text-xs">
-                                          <div className="text-muted-foreground">{b.address}, {b.city}, {b.state} {b.zip_code}</div>
-                                          {b.square_footage && <div><span className="text-muted-foreground">Sq Ft:</span> {b.square_footage.toLocaleString()}</div>}
-                                          {b.roof_access_type && <div><span className="text-muted-foreground">Roof Access:</span> {b.roof_access_type.replace(/_/g, " ")}</div>}
-                                          {b.access_location && <div><span className="text-muted-foreground">Access Location:</span> {b.access_location}</div>}
-                                          {b.lock_gate_codes && <div><span className="text-muted-foreground">Codes:</span> <span className="font-mono">{b.lock_gate_codes}</span></div>}
-                                          {b.special_equipment && b.special_equipment.length > 0 && <div><span className="text-muted-foreground">Equipment:</span> {b.special_equipment.join(", ")}</div>}
-                                          {b.special_notes && <div><span className="text-muted-foreground">Notes:</span> {b.special_notes}</div>}
-                                          {(b.property_manager_name || b.property_manager_phone || b.property_manager_email) && (
-                                            <div className="p-1.5 rounded bg-accent/50 space-y-0.5">
-                                              <div className="font-medium text-foreground">Property Manager</div>
-                                              {b.property_manager_name && <div>{b.property_manager_name}</div>}
-                                              {b.property_manager_phone && <div><a href={`tel:${b.property_manager_phone}`} className="text-primary underline">{b.property_manager_phone}</a></div>}
-                                              {b.property_manager_email && <div><a href={`mailto:${b.property_manager_email}`} className="text-primary underline">{b.property_manager_email}</a></div>}
+                                        <div className="px-3 pb-3 border-t border-border pt-3 space-y-3 text-xs">
+                                          {/* Full address */}
+                                          <div className="text-sm text-muted-foreground">
+                                            {b.address}, {b.city}, {b.state} {b.zip_code}
+                                          </div>
+
+                                          {/* Access Details */}
+                                          {(b.access_location || b.lock_gate_codes || b.roof_access_type) && (
+                                            <div className="p-2.5 rounded-lg bg-accent/50 space-y-1.5">
+                                              <div className="font-semibold text-foreground text-xs uppercase tracking-wider">Access Details</div>
+                                              {b.access_location && (
+                                                <div className="text-foreground leading-relaxed">{b.access_location}</div>
+                                              )}
+                                              {b.lock_gate_codes && (
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="text-muted-foreground">Codes:</span>
+                                                  <span className="font-mono font-bold text-primary text-sm">{b.lock_gate_codes}</span>
+                                                </div>
+                                              )}
                                             </div>
                                           )}
-                                          {b.inspector_notes && (
-                                            <div className="p-1.5 rounded bg-muted"><span className="text-muted-foreground">Inspector Notes:</span> {b.inspector_notes}</div>
+
+                                          {/* Equipment */}
+                                          {b.special_equipment && b.special_equipment.length > 0 && (
+                                            <div className="flex items-start gap-1.5">
+                                              <span className="text-muted-foreground">Equipment:</span>
+                                              <span className="text-foreground">{b.special_equipment.join(", ")}</span>
+                                            </div>
                                           )}
-                                          <div className="pt-2 border-t border-border mt-2">
+
+                                          {/* Special notes */}
+                                          {b.special_notes && (
+                                            <div className="p-2 rounded bg-muted">
+                                              <span className="text-muted-foreground">Notes: </span>
+                                              <span className="text-foreground">{b.special_notes}</span>
+                                            </div>
+                                          )}
+
+                                          {/* Property Manager */}
+                                          {(b.property_manager_name || b.property_manager_phone || b.property_manager_email) && (
+                                            <div className="p-2.5 rounded-lg bg-accent/50 space-y-1">
+                                              <div className="font-semibold text-foreground text-xs uppercase tracking-wider">Property Manager</div>
+                                              {b.property_manager_name && <div className="text-foreground">{b.property_manager_name}</div>}
+                                              {b.property_manager_phone && (
+                                                <div>
+                                                  <a href={`tel:${b.property_manager_phone}`} className="text-primary underline">{b.property_manager_phone}</a>
+                                                </div>
+                                              )}
+                                              {b.property_manager_email && (
+                                                <div>
+                                                  <a href={`mailto:${b.property_manager_email}`} className="text-primary underline">{b.property_manager_email}</a>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          {/* Inspector notes */}
+                                          {b.inspector_notes && (
+                                            <div className="p-2 rounded bg-muted">
+                                              <span className="text-muted-foreground">Inspector Notes: </span>
+                                              <span className="text-foreground">{b.inspector_notes}</span>
+                                            </div>
+                                          )}
+
+                                          {/* Navigate placeholder */}
+                                          <Button variant="outline" className="w-full" disabled>
+                                            <Navigation className="h-4 w-4 mr-2" /> Navigate (coming soon)
+                                          </Button>
+
+                                          {/* Status dropdown */}
+                                          <div className="pt-1">
                                             <Select value={b.inspection_status} onValueChange={(val) => handleStatusChange(b.id, val)}>
                                               <SelectTrigger className={`h-8 text-xs ${cfg.badge}`}>
                                                 <SelectValue />
