@@ -330,24 +330,50 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                           })}
                         </div>
 
-                        {/* Selected day's buildings */}
+                        {/* Day summary bar */}
                         {days[selectedDayIndex] && (() => {
                           const day = days[selectedDayIndex];
-                          const dayComplete = day.buildings.filter(b => b.inspection_status === "complete").length;
-                          const visibleBuildings = hideComplete ? day.buildings.filter(b => b.inspection_status !== "complete") : day.buildings;
+                          const dayBuildings = day.buildings;
+                          const completeCount = dayBuildings.filter(b => b.inspection_status === "complete").length;
+                          const advanceNoticeCount = dayBuildings.filter(b => b.requires_advance_notice).length;
+                          const escortCount = dayBuildings.filter(b => b.requires_escort).length;
+                          const equipmentCount = dayBuildings.filter(b => b.special_equipment && b.special_equipment.length > 0).length;
+                          const visibleBuildings = hideComplete ? dayBuildings.filter(b => b.inspection_status !== "complete") : dayBuildings;
                           return (
                             <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-semibold">Day {day.day_number}</span>
-                                  <span className="text-xs text-muted-foreground">{day.day_date}</span>
+                              <div className="p-3 rounded-lg bg-muted/30 border border-border space-y-1">
+                                <div className="flex items-center gap-2 text-sm flex-wrap">
+                                  <span className="font-semibold">Day {day.day_number}</span>
+                                  <span className="text-muted-foreground">·</span>
+                                  <span className="text-muted-foreground">{dayBuildings.length} stops</span>
                                   {day.estimated_distance_miles && (
-                                    <Badge variant="outline" className="text-[10px] gap-1">
-                                      <MapPin className="h-3 w-3" />~{day.estimated_distance_miles} mi
-                                    </Badge>
+                                    <>
+                                      <span className="text-muted-foreground">·</span>
+                                      <span className="text-muted-foreground">~{day.estimated_distance_miles} mi</span>
+                                    </>
                                   )}
+                                  <span className="text-muted-foreground">·</span>
+                                  <span className="text-muted-foreground">{completeCount}/{dayBuildings.length} complete</span>
                                 </div>
-                                <span className="text-xs text-muted-foreground">{dayComplete}/{day.buildings.length}</span>
+                                {(advanceNoticeCount > 0 || escortCount > 0 || equipmentCount > 0) && (
+                                  <div className="flex gap-2 flex-wrap">
+                                    {advanceNoticeCount > 0 && (
+                                      <Badge className="bg-warning/20 text-warning border-warning/30 text-[10px]">
+                                        ⚠️ {advanceNoticeCount} needs 24hr notice
+                                      </Badge>
+                                    )}
+                                    {escortCount > 0 && (
+                                      <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-[10px]">
+                                        👤 {escortCount} requires escort
+                                      </Badge>
+                                    )}
+                                    {equipmentCount > 0 && (
+                                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px]">
+                                        🔧 {equipmentCount} needs equipment
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                               {visibleBuildings.length === 0 && hideComplete ? (
                                 <p className="text-xs text-muted-foreground text-center py-2">All buildings complete for this day.</p>
