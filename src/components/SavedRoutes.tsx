@@ -72,6 +72,8 @@ interface SavedDayBuilding {
   property_manager_name: string | null;
   property_manager_phone: string | null;
   property_manager_email: string | null;
+  requires_advance_notice: boolean | null;
+  requires_escort: boolean | null;
 }
 
 interface SavedDay {
@@ -148,7 +150,7 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
     const dayIds = dayRows.map((d) => d.id);
     const { data: rpb } = await supabase
       .from("route_plan_buildings")
-      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes, property_manager_name, property_manager_phone, property_manager_email)")
+      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes, property_manager_name, property_manager_phone, property_manager_email, requires_advance_notice, requires_escort)")
       .in("route_plan_day_id", dayIds)
       .order("stop_order");
 
@@ -179,6 +181,8 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
           property_manager_name: r.buildings.property_manager_name,
           property_manager_phone: r.buildings.property_manager_phone,
           property_manager_email: r.buildings.property_manager_email,
+          requires_advance_notice: r.buildings.requires_advance_notice,
+          requires_escort: r.buildings.requires_escort,
         })),
     }));
 
@@ -354,29 +358,58 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                                   const isBuildingExpanded = expandedBuilding === b.id;
                                   return (
                                     <div key={b.id} className="rounded-md bg-background border border-border overflow-hidden">
-                                      <div className="flex items-center justify-between p-2">
-                                        <button
-                                          className="flex items-center gap-2 min-w-0 flex-1 text-left"
-                                          onClick={() => setExpandedBuilding(isBuildingExpanded ? null : b.id)}
-                                        >
-                                          <span className="text-xs text-muted-foreground font-mono">#{b.stop_order}</span>
-                                          <span className="text-sm font-medium truncate">{b.property_name}</span>
-                                          {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1 py-0">P</Badge>}
-                                          {isBuildingExpanded ? <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                        </button>
-                                        <Select value={b.inspection_status} onValueChange={(val) => handleStatusChange(b.id, val)}>
-                                          <SelectTrigger className={`h-7 w-[130px] text-xs border-0 ${cfg.badge} shrink-0`}>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent className="bg-popover z-50">
-                                            {Object.entries(STATUS_CONFIG).map(([key, val]) => (
-                                              <SelectItem key={key} value={key} className="text-xs">
-                                                {val.label}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
+                                      <button
+                                        className="w-full text-left p-3"
+                                        onClick={() => setExpandedBuilding(isBuildingExpanded ? null : b.id)}
+                                      >
+                                        {/* Row 1: Stop number, name, badges, status, chevron */}
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            <span className="text-xs text-muted-foreground font-mono">#{b.stop_order}</span>
+                                            <span className="text-sm font-medium truncate">{b.property_name}</span>
+                                            {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1 py-0">P</Badge>}
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                                            <Badge className={`${cfg.badge} border-0 text-[10px]`}>{cfg.label}</Badge>
+                                            {isBuildingExpanded ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                          </div>
+                                        </div>
+                                        {/* Row 2: Address */}
+                                        <div className="text-xs text-muted-foreground mt-1 truncate">
+                                          {b.address}, {b.city}
+                                        </div>
+                                        {/* Row 3: Access code + roof type + sq ft */}
+                                        {(b.lock_gate_codes || b.roof_access_type || b.square_footage) && (
+                                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                            {b.lock_gate_codes && (
+                                              <span className="text-xs font-mono font-bold text-primary">🔑 {b.lock_gate_codes}</span>
+                                            )}
+                                            {b.roof_access_type && (
+                                              <span className="text-[10px] text-muted-foreground">
+                                                {b.roof_access_type === "roof_hatch" ? "Roof hatch" :
+                                                 b.roof_access_type === "exterior_ladder" ? "Ext. ladder" :
+                                                 b.roof_access_type === "interior_ladder" ? "Int. ladder" :
+                                                 b.roof_access_type === "ground_level" ? "Ground level" :
+                                                 b.roof_access_type.replace(/_/g, " ")}
+                                              </span>
+                                            )}
+                                            {b.square_footage && (
+                                              <span className="text-[10px] text-muted-foreground">{b.square_footage.toLocaleString()} SF</span>
+                                            )}
+                                          </div>
+                                        )}
+                                        {/* Row 4: Warning badges */}
+                                        {(b.requires_advance_notice || b.requires_escort) && (
+                                          <div className="flex gap-1.5 mt-1.5">
+                                            {b.requires_advance_notice && (
+                                              <Badge className="bg-warning/20 text-warning border-warning/30 text-[10px] px-1.5 py-0">24HR NOTICE</Badge>
+                                            )}
+                                            {b.requires_escort && (
+                                              <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-[10px] px-1.5 py-0">ESCORT REQ</Badge>
+                                            )}
+                                          </div>
+                                        )}
+                                      </button>
                                       {isBuildingExpanded && (
                                         <div className="px-3 pb-3 border-t border-border pt-2 space-y-1.5 text-xs">
                                           <div className="text-muted-foreground">{b.address}, {b.city}, {b.state} {b.zip_code}</div>
@@ -397,6 +430,18 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                                           {b.inspector_notes && (
                                             <div className="p-1.5 rounded bg-muted"><span className="text-muted-foreground">Inspector Notes:</span> {b.inspector_notes}</div>
                                           )}
+                                          <div className="pt-2 border-t border-border mt-2">
+                                            <Select value={b.inspection_status} onValueChange={(val) => handleStatusChange(b.id, val)}>
+                                              <SelectTrigger className={`h-8 text-xs ${cfg.badge}`}>
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent className="bg-popover z-50">
+                                                {Object.entries(STATUS_CONFIG).map(([key, val]) => (
+                                                  <SelectItem key={key} value={key} className="text-xs">{val.label}</SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
                                         </div>
                                       )}
                                     </div>
