@@ -1,39 +1,29 @@
 
 
-# Extract SavedRoutes into its own file
+# Redesign Expanded Building Card Content
 
-## What changes
+## File: `src/components/SavedRoutes.tsx`
 
-### New file: `src/components/SavedRoutes.tsx`
+### Change 1 -- Add `Navigation` icon import (line 35)
 
-Contains everything from lines 586-958 of RouteBuilder.tsx:
+Add `Navigation` to the existing lucide-react import line.
 
-- Interfaces: `SavedRoutePlan`, `SavedDayBuilding`, `SavedDay`
-- `STATUS_CONFIG` constant (copy, not move -- RouteBuilder still uses it)
-- `SavedRoutes` function component with all state, effects, handlers, JSX, dialogs
-- Default export: `export default function SavedRoutes({ navigate }: { navigate: (path: string) => void })`
+### Change 2 -- Replace expanded content (lines 413-445)
 
-Imports needed in the new file:
-- `useState, useEffect` from react
-- UI components: Card, CardContent, CardHeader, CardTitle, Button, Badge, Switch, Label, Select components, Progress, Dialog components, AlertDialog components, Textarea
-- Icons: Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Smartphone, Check
-- `toast` from sonner
-- `supabase` from integrations
+Replace the flat list of detail lines with an organized layout containing these sections:
 
-### Modified file: `src/pages/RouteBuilder.tsx`
+1. **Full address** -- city, state, zip on one line
+2. **Access Details** -- highlighted box (`bg-accent/50`) with section header, access location text, and codes in bold mono
+3. **Equipment** -- inline if present
+4. **Special notes** -- muted background box
+5. **Property Manager** -- highlighted box with clickable `tel:` and `mailto:` links
+6. **Inspector notes** -- muted background box
+7. **Navigate button** -- disabled placeholder (`Navigation` icon + "Navigate (coming soon)")
+8. **Status dropdown** -- same `Select` as before, kept at the bottom
 
-- Add import: `import SavedRoutes from "@/components/SavedRoutes";`
-- Delete lines 586-958 (interfaces, SavedRoutes component)
-- The existing `<SavedRoutes navigate={navigate} />` call on line 524 stays unchanged
-- `STATUS_CONFIG` and `STATUS_CYCLE` stay in RouteBuilder (used by BuildingRow and the generation wizard)
-- Remove unused imports that were only needed by SavedRoutes: `Trash2`, `Smartphone` (keep all others since BuildingRow and RouteBuilder still use them)
+### What does NOT change
 
-### Zero behavior changes
+- Collapsed card (rows 1-4) -- untouched
+- All handlers, state, day picker, dialogs -- untouched
+- `cfg` variable remains defined at the top of the `.map()` callback and is used by both the collapsed Badge and the expanded status dropdown
 
-This is a pure structural extraction. No logic, styling, or functionality changes.
-
-## Technical notes
-
-- `STATUS_CONFIG` is duplicated in both files intentionally -- RouteBuilder uses it in BuildingRow's status display and SavedRoutes uses it for the status select/badges
-- The `Check` icon is used by both RouteBuilder (step indicator) and SavedRoutes (status config), so it stays imported in both
-- RouteBuilder's remaining imports after cleanup: remove `Trash2`, `Smartphone` from the lucide import line (only used by SavedRoutes). All other imports stay since they're used by the generation wizard or BuildingRow.
