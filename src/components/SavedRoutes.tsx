@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +93,10 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
   const [deleteTarget, setDeleteTarget] = useState<SavedRoutePlan | null>(null);
 
   // Status note dialog
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
+  const dayPickerRef = useRef<HTMLDivElement>(null);
+
+  // Status note dialog
   const [noteDialog, setNoteDialog] = useState<{ id: string; status: string } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -100,6 +104,15 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
   useEffect(() => {
     loadPlans();
   }, []);
+
+  useEffect(() => {
+    if (dayPickerRef.current && days.length > 0) {
+      const selectedChip = dayPickerRef.current.children[selectedDayIndex] as HTMLElement;
+      if (selectedChip) {
+        selectedChip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }
+  }, [selectedDayIndex, days.length]);
 
   const loadPlans = async () => {
     const { data } = await supabase
@@ -114,6 +127,7 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
   const toggleExpand = async (planId: string) => {
     if (expandedPlan === planId) {
       setExpandedPlan(null);
+      setSelectedDayIndex(0);
       return;
     }
     setExpandedPlan(planId);
@@ -169,6 +183,8 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
     }));
 
     setDays(result);
+    const firstIncompleteIdx = result.findIndex(d => d.buildings.some(b => b.inspection_status !== "complete"));
+    setSelectedDayIndex(firstIncompleteIdx >= 0 ? firstIncompleteIdx : 0);
     setLoadingDays(false);
   };
 
@@ -281,12 +297,42 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                           <Label htmlFor={`hide-complete-${expandedPlan}`} className="text-xs cursor-pointer">Hide completed</Label>
                         </div>
 
-                        {days.map((day) => {
-                          const dayComplete = day.buildings.filter((b) => b.inspection_status === "complete").length;
-                          const visibleBuildings = hideComplete ? day.buildings.filter((b) => b.inspection_status !== "complete") : day.buildings;
-                          if (hideComplete && visibleBuildings.length === 0) return null;
+                        {/* Day picker chips */}
+                        <div ref={dayPickerRef} className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                          {days.map((day, idx) => {
+                            const dayComplete = day.buildings.filter(b => b.inspection_status === "complete").length;
+                            const dayTotal = day.buildings.length;
+                            const isAllComplete = dayComplete === dayTotal && dayTotal > 0;
+                            const isSelected = idx === selectedDayIndex;
+                            return (
+                              <button
+                                key={day.id}
+                                onClick={() => setSelectedDayIndex(idx)}
+                                className={`flex-shrink-0 min-w-[80px] px-3 py-2 rounded-lg border text-center transition-colors ${
+                                  isSelected
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : isAllComplete
+                                    ? "bg-muted/50 border-border opacity-60"
+                                    : "bg-background border-border hover:border-primary/50"
+                                }`}
+                              >
+                                <div className="text-xs font-semibold">
+                                  {isAllComplete && <Check className="h-3 w-3 inline mr-1" />}
+                                  Day {day.day_number}
+                                </div>
+                                <div className="text-[10px] opacity-80 mt-0.5">{dayComplete}/{dayTotal}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Selected day's buildings */}
+                        {days[selectedDayIndex] && (() => {
+                          const day = days[selectedDayIndex];
+                          const dayComplete = day.buildings.filter(b => b.inspection_status === "complete").length;
+                          const visibleBuildings = hideComplete ? day.buildings.filter(b => b.inspection_status !== "complete") : day.buildings;
                           return (
-                            <div key={day.id} className="space-y-2">
+                            <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm font-semibold">Day {day.day_number}</span>
@@ -299,6 +345,9 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                                 </div>
                                 <span className="text-xs text-muted-foreground">{dayComplete}/{day.buildings.length}</span>
                               </div>
+                              {visibleBuildings.length === 0 && hideComplete ? (
+                                <p className="text-xs text-muted-foreground text-center py-2">All buildings complete for this day.</p>
+                              ) : (
                               <div className="space-y-1">
                                 {visibleBuildings.map((b) => {
                                   const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
@@ -354,9 +403,10 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                                   );
                                 })}
                               </div>
+                              )}
                             </div>
                           );
-                        })}
+                        })()}
                       </>
                     )}
 
