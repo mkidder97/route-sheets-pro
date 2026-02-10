@@ -1,29 +1,33 @@
 
-
-# Redesign Expanded Building Card Content
+# Add Day Summary Bar to SavedRoutes
 
 ## File: `src/components/SavedRoutes.tsx`
 
-### Change 1 -- Add `Navigation` icon import (line 35)
+### Change: Replace redundant day header with summary bar (lines 333-351)
 
-Add `Navigation` to the existing lucide-react import line.
+Remove the current day header block (lines 340-351 containing "Day {day.day_number}", date, mileage badge, and completion count) and replace the structure so the layout becomes:
 
-### Change 2 -- Replace expanded content (lines 413-445)
+1. The `days[selectedDayIndex]` IIFE now starts with the **summary bar** instead of the old header
+2. Then the building cards follow directly (with the existing `visibleBuildings` filtering and empty-state message preserved)
 
-Replace the flat list of detail lines with an organized layout containing these sections:
+The summary bar contains:
+- **Row 1**: "Day N", stop count, mileage, completion fraction -- all inline with dot separators
+- **Row 2** (conditional): Warning badges for advance notice count, escort count, and equipment count
 
-1. **Full address** -- city, state, zip on one line
-2. **Access Details** -- highlighted box (`bg-accent/50`) with section header, access location text, and codes in bold mono
-3. **Equipment** -- inline if present
-4. **Special notes** -- muted background box
-5. **Property Manager** -- highlighted box with clickable `tel:` and `mailto:` links
-6. **Inspector notes** -- muted background box
-7. **Navigate button** -- disabled placeholder (`Navigation` icon + "Navigate (coming soon)")
-8. **Status dropdown** -- same `Select` as before, kept at the bottom
+The `visibleBuildings` variable and `hideComplete` filtering remain exactly as they are, applied to the building cards below the summary bar.
+
+### Technical details
+
+**Lines 333-351** are replaced. The new block:
+- Keeps `const day = days[selectedDayIndex]` and `const visibleBuildings = ...`
+- Adds computed counts: `completeCount`, `advanceNoticeCount`, `escortCount`, `equipmentCount`
+- Renders the summary bar div with `bg-muted/30 border border-border`
+- Warning badges use existing color patterns: `bg-warning/20 text-warning`, `bg-destructive/20 text-destructive`, `bg-blue-500/20 text-blue-400`
+- Removes the old header `<div className="flex items-center justify-between">` block entirely
 
 ### What does NOT change
-
-- Collapsed card (rows 1-4) -- untouched
-- All handlers, state, day picker, dialogs -- untouched
-- `cfg` variable remains defined at the top of the `.map()` callback and is used by both the collapsed Badge and the expanded status dropdown
-
+- Day picker chips above -- untouched
+- Building cards below -- untouched
+- Progress bar, hide-complete toggle -- untouched
+- Field View + Delete buttons -- untouched
+- All handlers and state -- untouched
