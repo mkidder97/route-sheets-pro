@@ -1,5 +1,4 @@
 import * as XLSX from "xlsx";
-import { format } from "date-fns";
 import type { DayData, DocumentMetadata, BuildingData } from "./pdf-generator";
 
 function formatAccessType(t: string | null): string {
@@ -84,49 +83,18 @@ export function generateInspectorExcel(
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // --- Summary sheet ---
-  const summaryRows = days.map((day, idx) => {
-    const cities = [...new Set(day.buildings.map((b) => b.city).filter(Boolean))];
-    const totalSF = day.buildings.reduce((sum, b) => sum + (b.square_footage || 0), 0);
-    const hasPriority = day.buildings.some((b) => b.is_priority);
-    const advanceCount = day.buildings.filter((b) => b.requires_advance_notice).length;
-    const escortCount = day.buildings.filter((b) => b.requires_escort).length;
-    const notes: string[] = [];
-    if (advanceCount > 0) notes.push(`${advanceCount} need advance notice`);
-    if (escortCount > 0) notes.push(`${escortCount} need escort`);
-
-    return {
-      "Day": idx + 1,
-      "Date": day.day_date ? format(new Date(day.day_date), "MM/dd/yyyy") : "",
-      "Buildings": day.buildings.length,
-      "Cities": cities.join(", "),
-      "Total SF": totalSF || "",
-      "Priority": hasPriority ? "YES" : "",
-      "Notes": notes.join("; "),
-    };
-  });
-
-  const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
-  summaryWs["!cols"] = [
-    { wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 40 }, { wch: 12 }, { wch: 8 }, { wch: 40 },
-  ];
-  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
-
-  // --- Per-day sheets (preserve route order, no sorting) ---
-  days.forEach((day, idx) => {
-    const rows = day.buildings.map((b, i) => buildingRow(b, i + 1));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = detailColWidths;
-    XLSX.utils.book_append_sheet(wb, ws, `Day ${idx + 1}`);
-  });
-
-  // --- All Buildings sheet (concatenated in route order, Day column prepended) ---
   const allRows = days.flatMap((day, dayIdx) =>
     day.buildings.map((b, i) => buildingRow(b, i + 1, dayIdx + 1))
   );
-  const allWs = XLSX.utils.json_to_sheet(allRows);
-  allWs["!cols"] = allBuildingsColWidths;
-  XLSX.utils.book_append_sheet(wb, allWs, "All Buildings");
+
+  const ws = XLSX.utils.json_to_sheet(allRows);
+  ws["!cols"] = allBuildingsColWidths;
+
+  const sheetName = meta.inspectorName
+    ? meta.inspectorName.substring(0, 31)
+    : "Schedule";
+
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
   return wb;
 }
