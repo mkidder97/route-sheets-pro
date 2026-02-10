@@ -1,33 +1,52 @@
 
-# Add Day Summary Bar to SavedRoutes
+# Export Buttons, Remove Field View, Auto-Advance
 
 ## File: `src/components/SavedRoutes.tsx`
 
-### Change: Replace redundant day header with summary bar (lines 333-351)
+### Change 1 -- Update imports
 
-Remove the current day header block (lines 340-351 containing "Day {day.day_number}", date, mileage badge, and completion count) and replace the structure so the layout becomes:
+- Remove `Smartphone` from lucide-react (no longer used after Field View removal)
+- Add `FileText`, `FileSpreadsheet` from lucide-react
+- Add imports for `generateInspectorPDF`, `DayData`, `BuildingData`, `DocumentMetadata` from `@/lib/pdf-generator`
+- Add import for `generateInspectorExcel` from `@/lib/excel-generator`
+- Add `import * as XLSX from "xlsx"`
 
-1. The `days[selectedDayIndex]` IIFE now starts with the **summary bar** instead of the old header
-2. Then the building cards follow directly (with the existing `visibleBuildings` filtering and empty-state message preserved)
+### Change 2 -- Remove `navigate` prop
 
-The summary bar contains:
-- **Row 1**: "Day N", stop count, mileage, completion fraction -- all inline with dot separators
-- **Row 2** (conditional): Warning badges for advance notice count, escort count, and equipment count
+- Change component signature from `function SavedRoutes({ navigate }: { navigate: (path: string) => void })` to `function SavedRoutes()`
 
-The `visibleBuildings` variable and `hideComplete` filtering remain exactly as they are, applied to the building cards below the summary bar.
+### Change 3 -- Add `exporting` state + `handleExport` function
 
-### Technical details
+- Add `const [exporting, setExporting] = useState(false)` alongside existing state
+- Add `handleExport(plan, format)` function that:
+  - Loads route_plan_days and route_plan_buildings with buildings join
+  - Maps data into `DayData[]` and `DocumentMetadata`
+  - Calls `generateInspectorPDF` or `generateInspectorExcel` + `XLSX.writeFile`
+  - Shows success/error toasts
 
-**Lines 333-351** are replaced. The new block:
-- Keeps `const day = days[selectedDayIndex]` and `const visibleBuildings = ...`
-- Adds computed counts: `completeCount`, `advanceNoticeCount`, `escortCount`, `equipmentCount`
-- Renders the summary bar div with `bg-muted/30 border border-border`
-- Warning badges use existing color patterns: `bg-warning/20 text-warning`, `bg-destructive/20 text-destructive`, `bg-blue-500/20 text-blue-400`
-- Removes the old header `<div className="flex items-center justify-between">` block entirely
+### Change 4 -- Auto-advance after marking complete
 
-### What does NOT change
-- Day picker chips above -- untouched
-- Building cards below -- untouched
-- Progress bar, hide-complete toggle -- untouched
-- Field View + Delete buttons -- untouched
-- All handlers and state -- untouched
+- In `updateStatus`, after the `setDays` call that updates the status (line ~220-229), add logic:
+  - If `status === "complete"`, use `setTimeout` with a read-only `setDays` call to find the next non-complete building after the current one in the selected day, and call `setExpandedBuilding(nextPending.id)` or `setExpandedBuilding(null)` if none remain
+
+### Change 5 -- Replace bottom action bar (lines 574-581)
+
+Remove the Field View button and add PDF/Excel export buttons:
+- "Export PDF" button with `FileText` icon, calls `handleExport(plan, "pdf")`
+- "Export Excel" button with `FileSpreadsheet` icon, calls `handleExport(plan, "excel")`
+- Keep existing "Delete" button unchanged
+- Both export buttons show a `Loader2` spinner when `exporting` is true
+
+## File: `src/pages/RouteBuilder.tsx`
+
+### Change 6 -- Remove navigate prop from SavedRoutes usage
+
+- Change `<SavedRoutes navigate={navigate} />` to `<SavedRoutes />`
+- Keep `useNavigate` import (still used by the generation wizard)
+
+## What does NOT change
+
+- Day picker chips, day summary bar, building cards, note dialog, delete dialog -- all untouched
+- Status tap buttons (Done/Skip/Revisit) -- untouched
+- Navigate button -- untouched
+- pdf-generator.ts and excel-generator.ts -- untouched
