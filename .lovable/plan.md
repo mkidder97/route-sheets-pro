@@ -1,63 +1,39 @@
 
 
-# Revert Excel to Single Sheet with Day Column
+# Extract SavedRoutes into its own file
 
-## Problem
-The multi-sheet Excel (Summary + 54 Day tabs + All Buildings) is confusing. The inspector opens the file, sees 54 summary rows, and thinks the data is gone. The 267-building list is buried as the last tab.
+## What changes
 
-## Fix
-Replace the entire `generateInspectorExcel` function body in `src/lib/excel-generator.ts` with a single-sheet approach:
+### New file: `src/components/SavedRoutes.tsx`
 
-- **One sheet** named after the inspector (e.g., "Justin Barnette"), falling back to "Schedule" if no name
-- All buildings in geographic route order (iterate days in order, buildings within each day in order)
-- "Day" column as the first column
-- Stop numbers reset per day (1, 2, 3... for Day 1, then 1, 2, 3... for Day 2)
-- **No sorting** -- preserve the order from `days[].buildings[]` exactly
-- Remove Summary sheet, per-day sheets, and separate All Buildings sheet
+Contains everything from lines 586-958 of RouteBuilder.tsx:
 
-## What stays the same
-- `buildingRow()` function -- already handles `dayNumber` parameter
-- `detailColWidths` and `allBuildingsColWidths` constants -- unchanged
-- `spreadsheet-parser.ts` -- the advance notice regex fix stays
-- All other files untouched
+- Interfaces: `SavedRoutePlan`, `SavedDayBuilding`, `SavedDay`
+- `STATUS_CONFIG` constant (copy, not move -- RouteBuilder still uses it)
+- `SavedRoutes` function component with all state, effects, handlers, JSX, dialogs
+- Default export: `export default function SavedRoutes({ navigate }: { navigate: (path: string) => void })`
 
-## Technical Detail
+Imports needed in the new file:
+- `useState, useEffect` from react
+- UI components: Card, CardContent, CardHeader, CardTitle, Button, Badge, Switch, Label, Select components, Progress, Dialog components, AlertDialog components, Textarea
+- Icons: Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Smartphone, Check
+- `toast` from sonner
+- `supabase` from integrations
 
-The `generateInspectorExcel` function (lines 81-132) will be replaced with:
+### Modified file: `src/pages/RouteBuilder.tsx`
 
-```typescript
-export function generateInspectorExcel(
-  days: DayData[],
-  meta: DocumentMetadata
-): XLSX.WorkBook {
-  const wb = XLSX.utils.book_new();
+- Add import: `import SavedRoutes from "@/components/SavedRoutes";`
+- Delete lines 586-958 (interfaces, SavedRoutes component)
+- The existing `<SavedRoutes navigate={navigate} />` call on line 524 stays unchanged
+- `STATUS_CONFIG` and `STATUS_CYCLE` stay in RouteBuilder (used by BuildingRow and the generation wizard)
+- Remove unused imports that were only needed by SavedRoutes: `Trash2`, `Smartphone` (keep all others since BuildingRow and RouteBuilder still use them)
 
-  const allRows = days.flatMap((day, dayIdx) =>
-    day.buildings.map((b, i) => buildingRow(b, i + 1, dayIdx + 1))
-  );
+### Zero behavior changes
 
-  const ws = XLSX.utils.json_to_sheet(allRows);
-  ws["!cols"] = allBuildingsColWidths;
+This is a pure structural extraction. No logic, styling, or functionality changes.
 
-  const sheetName = meta.inspectorName
-    ? meta.inspectorName.substring(0, 31)
-    : "Schedule";
+## Technical notes
 
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-
-  return wb;
-}
-```
-
-The `format` import from `date-fns` can also be removed since it was only used for the Summary sheet dates.
-
-## Expected Result
-- One sheet named "Justin Barnette"
-- 267 rows in geographic route order
-- Columns: Day, Stop #, Property Name, Address, City, State, Zip, SF, Market/Group, Bldg Code, Priority, Access Type, Access Location, Codes, Needs Escort, 24H Notice, Needs Ladder, Needs CAD/Core, Other Equipment, PM Name, PM Phone, PM Email, Notes
-
-## Files Changed
-
-| File | Change |
-|------|--------|
-| `src/lib/excel-generator.ts` | Replace function body, remove unused `format` import |
+- `STATUS_CONFIG` is duplicated in both files intentionally -- RouteBuilder uses it in BuildingRow's status display and SavedRoutes uses it for the status select/badges
+- The `Check` icon is used by both RouteBuilder (step indicator) and SavedRoutes (status config), so it stays imported in both
+- RouteBuilder's remaining imports after cleanup: remove `Trash2`, `Smartphone` from the lucide import line (only used by SavedRoutes). All other imports stay since they're used by the generation wizard or BuildingRow.
