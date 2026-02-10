@@ -25,7 +25,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Smartphone, Check, Navigation, SkipForward, AlertTriangle } from "lucide-react";
+import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet } from "lucide-react";
+import { generateInspectorPDF, type DayData, type BuildingData, type DocumentMetadata } from "@/lib/pdf-generator";
+import { generateInspectorExcel } from "@/lib/excel-generator";
+import * as XLSX from "xlsx";
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
   pending: { label: "Pending", badge: "bg-muted text-muted-foreground" },
@@ -77,7 +80,7 @@ interface SavedDay {
   buildings: SavedDayBuilding[];
 }
 
-export default function SavedRoutes({ navigate }: { navigate: (path: string) => void }) {
+export default function SavedRoutes() {
   const [plans, setPlans] = useState<SavedRoutePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
@@ -95,6 +98,7 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
   const [noteDialog, setNoteDialog] = useState<{ id: string; status: string } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const openNavigation = (address: string, city: string, state: string, zipCode: string) => {
     const addr = encodeURIComponent(`${address}, ${city}, ${state} ${zipCode}`);
@@ -227,10 +231,112 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
           ),
         }))
       );
+
+      // Auto-advance to next pending building after marking complete
+      if (status === "complete") {
+        setTimeout(() => {
+          setDays(currentDays => {
+            const currentDay = currentDays[selectedDayIndex];
+            if (currentDay) {
+              const currentIdx = currentDay.buildings.findIndex(b => b.id === id);
+              const nextPending = currentDay.buildings.find(
+                (b, idx) => idx > currentIdx && b.inspection_status !== "complete"
+              );
+              if (nextPending) {
+                setExpandedBuilding(nextPending.id);
+              } else {
+                setExpandedBuilding(null);
+              }
+            }
+            return currentDays;
+          });
+        }, 150);
+      }
     }
     setSaving(false);
     setNoteDialog(null);
     setNoteText("");
+  };
+
+  const handleExport = async (plan: SavedRoutePlan, format: "pdf" | "excel") => {
+    setExporting(true);
+    try {
+      const { data: dayRows } = await supabase
+        .from("route_plan_days")
+        .select("*")
+        .eq("route_plan_id", plan.id)
+        .order("day_number");
+
+      if (!dayRows || dayRows.length === 0) {
+        toast.error("No route data to export");
+        setExporting(false);
+        return;
+      }
+
+      const daysData: DayData[] = [];
+      for (const day of dayRows) {
+        const { data: rpb } = await supabase
+          .from("route_plan_buildings")
+          .select("*, buildings(*)")
+          .eq("route_plan_day_id", day.id)
+          .order("stop_order");
+
+        const buildings: BuildingData[] = ((rpb || []) as any[]).map((r) => ({
+          id: r.building_id,
+          stop_order: r.stop_order,
+          property_name: r.buildings.property_name,
+          address: r.buildings.address,
+          city: r.buildings.city,
+          state: r.buildings.state,
+          zip_code: r.buildings.zip_code,
+          square_footage: r.buildings.square_footage,
+          roof_group: r.buildings.roof_group,
+          building_code: r.buildings.building_code,
+          roof_access_type: r.buildings.roof_access_type,
+          access_location: r.buildings.access_location,
+          lock_gate_codes: r.buildings.lock_gate_codes,
+          is_priority: r.buildings.is_priority,
+          requires_advance_notice: r.buildings.requires_advance_notice,
+          requires_escort: r.buildings.requires_escort,
+          special_equipment: r.buildings.special_equipment,
+          special_notes: r.buildings.special_notes,
+          property_manager_name: r.buildings.property_manager_name,
+          property_manager_phone: r.buildings.property_manager_phone,
+          property_manager_email: r.buildings.property_manager_email,
+        }));
+
+        daysData.push({
+          day_number: day.day_number,
+          day_date: day.day_date,
+          estimated_distance_miles: day.estimated_distance_miles ? Number(day.estimated_distance_miles) : null,
+          buildings,
+        });
+      }
+
+      const meta: DocumentMetadata = {
+        clientName: (plan.clients as any)?.name || "Client",
+        regionName: (plan.regions as any)?.name || "Region",
+        inspectorName: (plan.inspectors as any)?.name || "Inspector",
+        startDate: daysData[0]?.day_date || new Date().toISOString().split("T")[0],
+        endDate: daysData[daysData.length - 1]?.day_date || new Date().toISOString().split("T")[0],
+      };
+
+      const safeName = ((plan.inspectors as any)?.name || "Schedule").replace(/[^a-zA-Z0-9]/g, "_");
+
+      if (format === "pdf") {
+        const pdf = generateInspectorPDF(daysData, meta);
+        pdf.save(`${safeName}_Schedule.pdf`);
+      } else {
+        const wb = generateInspectorExcel(daysData, meta);
+        XLSX.writeFile(wb, `${safeName}_Schedule.xlsx`);
+      }
+
+      toast.success(`${format.toUpperCase()} exported successfully`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Export failed: ${err.message}`);
+    }
+    setExporting(false);
   };
 
   const handleDelete = async () => {
@@ -572,8 +678,11 @@ export default function SavedRoutes({ navigate }: { navigate: (path: string) => 
                     )}
 
                     <div className="flex gap-2 pt-2">
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/field?plan=${plan.id}`)}>
-                        <Smartphone className="h-4 w-4 mr-1" /> Field View
+                      <Button size="sm" variant="outline" disabled={exporting} onClick={() => handleExport(plan, "pdf")}>
+                        {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileText className="h-4 w-4 mr-1" />} Export PDF
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={exporting} onClick={() => handleExport(plan, "excel")}>
+                        {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1" />} Export Excel
                       </Button>
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteTarget(plan)}>
                         <Trash2 className="h-4 w-4 mr-1" /> Delete
