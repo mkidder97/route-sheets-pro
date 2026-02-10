@@ -1,75 +1,63 @@
 
 
-# Fix Excel Generator Sort Bug and 24H Notice Detection
+# Revert Excel to Single Sheet with Day Column
 
-## What's Wrong
+## Problem
+The multi-sheet Excel (Summary + 54 Day tabs + All Buildings) is confusing. The inspector opens the file, sees 54 summary rows, and thinks the data is gone. The 267-building list is buried as the last tab.
 
-**Bug 1**: The Excel download sorts buildings alphabetically by city instead of keeping the optimized geographic route order from the clustering engine. This makes the Excel useless as a field guide since it doesn't match the actual driving route.
+## Fix
+Replace the entire `generateInspectorExcel` function body in `src/lib/excel-generator.ts` with a single-sheet approach:
 
-**Bug 2**: The 24-hour advance notice detection misses common abbreviations like "24 hr notice", "MUST HAVE APPOINTMENT", and "call to schedule" -- so buildings that need advance coordination don't get flagged.
+- **One sheet** named after the inspector (e.g., "Justin Barnette"), falling back to "Schedule" if no name
+- All buildings in geographic route order (iterate days in order, buildings within each day in order)
+- "Day" column as the first column
+- Stop numbers reset per day (1, 2, 3... for Day 1, then 1, 2, 3... for Day 2)
+- **No sorting** -- preserve the order from `days[].buildings[]` exactly
+- Remove Summary sheet, per-day sheets, and separate All Buildings sheet
 
-## What Will Change
+## What stays the same
+- `buildingRow()` function -- already handles `dayNumber` parameter
+- `detailColWidths` and `allBuildingsColWidths` constants -- unchanged
+- `spreadsheet-parser.ts` -- the advance notice regex fix stays
+- All other files untouched
 
-### File 1: `src/lib/excel-generator.ts` -- Multi-sheet structure, no re-sorting
+## Technical Detail
 
-- **Remove** the alphabetical `.sort()` block (lines 79-87) entirely
-- **Restructure** the workbook to create multiple sheets:
-  - **"Summary"** sheet: One row per day showing Day #, Date, Building Count, Cities covered, Total SF, has priority buildings, notes about advance notice/escort needs
-  - **"Day 1", "Day 2", ...** sheets: Each day's buildings in their geographic route order with stop numbers 1, 2, 3... per day
-  - **"All Buildings"** sheet: Every building across all days in route order (Day 1 first, then Day 2, etc.) with a "Day" column prepended; stop numbers reset per day
-- Buildings are **never re-sorted** -- the order from `days[].buildings[]` is preserved exactly as the clustering engine produced it
+The `generateInspectorExcel` function (lines 81-132) will be replaced with:
 
-### File 2: `src/lib/spreadsheet-parser.ts` -- Broader advance notice detection
+```typescript
+export function generateInspectorExcel(
+  days: DayData[],
+  meta: DocumentMetadata
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
 
-- **Replace** the regex on line 122 with a comprehensive pattern that catches:
-  - "24 hr", "24 hr.", "24 hrs", "24-hr" (abbreviations)
-  - "appointment", "must have appointment", "set appointment"
-  - "call ahead", "call to schedule", "call PM to schedule"
-  - "notice required", "schedule in advance", "notify before"
-- The existing "24 hour" and "advance notice" patterns continue to work
+  const allRows = days.flatMap((day, dayIdx) =>
+    day.buildings.map((b, i) => buildingRow(b, i + 1, dayIdx + 1))
+  );
 
-### Files NOT Changed
+  const ws = XLSX.utils.json_to_sheet(allRows);
+  ws["!cols"] = allBuildingsColWidths;
 
-- `src/lib/route-clustering.ts` -- clustering algorithm is correct
-- `src/lib/geo-utils.ts` -- working fine
-- `src/lib/pdf-generator.ts` -- working fine
-- `src/pages/Schedules.tsx` -- passes data correctly already
+  const sheetName = meta.inspectorName
+    ? meta.inspectorName.substring(0, 31)
+    : "Schedule";
 
-## Technical Details
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-### Excel Sheet Structure
-
-```text
-Workbook
- +-- "Summary" sheet (1 row per day)
- |     Day | Date | Buildings | Cities | Total SF | Priority | Notes
- +-- "Day 1" sheet (buildings in route order, stop 1..N)
- +-- "Day 2" sheet
- +-- ...
- +-- "All Buildings" sheet (all days concatenated, Day column added)
+  return wb;
+}
 ```
 
-### Updated Advance Notice Regex
+The `format` import from `date-fns` can also be removed since it was only used for the Summary sheet dates.
 
-```text
-/24[\s.-]*h(?:ou)?rs?\.?|advance\s*notice|notice\s*(?:is\s*)?required|(?:must\s*(?:have|set|make)\s*)?appointment|schedule\s*(?:in\s*advance|visit|appointment)|call\s*(?:ahead|before|prior|to\s*schedule|pm\s*to\s*schedule)|notify\s*(?:before|prior)/i
-```
+## Expected Result
+- One sheet named "Justin Barnette"
+- 267 rows in geographic route order
+- Columns: Day, Stop #, Property Name, Address, City, State, Zip, SF, Market/Group, Bldg Code, Priority, Access Type, Access Location, Codes, Needs Escort, 24H Notice, Needs Ladder, Needs CAD/Core, Other Equipment, PM Name, PM Phone, PM Email, Notes
 
-### Summary Sheet Row Logic
+## Files Changed
 
-For each day, compute:
-- Unique cities from that day's buildings
-- Sum of square footage
-- Whether any building has `is_priority`
-- Count of buildings needing advance notice or escort
-
-### Column Structure
-
-The existing column structure and widths remain unchanged for all building sheets. The "All Buildings" sheet adds one extra "Day" column at the beginning, shifting all other columns right by one.
-
-## After This Change
-
-- Re-uploading the Atlanta spreadsheet will correctly flag "24 hr notice" and "appointment" buildings
-- Generating an Excel from Schedules will produce day-grouped sheets in geographic route order
-- The PDF and Excel will show matching stop orders per day
-
+| File | Change |
+|------|--------|
+| `src/lib/excel-generator.ts` | Replace function body, remove unused `format` import |
