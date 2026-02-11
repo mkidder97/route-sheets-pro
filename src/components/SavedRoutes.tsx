@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -25,7 +26,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet } from "lucide-react";
+import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet, Crosshair } from "lucide-react";
+import { haversineDistance } from "@/lib/geo-utils";
 import { generateInspectorPDF, type DayData, type BuildingData, type DocumentMetadata } from "@/lib/pdf-generator";
 import { generateInspectorExcel } from "@/lib/excel-generator";
 import * as XLSX from "xlsx";
@@ -70,6 +72,8 @@ interface SavedDayBuilding {
   property_manager_email: string | null;
   requires_advance_notice: boolean | null;
   requires_escort: boolean | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface SavedDay {
@@ -93,6 +97,12 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
   // Status note dialog
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
   const dayPickerRef = useRef<HTMLDivElement>(null);
+
+  // Location sort state
+  const [locationSort, setLocationSort] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [priorityFirst, setPriorityFirst] = useState(true);
 
   // Status note dialog
   const [noteDialog, setNoteDialog] = useState<{ id: string; status: string } | null>(null);
@@ -145,8 +155,14 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     if (expandedPlan === planId) {
       setExpandedPlan(null);
       setSelectedDayIndex(0);
+      setLocationSort(false);
+      setUserLocation(null);
+      setLocationLoading(false);
       return;
     }
+    setLocationSort(false);
+    setUserLocation(null);
+    setLocationLoading(false);
     setExpandedPlan(planId);
     setLoadingDays(true);
 
@@ -165,7 +181,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     const dayIds = dayRows.map((d) => d.id);
     const { data: rpb } = await supabase
       .from("route_plan_buildings")
-      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes, property_manager_name, property_manager_phone, property_manager_email, requires_advance_notice, requires_escort)")
+      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes, property_manager_name, property_manager_phone, property_manager_email, requires_advance_notice, requires_escort, latitude, longitude)")
       .in("route_plan_day_id", dayIds)
       .order("stop_order");
 
@@ -198,6 +214,8 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
           property_manager_email: r.buildings.property_manager_email,
           requires_advance_notice: r.buildings.requires_advance_notice,
           requires_escort: r.buildings.requires_escort,
+          latitude: r.buildings.latitude,
+          longitude: r.buildings.longitude,
         })),
     }));
 
@@ -365,11 +383,57 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     loadPlans();
   };
 
-  if (loading) return null;
-  if (plans.length === 0) return null;
+  const handleLocationSort = async () => {
+    setLocationLoading(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
+      });
+      setUserLocation({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      });
+      setLocationSort(true);
+      toast.success("Location found — buildings sorted by distance");
+    } catch {
+      toast.error("Unable to get your location. Please enable location services.");
+    }
+    setLocationLoading(false);
+  };
+
+  const sortedByDistance = useMemo(() => {
+    if (!locationSort || !userLocation) return [];
+    const all = days.flatMap((day) =>
+      day.buildings.map((b) => ({
+        ...b,
+        dayNumber: day.day_number,
+        dayId: day.id,
+      }))
+    );
+    const withDistance = all.map((b) => {
+      const dist =
+        b.latitude != null && b.longitude != null
+          ? haversineDistance(userLocation.lat, userLocation.lng, b.latitude, b.longitude)
+          : null;
+      return { ...b, distanceMiles: dist };
+    });
+    if (priorityFirst) {
+      const priorities = withDistance.filter((b) => b.is_priority).sort((a, b) => (a.distanceMiles ?? 999) - (b.distanceMiles ?? 999));
+      const nonPriorities = withDistance.filter((b) => !b.is_priority).sort((a, b) => (a.distanceMiles ?? 999) - (b.distanceMiles ?? 999));
+      return [...priorities, ...nonPriorities];
+    }
+    return withDistance.sort((a, b) => (a.distanceMiles ?? 999) - (b.distanceMiles ?? 999));
+  }, [locationSort, userLocation, days, priorityFirst]);
 
   const allBuildings = days.flatMap((d) => d.buildings);
   const totalComplete = allBuildings.filter((b) => b.inspection_status === "complete").length;
+
+  if (loading) return null;
+  if (plans.length === 0) return null;
 
   return (
     <>
@@ -418,6 +482,209 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                           <Label htmlFor={`hide-complete-${expandedPlan}`} className="text-xs cursor-pointer">Hide completed</Label>
                         </div>
 
+                        {/* Location sort controls */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant={locationSort ? "default" : "outline"}
+                            onClick={handleLocationSort}
+                            disabled={locationLoading}
+                          >
+                            {locationLoading ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Crosshair className="h-4 w-4 mr-1" />
+                            )}
+                            {locationSort ? "Sorted by Location" : "Sort by Location"}
+                          </Button>
+                          {locationSort && (
+                            <>
+                              <div className="flex items-center gap-1.5">
+                                <Checkbox
+                                  id="priority-first"
+                                  checked={priorityFirst}
+                                  onCheckedChange={(v) => setPriorityFirst(!!v)}
+                                />
+                                <Label htmlFor="priority-first" className="text-xs cursor-pointer">
+                                  Priority first
+                                </Label>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => { setLocationSort(false); setUserLocation(null); }}
+                              >
+                                Back to Days
+                              </Button>
+                            </>
+                          )}
+                        </div>
+
+                        {locationSort && userLocation ? (
+                          /* Proximity-sorted view */
+                          <div className="space-y-1">
+                            {sortedByDistance
+                              .filter((b) => (hideComplete ? b.inspection_status !== "complete" : true))
+                              .map((b) => {
+                                const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
+                                const isBuildingExpanded = expandedBuilding === b.id;
+                                return (
+                                  <div key={b.id} className="rounded-md bg-background border border-border overflow-hidden">
+                                    <button
+                                      className="w-full text-left p-3"
+                                      onClick={() => setExpandedBuilding(isBuildingExpanded ? null : b.id)}
+                                    >
+                                      {/* Row 1: name, priority, status, distance */}
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                          <span className="text-sm font-medium truncate">{b.property_name}</span>
+                                          {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1 py-0">P</Badge>}
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                                          <Badge className={`${cfg.badge} border-0 text-[10px]`}>{cfg.label}</Badge>
+                                          {b.distanceMiles != null ? (
+                                            <span className="text-xs font-medium text-primary">
+                                              {b.distanceMiles < 1
+                                                ? `${(b.distanceMiles * 5280).toFixed(0)} ft`
+                                                : `${b.distanceMiles.toFixed(1)} mi`}
+                                            </span>
+                                          ) : (
+                                            <span className="text-[10px] text-muted-foreground">No coords</span>
+                                          )}
+                                          {isBuildingExpanded ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                        </div>
+                                      </div>
+                                      {/* Row 2: address + day label */}
+                                      <div className="flex items-center justify-between mt-1">
+                                        <span className="text-xs text-muted-foreground truncate">{b.address}, {b.city}</span>
+                                        <span className="text-[10px] text-muted-foreground shrink-0 ml-2">Day {b.dayNumber}</span>
+                                      </div>
+                                      {/* Row 3: access code + sq ft */}
+                                      {(b.lock_gate_codes || b.square_footage) && (
+                                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                          {b.lock_gate_codes && (
+                                            <span className="text-xs font-mono font-bold text-primary">🔑 {b.lock_gate_codes}</span>
+                                          )}
+                                          {b.square_footage && (
+                                            <span className="text-[10px] text-muted-foreground">{b.square_footage.toLocaleString()} SF</span>
+                                          )}
+                                        </div>
+                                      )}
+                                      {/* Warning badges */}
+                                      {(b.requires_advance_notice || b.requires_escort) && (
+                                        <div className="flex gap-1.5 mt-1.5">
+                                          {b.requires_advance_notice && (
+                                            <Badge className="bg-warning/20 text-warning border-warning/30 text-[10px] px-1.5 py-0">24HR NOTICE</Badge>
+                                          )}
+                                          {b.requires_escort && (
+                                            <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-[10px] px-1.5 py-0">ESCORT REQ</Badge>
+                                          )}
+                                        </div>
+                                      )}
+                                    </button>
+                                    {isBuildingExpanded && (
+                                      <div className="px-3 pb-3 border-t border-border pt-3 space-y-3 text-xs">
+                                        <div className="text-sm text-muted-foreground">
+                                          {b.address}, {b.city}, {b.state} {b.zip_code}
+                                        </div>
+                                        {(b.access_location || b.lock_gate_codes || b.roof_access_type) && (
+                                          <div className="p-2.5 rounded-lg bg-accent/50 space-y-1.5">
+                                            <div className="font-semibold text-foreground text-xs uppercase tracking-wider">Access Details</div>
+                                            {b.access_location && <div className="text-foreground leading-relaxed">{b.access_location}</div>}
+                                            {b.lock_gate_codes && (
+                                              <div className="flex items-center gap-1.5">
+                                                <span className="text-muted-foreground">Codes:</span>
+                                                <span className="font-mono font-bold text-primary text-sm">{b.lock_gate_codes}</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                        {b.special_equipment && b.special_equipment.length > 0 && (
+                                          <div className="flex items-start gap-1.5">
+                                            <span className="text-muted-foreground">Equipment:</span>
+                                            <span className="text-foreground">{b.special_equipment.join(", ")}</span>
+                                          </div>
+                                        )}
+                                        {b.special_notes && (
+                                          <div className="p-2 rounded bg-muted">
+                                            <span className="text-muted-foreground">Notes: </span>
+                                            <span className="text-foreground">{b.special_notes}</span>
+                                          </div>
+                                        )}
+                                        {(b.property_manager_name || b.property_manager_phone || b.property_manager_email) && (
+                                          <div className="p-2.5 rounded-lg bg-accent/50 space-y-1">
+                                            <div className="font-semibold text-foreground text-xs uppercase tracking-wider">Property Manager</div>
+                                            {b.property_manager_name && <div className="text-foreground">{b.property_manager_name}</div>}
+                                            {b.property_manager_phone && (
+                                              <div><a href={`tel:${b.property_manager_phone}`} className="text-primary underline">{b.property_manager_phone}</a></div>
+                                            )}
+                                            {b.property_manager_email && (
+                                              <div><a href={`mailto:${b.property_manager_email}`} className="text-primary underline">{b.property_manager_email}</a></div>
+                                            )}
+                                          </div>
+                                        )}
+                                        {b.inspector_notes && (
+                                          <div className="p-2 rounded bg-muted">
+                                            <span className="text-muted-foreground">Inspector Notes: </span>
+                                            <span className="text-foreground">{b.inspector_notes}</span>
+                                          </div>
+                                        )}
+                                        <Button
+                                          variant="outline"
+                                          className="w-full"
+                                          onClick={(e) => { e.stopPropagation(); openNavigation(b.address, b.city, b.state, b.zip_code); }}
+                                        >
+                                          <Navigation className="h-4 w-4 mr-2" /> Navigate
+                                        </Button>
+                                        <div className="grid grid-cols-3 gap-2 pt-1">
+                                          <Button
+                                            className={`h-12 flex-col gap-1 border ${
+                                              b.inspection_status === "complete"
+                                                ? "bg-success/30 text-success border-success/50 ring-2 ring-success/30"
+                                                : "bg-success/10 text-success border-success/30 hover:bg-success/20"
+                                            }`}
+                                            variant="ghost"
+                                            disabled={saving}
+                                            onClick={(e) => { e.stopPropagation(); handleStatusChange(b.id, "complete"); }}
+                                          >
+                                            <Check className="h-5 w-5" />
+                                            <span className="text-[11px]">Done</span>
+                                          </Button>
+                                          <Button
+                                            className={`h-12 flex-col gap-1 border ${
+                                              b.inspection_status === "skipped"
+                                                ? "bg-warning/30 text-warning border-warning/50 ring-2 ring-warning/30"
+                                                : "bg-warning/10 text-warning border-warning/30 hover:bg-warning/20"
+                                            }`}
+                                            variant="ghost"
+                                            disabled={saving}
+                                            onClick={(e) => { e.stopPropagation(); handleStatusChange(b.id, "skipped"); }}
+                                          >
+                                            <SkipForward className="h-5 w-5" />
+                                            <span className="text-[11px]">Skip</span>
+                                          </Button>
+                                          <Button
+                                            className={`h-12 flex-col gap-1 border ${
+                                              b.inspection_status === "needs_revisit"
+                                                ? "bg-destructive/30 text-destructive border-destructive/50 ring-2 ring-destructive/30"
+                                                : "bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20"
+                                            }`}
+                                            variant="ghost"
+                                            disabled={saving}
+                                            onClick={(e) => { e.stopPropagation(); handleStatusChange(b.id, "needs_revisit"); }}
+                                          >
+                                            <AlertTriangle className="h-5 w-5" />
+                                            <span className="text-[11px]">Revisit</span>
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        ) : (
+                          <>
                         {/* Day picker chips */}
                         <div ref={dayPickerRef} className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
                           {days.map((day, idx) => {
@@ -485,7 +752,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                       </Badge>
                                     )}
                                     {equipmentCount > 0 && (
-                                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px]">
+                                      <Badge className="bg-info/20 text-info border-info/30 text-[10px]">
                                         🔧 {equipmentCount} needs equipment
                                       </Badge>
                                     )}
@@ -682,6 +949,8 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                             </div>
                           );
                         })()}
+                          </>
+                        )}
                       </>
                     )}
 
