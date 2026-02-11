@@ -80,7 +80,7 @@ interface SavedDay {
   buildings: SavedDayBuilding[];
 }
 
-export default function SavedRoutes() {
+export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
   const [plans, setPlans] = useState<SavedRoutePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
@@ -111,8 +111,12 @@ export default function SavedRoutes() {
 
 
   useEffect(() => {
+    setExpandedPlan(null);
+    setExpandedBuilding(null);
+    setSelectedDayIndex(0);
+    setDays([]);
     loadPlans();
-  }, []);
+  }, [inspectorId]);
 
   useEffect(() => {
     if (dayPickerRef.current && days.length > 0) {
@@ -124,9 +128,13 @@ export default function SavedRoutes() {
   }, [selectedDayIndex, days.length]);
 
   const loadPlans = async () => {
-    const { data } = await supabase
+    let query = supabase
       .from("route_plans")
-      .select("id, name, created_at, buildings_per_day, clients(name), regions(name), inspectors(name)")
+      .select("id, name, created_at, buildings_per_day, clients(name), regions(name), inspectors(name)");
+    if (inspectorId) {
+      query = query.eq("inspector_id", inspectorId);
+    }
+    const { data } = await query
       .order("created_at", { ascending: false })
       .limit(50);
     setPlans((data as SavedRoutePlan[]) || []);

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, Building2, Users, ChevronLeft, Route, KeyRound } from "lucide-react";
+import { Upload, Building2, Users, ChevronLeft, Route, KeyRound } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const mainNav = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "My Routes", url: "/", icon: Route },
   { title: "Upload", url: "/upload", icon: Upload },
   { title: "Route Builder", url: "/route-builder", icon: Route },
 ];
