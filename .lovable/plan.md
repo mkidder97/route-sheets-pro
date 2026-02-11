@@ -1,40 +1,60 @@
 
-# Geocode Buildings at Import Time
 
-## 1. Create `src/lib/geocoder.ts`
+# Add "Sort by Location" to SavedRoutes
 
-New utility file with two exported functions:
+## 1. Update `SavedDayBuilding` interface and query
 
-- `geocodeAddress(address, city, state, zipCode)` -- calls Nominatim API with 1-second rate limiting, returns `{ lat, lng }` or `null`
-- `geocodeBuildingsBatch(buildings, onProgress?)` -- iterates buildings sequentially with 1.1s delay between calls, reports progress via callback, returns array of `GeocodingResult`
+- Add `latitude: number | null` and `longitude: number | null` to the `SavedDayBuilding` interface (line ~51)
+- Update the buildings select string in `toggleExpand` (line ~168) to include `latitude, longitude`
+- Map them in the result builder (lines ~180-201)
 
-Uses `User-Agent: RoofRoute/1.0` header as required by Nominatim usage policy.
+## 2. Add new state variables
 
-## 2. Add geocoding to RouteBuilder's `handleImport`
+After existing state declarations (around line 101):
 
-In `src/pages/RouteBuilder.tsx`:
+- `locationSort: boolean` (default false)
+- `userLocation: { lat: number; lng: number } | null` (default null)
+- `locationLoading: boolean` (default false)
+- `priorityFirst: boolean` (default true)
 
-- Add state: `const [geoProgress, setGeoProgress] = useState<{ completed: number; total: number } | null>(null)`
-- After buildings are inserted (line ~277) and before auto-advancing to params (line ~286):
-  1. Query the just-inserted buildings by `upload_id`
-  2. Call `geocodeBuildingsBatch` with progress callback updating `geoProgress`
-  3. Batch-update latitude/longitude back to Supabase for successful results
-  4. Show toast: "Geocoded X of Y addresses"
-- Reset `geoProgress` in `handleReset`
-- Update the `step === "importing"` render block to show geocoding progress bar when `geoProgress` is set (showing "Geocoding addresses... X/Y" with a Progress component)
-- Import `geocodeBuildingsBatch` from `@/lib/geocoder` and `Progress` from `@/components/ui/progress`
+## 3. Add `handleLocationSort` function
 
-## 3. Add "Geocode Missing" button to Buildings page
+Uses `navigator.geolocation.getCurrentPosition` with high accuracy, 10s timeout, 60s max age. On success sets `userLocation` and `locationSort = true`. On error shows a toast.
 
-In `src/pages/Buildings.tsx` (`BuildingsContent`):
+## 4. Compute `sortedByDistance` with `useMemo`
 
-- Add state for geocoding progress and a geocoding-active flag
-- Compute count of buildings with `latitude === null` from the loaded data
-- Add a card/button in the summary area showing "X buildings missing coordinates" with a "Geocode Now" button (only visible when count > 0)
-- Clicking runs `geocodeBuildingsBatch` on those buildings, updates Supabase, refreshes the list, and shows a toast with results
-- Show a progress dialog/indicator during geocoding
+- Import `useMemo` from React and `haversineDistance` from `@/lib/geo-utils`
+- Import `Crosshair` (or `LocateFixed`) from lucide-react for the button icon
+- Flatten all buildings from all days, annotate with `dayNumber` and `dayId`
+- Calculate distance from `userLocation` using `haversineDistance`
+- If `priorityFirst`, sort priorities first then non-priorities, each sub-group by distance
+- Buildings without coords get `distanceMiles = null` and sort to the bottom (999 fallback)
+
+## 5. Add UI controls between progress bar and day picker
+
+Inside the expanded plan area (after the hide-complete toggle, before day picker chips):
+
+- "Sort by Location" button with Crosshair icon (shows loading spinner when getting GPS)
+- When active: shows a "Priority first" checkbox toggle and a "Back to Days" button
+- When `locationSort` is true, hide the day picker chips and day summary bar
+
+## 6. Render proximity-sorted view
+
+When `locationSort && userLocation` is true, render the flat sorted list instead of the day view:
+
+- Each building card shows: property name, priority badge, status badge, distance (miles or feet), address, "Day X" label, access codes, sq ft
+- Distance display: less than 1 mile shows feet, otherwise shows miles with 1 decimal; null coords show "No coords" in muted text
+- Expanded card content is identical to the existing day view (access details, equipment, notes, property manager, navigate button, status buttons)
+- Respects the "Hide completed" toggle
+
+## 7. Reset location sort state
+
+- Reset `locationSort`, `userLocation`, `locationLoading` when collapsing a plan (in `toggleExpand`)
+- Reset when switching plans
 
 ## What stays untouched
 
-- `src/lib/geo-utils.ts`, `src/lib/route-clustering.ts`, SavedRoutes, MyRoutes, Settings
-- Database schema (latitude/longitude columns already exist)
+- Day view, day picker, day summary (hidden when location sort active, shown otherwise)
+- Status update logic, export, delete, progress bar
+- All other pages and components
+
