@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet, Crosshair } from "lucide-react";
+import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet, Crosshair, ArrowRightLeft } from "lucide-react";
 import { haversineDistance } from "@/lib/geo-utils";
 import { generateInspectorPDF, type DayData, type BuildingData, type DocumentMetadata } from "@/lib/pdf-generator";
 import { generateInspectorExcel } from "@/lib/excel-generator";
@@ -109,6 +109,79 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // Move building state
+  const [moveTarget, setMoveTarget] = useState<{
+    buildingId: string;
+    fromDayId: string;
+    fromDayNumber: number;
+  } | null>(null);
+  const [moving, setMoving] = useState(false);
+
+  const handleMoveBuilding = async (toDayId: string, toDayNumber: number) => {
+    if (!moveTarget) return;
+    setMoving(true);
+    try {
+      const targetDay = days.find((d) => d.id === toDayId);
+      const maxOrder = targetDay
+        ? Math.max(0, ...targetDay.buildings.map((b) => b.stop_order))
+        : 0;
+
+      const { error } = await supabase
+        .from("route_plan_buildings")
+        .update({
+          route_plan_day_id: toDayId,
+          stop_order: maxOrder + 1,
+        })
+        .eq("building_id", moveTarget.buildingId)
+        .eq("route_plan_day_id", moveTarget.fromDayId);
+
+      if (error) throw error;
+
+      // Re-number source day stop_orders
+      const sourceDayBuildings = days
+        .find((d) => d.id === moveTarget.fromDayId)
+        ?.buildings.filter((b) => b.id !== moveTarget.buildingId) || [];
+
+      for (let i = 0; i < sourceDayBuildings.length; i++) {
+        await supabase
+          .from("route_plan_buildings")
+          .update({ stop_order: i + 1 })
+          .eq("building_id", sourceDayBuildings[i].id)
+          .eq("route_plan_day_id", moveTarget.fromDayId);
+      }
+
+      // Update local state
+      setDays((prev) => {
+        const building = prev
+          .find((d) => d.id === moveTarget.fromDayId)
+          ?.buildings.find((b) => b.id === moveTarget.buildingId);
+        if (!building) return prev;
+
+        return prev.map((d) => {
+          if (d.id === moveTarget.fromDayId) {
+            const remaining = d.buildings
+              .filter((b) => b.id !== moveTarget.buildingId)
+              .map((b, i) => ({ ...b, stop_order: i + 1 }));
+            return { ...d, buildings: remaining };
+          }
+          if (d.id === toDayId) {
+            return {
+              ...d,
+              buildings: [...d.buildings, { ...building, stop_order: maxOrder + 1 }],
+            };
+          }
+          return d;
+        });
+      });
+
+      toast.success(`Moved to Day ${toDayNumber}`);
+      setMoveTarget(null);
+    } catch (err: any) {
+      toast.error(`Move failed: ${err.message}`);
+    }
+    setMoving(false);
+  };
 
   const openNavigation = (address: string, city: string, state: string, zipCode: string) => {
     const addr = encodeURIComponent(`${address}, ${city}, ${state} ${zipCode}`);
@@ -636,6 +709,16 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                         >
                                           <Navigation className="h-4 w-4 mr-2" /> Navigate
                                         </Button>
+                                        <Button
+                                          variant="outline"
+                                          className="w-full"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setMoveTarget({ buildingId: b.id, fromDayId: b.dayId, fromDayNumber: b.dayNumber });
+                                          }}
+                                        >
+                                          <ArrowRightLeft className="h-4 w-4 mr-2" /> Move to Another Day
+                                        </Button>
                                         <div className="grid grid-cols-3 gap-2 pt-1">
                                           <Button
                                             className={`h-12 flex-col gap-1 border ${
@@ -897,6 +980,18 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                             <Navigation className="h-4 w-4 mr-2" /> Navigate
                                           </Button>
 
+                                          {/* Move to another day */}
+                                          <Button
+                                            variant="outline"
+                                            className="w-full"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setMoveTarget({ buildingId: b.id, fromDayId: day.id, fromDayNumber: day.day_number });
+                                            }}
+                                          >
+                                            <ArrowRightLeft className="h-4 w-4 mr-2" /> Move to Another Day
+                                          </Button>
+
                                           {/* Status tap buttons */}
                                           <div className="grid grid-cols-3 gap-2 pt-1">
                                             <Button
@@ -1007,6 +1102,34 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Move building dialog */}
+      <Dialog open={!!moveTarget} onOpenChange={(o) => !o && setMoveTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move Building to Another Day</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            {days
+              .filter((d) => moveTarget && d.id !== moveTarget.fromDayId)
+              .map((d) => (
+                <Button
+                  key={d.id}
+                  variant="outline"
+                  className="w-full justify-between"
+                  disabled={moving}
+                  onClick={() => handleMoveBuilding(d.id, d.day_number)}
+                >
+                  <span>Day {d.day_number}</span>
+                  <span className="text-xs text-muted-foreground">{d.buildings.length} buildings</span>
+                </Button>
+              ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoveTarget(null)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
