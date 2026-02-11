@@ -1,45 +1,51 @@
 
 
-# Create My Routes Page and Wire It Up
+# Create Settings Page with Tabbed Interface
 
-## 1. Create `src/pages/MyRoutes.tsx` (new file)
+## 1. Refactor existing pages to export content components
 
-- Page heading: "My Routes"
-- Inspector selector dropdown using `Select` from `@/components/ui/select`
-- Query inspectors with region join: `.select("id, name, regions(name)")` so each option shows "Michael Kidder -- Dallas/Fort Worth"
-- Store selected `inspectorId` in state
-- When inspector is selected, subtitle updates to show inspector name and region (e.g., "Michael Kidder -- Dallas/Fort Worth") instead of static text
-- If no inspector selected: placeholder message "Select your name above to view your routes."
-- If inspector selected: render `<SavedRoutes inspectorId={inspectorId} />`
+### Buildings.tsx
+- Extract everything below the page header into a new named export `BuildingsContent`
+- All state, hooks, and logic stay inside `BuildingsContent`
+- Default export `Buildings` becomes a wrapper: renders the header (`<h1>`, subtitle) then `<BuildingsContent />`
 
-## 2. Modify `src/components/SavedRoutes.tsx`
+### Codes.tsx
+- Same pattern: extract into a named export `CodesContent`
+- Default export `Codes` renders header + `<CodesContent />`
 
-### Signature change
-- From: `export default function SavedRoutes()`
-- To: `export default function SavedRoutes({ inspectorId }: { inspectorId?: string })`
+### Inspectors.tsx
+- Same pattern: extract into a named export `InspectorsContent`
+- Default export `Inspectors` renders header + `<InspectorsContent />`
 
-### Filter in `loadPlans`
-- When `inspectorId` is provided, add `.eq("inspector_id", inspectorId)` to the query built inside `loadPlans`
-- The query currently chains `.select(...)`, `.order(...)`, `.limit(50)` -- insert the conditional `.eq()` before `.order()`
+## 2. Create `src/pages/Settings.tsx` (new file)
 
-### Reset stale state on inspector change
-- Add `inspectorId` to the `useEffect` dependency array that calls `loadPlans` (currently `[]`)
-- In the same effect, reset `expandedPlan` to `null`, `expandedBuilding` to `null`, `selectedDayIndex` to `0`, and `days` to `[]` before calling `loadPlans` -- this prevents stale expanded cards from a previous inspector showing through
+- Page heading: "Settings" with subtitle "Manage buildings, codes, and inspectors"
+- Uses `Tabs` / `TabsList` / `TabsTrigger` / `TabsContent` from `@/components/ui/tabs`
+- Three tabs: "Buildings", "Codes", "Inspectors"
+- Each tab panel renders the corresponding Content component
+- Default tab: "buildings"
+- Tab re-fetch on switch is accepted (no `forceMount`) -- these are low-frequency admin tools and keeping it simple is the right tradeoff
 
 ## 3. Update `src/App.tsx`
 
-- Add import for `MyRoutes`
-- Change root route: `<Route path="/" element={<MyRoutes />} />`
-- Add: `<Route path="/my-routes" element={<MyRoutes />} />`
-- Move Dashboard: `<Route path="/dashboard" element={<Dashboard />} />`
+- Import `Settings` from `./pages/Settings`
+- Add route: `<Route path="/settings" element={<Settings />} />`
+- Keep existing `/buildings`, `/codes`, `/inspectors` routes (cleaned up in a later prompt)
 
 ## 4. Update `src/components/AppSidebar.tsx`
 
-- Remove `LayoutDashboard` from the lucide-react import
-- Change first `mainNav` entry from `{ title: "Dashboard", url: "/", icon: LayoutDashboard }` to `{ title: "My Routes", url: "/", icon: Route }` (Route icon already imported)
+- Import `Settings as SettingsIcon` from `lucide-react` (gear icon -- aliased to avoid collision with the page component name)
+- Remove `Users` and `KeyRound` from the lucide import (confirmed only used in `manageNav`)
+- Keep `Building2` (used in logo)
+- Delete the `manageNav` array entirely
+- Delete the second `SidebarGroup` (the "Manage" group, lines 72-94)
+- Add Settings to `mainNav` as the last item: `{ title: "Settings", url: "/settings", icon: SettingsIcon }`
+- Final `mainNav` order: **My Routes, Upload, Route Builder, Settings** (explicit ordering, no reordering)
+- Single sidebar group labeled "Navigation"
 
 ## What stays untouched
-- SavedRoutes still renders inside RouteBuilder (both locations work during transition)
-- All other pages, components, database tables
-- RouteBuilder still passes no props to SavedRoutes (inspectorId defaults to undefined, loading all routes)
+- Individual page files continue to work at their own routes
+- Upload stays in the nav as an intermediate state before the merge prompt
+- All database tables, SavedRoutes, RouteBuilder, MyRoutes
+- `ChevronLeft` stays in the import (out of scope)
 
