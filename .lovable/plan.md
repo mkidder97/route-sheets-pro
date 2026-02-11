@@ -1,29 +1,40 @@
 
+# Geocode Buildings at Import Time
 
-# Wire My Routes to Settings Inspector Preference
+## 1. Create `src/lib/geocoder.ts`
 
-## 1. Rewrite `src/pages/MyRoutes.tsx`
+New utility file with two exported functions:
 
-- Remove the Select dropdown and its imports
-- Initialize `selectedId` from `localStorage.getItem("roofroute_inspector_id")`
-- Add a `storage` event listener for cross-tab sync
-- Keep the inspector fetch (for name resolution in subtitle)
-- Add first-visit empty state with a "Go to Settings" button (using Card, Button, useNavigate)
-- Add a "Switch inspector" link below subtitle when inspector is set
-- Make heading responsive: `text-xl sm:text-2xl`
+- `geocodeAddress(address, city, state, zipCode)` -- calls Nominatim API with 1-second rate limiting, returns `{ lat, lng }` or `null`
+- `geocodeBuildingsBatch(buildings, onProgress?)` -- iterates buildings sequentially with 1.1s delay between calls, reports progress via callback, returns array of `GeocodingResult`
 
-## 2. Update Route Builder defaults (`src/pages/RouteBuilder.tsx`)
+Uses `User-Agent: RoofRoute/1.0` header as required by Nominatim usage policy.
 
-Three state initializers read from localStorage:
+## 2. Add geocoding to RouteBuilder's `handleImport`
 
-- `buildingsPerDay`: read `roofroute_default_buildings_per_day`, parse as int, fallback 5
-- `useStartLocation`: true if `roofroute_default_start_location` is non-empty
-- `startLocation`: read `roofroute_default_start_location`, fallback ""
+In `src/pages/RouteBuilder.tsx`:
 
-Changes are on lines 67-69 only.
+- Add state: `const [geoProgress, setGeoProgress] = useState<{ completed: number; total: number } | null>(null)`
+- After buildings are inserted (line ~277) and before auto-advancing to params (line ~286):
+  1. Query the just-inserted buildings by `upload_id`
+  2. Call `geocodeBuildingsBatch` with progress callback updating `geoProgress`
+  3. Batch-update latitude/longitude back to Supabase for successful results
+  4. Show toast: "Geocoded X of Y addresses"
+- Reset `geoProgress` in `handleReset`
+- Update the `step === "importing"` render block to show geocoding progress bar when `geoProgress` is set (showing "Geocoding addresses... X/Y" with a Progress component)
+- Import `geocodeBuildingsBatch` from `@/lib/geocoder` and `Progress` from `@/components/ui/progress`
 
-## 3. What stays untouched
+## 3. Add "Geocode Missing" button to Buildings page
 
-- SavedRoutes.tsx, Settings.tsx, DataManager.tsx, AppSidebar.tsx, App.tsx
-- All Supabase tables
+In `src/pages/Buildings.tsx` (`BuildingsContent`):
 
+- Add state for geocoding progress and a geocoding-active flag
+- Compute count of buildings with `latitude === null` from the loaded data
+- Add a card/button in the summary area showing "X buildings missing coordinates" with a "Geocode Now" button (only visible when count > 0)
+- Clicking runs `geocodeBuildingsBatch` on those buildings, updates Supabase, refreshes the list, and shows a toast with results
+- Show a progress dialog/indicator during geocoding
+
+## What stays untouched
+
+- `src/lib/geo-utils.ts`, `src/lib/route-clustering.ts`, SavedRoutes, MyRoutes, Settings
+- Database schema (latitude/longitude columns already exist)
