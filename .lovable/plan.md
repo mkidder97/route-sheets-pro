@@ -1,49 +1,96 @@
 
 
-# Clean Up RouteBuilder and Sidebar
+# Rename Settings to Buildings, Create Real Settings Page, Clean Up Dead Routes
 
-## 1. Remove SavedRoutes from RouteBuilder (`src/pages/RouteBuilder.tsx`)
+## 1. Rename current Settings page to DataManager
 
-- Delete line 39: `import SavedRoutes from "@/components/SavedRoutes";`
-- Delete lines 524-525: the `<SavedRoutes />` render and its comment
+**File: `src/pages/Settings.tsx` -> `src/pages/DataManager.tsx`** (create new, delete old)
 
-## 2. Update "done" step buttons (lines 512-519)
+- Create `src/pages/DataManager.tsx` with the same tabbed content
+- Change export name from `Settings` to `DataManager`
+- Change heading to "Buildings & Data"
+- Change subtitle to "Manage building data, access codes, and inspector assignments"
 
-Replace both buttons with:
-- "Create Another Plan" -- same reset logic, goes to `"params"`
-- "View in My Routes" -- calls `navigate("/")` (useNavigate already imported on line 2)
+## 2. Create new `src/pages/Settings.tsx`
 
-## 3. Remove unused imports
+A real preferences page with three Card sections, all persisted to localStorage:
 
-**Line 10**: Delete `import { Progress } from "@/components/ui/progress";`
+**Inspector Profile**
+- Select dropdown fetching inspectors from Supabase (same query as MyRoutes: `inspectors` table with `regions(name)` join)
+- Shows "Name -- Region" format
+- Stores selected ID in `roofroute_inspector_id`
+- Pre-selects saved value on mount
 
-**Line 11**: Delete `import { Textarea } from "@/components/ui/textarea";`
+**Route Generation Defaults**
+- Slider (3-8, step 1) for default buildings per day -> `roofroute_default_buildings_per_day`
+- Input for home base zip/address -> `roofroute_default_start_location`
 
-**Lines 19-25**: Delete the entire Dialog import block
+**PDF Export Preferences**
+- Input for company name -> `roofroute_company_name`
+- Switch for include access codes -> `roofroute_include_codes_in_pdf` (default: true)
+- Select for font size (Standard/Large) -> `roofroute_pdf_font_size` (default: "standard")
 
-**Lines 26-35**: Delete the entire AlertDialog import block
+Each change saves immediately to localStorage. A subtle toast fires once per page visit on first change.
 
-**Line 38**: Change from:
+## 3. Update `src/components/AppSidebar.tsx`
+
+- Import `Database` from lucide-react (keep `Settings as SettingsIcon`)
+- Update `mainNav` to 4 items:
+  - My Routes (`/`, Route icon)
+  - Route Builder (`/route-builder`, Route icon)
+  - Buildings (`/buildings`, Database icon)
+  - Settings (`/settings`, SettingsIcon)
+
+## 4. Update `src/App.tsx`
+
+- Remove imports: `Dashboard`, `UploadPage`, `Codes`, `Inspectors`
+- Remove old `Settings` import, add `DataManager` and new `Settings`
+- Remove routes: `/dashboard`, `/upload`, `/codes`, `/inspectors`
+- Change `/settings` route to use new `Settings`
+- Add `/buildings` route using `DataManager`
+- Remove `/buildings` old route (was using `Buildings` wrapper -- now uses `DataManager`)
+
+Final routes:
+```text
+/              -> MyRoutes
+/my-routes     -> MyRoutes
+/route-builder -> RouteBuilder
+/buildings     -> DataManager
+/settings      -> Settings
+*              -> NotFound
 ```
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation, ChevronDown, ChevronUp, Eye } from "lucide-react";
+
+## 5. Delete orphaned page files
+
+- Delete `src/pages/Dashboard.tsx`
+- Delete `src/pages/Upload.tsx`
+
+Keep `Buildings.tsx`, `Codes.tsx`, `Inspectors.tsx` (they export Content components used by DataManager).
+
+## Technical Details
+
+### localStorage helper pattern
+```typescript
+const getSetting = (key: string, fallback: string) =>
+  localStorage.getItem(key) ?? fallback;
 ```
-To:
+
+### Inspector fetch (same as MyRoutes)
+```typescript
+const { data } = await supabase
+  .from("inspectors")
+  .select("id, name, regions(name)")
+  .order("name");
 ```
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation } from "lucide-react";
+
+### Toast-once pattern
+```typescript
+const hasToasted = useRef(false);
+const saveSetting = (key: string, value: string) => {
+  localStorage.setItem(key, value);
+  if (!hasToasted.current) {
+    toast.success("Settings saved");
+    hasToasted.current = true;
+  }
+};
 ```
-
-## 4. Remove unused constants (lines 45-59)
-
-Delete `STATUS_CONFIG` and `STATUS_CYCLE` -- only referenced by the now-removed SavedRoutes inline rendering.
-
-## 5. Remove Upload from sidebar (`src/components/AppSidebar.tsx`)
-
-- Line 1: Remove `Upload` from the lucide-react import
-- Line 18: Delete the Upload entry from `mainNav`
-- Final `mainNav` order: My Routes, Route Builder, Settings (3 items)
-
-## What stays untouched
-- `src/pages/Upload.tsx` file and `/upload` route in App.tsx
-- `src/components/SavedRoutes.tsx` (still used by MyRoutes)
-- All route generation logic, BuildingRow component, drag-and-drop
-
