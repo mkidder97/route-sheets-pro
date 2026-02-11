@@ -4,16 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
-import Dashboard from "./pages/Dashboard";
-import UploadPage from "./pages/Upload";
 import MyRoutes from "./pages/MyRoutes";
-
 import RouteBuilder from "./pages/RouteBuilder";
-import Buildings from "./pages/Buildings";
-import Inspectors from "./pages/Inspectors";
-import Codes from "./pages/Codes";
+import DataManager from "./pages/DataManager";
 import Settings from "./pages/Settings";
-
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,15 +22,9 @@ const App = () => (
           <Routes>
             <Route path="/" element={<MyRoutes />} />
             <Route path="/my-routes" element={<MyRoutes />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/upload" element={<UploadPage />} />
-            
             <Route path="/route-builder" element={<RouteBuilder />} />
-            <Route path="/buildings" element={<Buildings />} />
-            <Route path="/inspectors" element={<Inspectors />} />
-            <Route path="/codes" element={<Codes />} />
+            <Route path="/buildings" element={<DataManager />} />
             <Route path="/settings" element={<Settings />} />
-            
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
