@@ -67,7 +67,7 @@ interface BuildingRow extends Tables<"buildings"> {
   inspectors?: { name: string } | null;
 }
 
-export default function Buildings() {
+export function BuildingsContent() {
   const [buildings, setBuildings] = useState<BuildingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -166,11 +166,6 @@ export default function Buildings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Buildings</h1>
-        <p className="text-muted-foreground mt-1">View and manage all buildings</p>
-      </div>
-
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="bg-card border-border">
@@ -345,6 +340,18 @@ export default function Buildings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+export default function Buildings() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Buildings</h1>
+        <p className="text-muted-foreground mt-1">View and manage all buildings</p>
+      </div>
+      <BuildingsContent />
     </div>
   );
 }

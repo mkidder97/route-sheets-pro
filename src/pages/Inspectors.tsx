@@ -54,7 +54,7 @@ interface InspectorWithStats extends Tables<"inspectors"> {
   buildings_by_status: Record<string, { id: string; property_name: string; address: string }[]>;
 }
 
-export default function Inspectors() {
+export function InspectorsContent() {
   const [inspectors, setInspectors] = useState<InspectorWithStats[]>([]);
   const [regions, setRegions] = useState<Tables<"regions">[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,11 +158,7 @@ export default function Inspectors() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Inspectors</h1>
-          <p className="text-muted-foreground mt-1">Manage inspectors and track progress</p>
-        </div>
+      <div className="flex justify-end">
         <Button onClick={openAdd}>
           <Plus className="h-4 w-4 mr-2" /> Add Inspector
         </Button>
@@ -316,6 +312,18 @@ export default function Inspectors() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+export default function Inspectors() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Inspectors</h1>
+        <p className="text-muted-foreground mt-1">Manage inspectors and track progress</p>
+      </div>
+      <InspectorsContent />
     </div>
   );
 }
