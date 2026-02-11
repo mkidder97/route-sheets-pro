@@ -154,8 +154,14 @@ export function BuildingsContent() {
       }
     }
 
-    const successCount = results.filter((r) => r.success).length;
-    toast.success(`Geocoded ${successCount} of ${missing.length} addresses`);
+    const nominatimCount = results.filter((r) => r.success && r.source === "nominatim").length;
+    const centroidCount = results.filter((r) => r.success && r.source === "zip_centroid").length;
+    const failCount = results.filter((r) => !r.success).length;
+    const parts: string[] = [];
+    if (nominatimCount > 0) parts.push(`${nominatimCount} by address`);
+    if (centroidCount > 0) parts.push(`${centroidCount} by zip code`);
+    if (failCount > 0) parts.push(`${failCount} still missing`);
+    toast.success(`Geocoded: ${parts.join(", ")}`);
     setGeocoding(false);
     setGeoProgress(null);
     loadAll();
