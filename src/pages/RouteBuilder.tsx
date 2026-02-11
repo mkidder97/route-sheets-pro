@@ -64,9 +64,16 @@ export default function RouteBuilder() {
   const [selectedClient, setSelectedClient] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedInspector, setSelectedInspector] = useState("");
-  const [buildingsPerDay, setBuildingsPerDay] = useState(5);
-  const [useStartLocation, setUseStartLocation] = useState(false);
-  const [startLocation, setStartLocation] = useState("");
+  const [buildingsPerDay, setBuildingsPerDay] = useState(() => {
+    const saved = localStorage.getItem("roofroute_default_buildings_per_day");
+    return saved ? parseInt(saved, 10) : 5;
+  });
+  const [useStartLocation, setUseStartLocation] = useState(() => {
+    return !!localStorage.getItem("roofroute_default_start_location");
+  });
+  const [startLocation, setStartLocation] = useState(() => {
+    return localStorage.getItem("roofroute_default_start_location") ?? "";
+  });
 
   // Results
   const [clusters, setClusters] = useState<DayCluster[]>([]);
