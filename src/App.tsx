@@ -6,12 +6,12 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import UploadPage from "./pages/Upload";
-import Schedules from "./pages/Schedules";
+
 import RouteBuilder from "./pages/RouteBuilder";
 import Buildings from "./pages/Buildings";
 import Inspectors from "./pages/Inspectors";
 import Codes from "./pages/Codes";
-import FieldView from "./pages/FieldView";
+
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,12 +26,12 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/upload" element={<UploadPage />} />
-            <Route path="/schedules" element={<Schedules />} />
+            
             <Route path="/route-builder" element={<RouteBuilder />} />
             <Route path="/buildings" element={<Buildings />} />
             <Route path="/inspectors" element={<Inspectors />} />
             <Route path="/codes" element={<Codes />} />
-            <Route path="/field" element={<FieldView />} />
+            
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
