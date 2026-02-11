@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,17 +17,45 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation } from "lucide-react";
-
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation, Upload } from "lucide-react";
+import {
+  fuzzyMatchColumns,
+  mapRowToBuilding,
+  ParsedBuilding,
+  SYSTEM_FIELDS,
+} from "@/lib/spreadsheet-parser";
+import { FileDropZone } from "@/components/upload/FileDropZone";
+import { ColumnMapper } from "@/components/upload/ColumnMapper";
+import { DataReview } from "@/components/upload/DataReview";
 import { generateClusters, type DayCluster, type ClusterBuilding } from "@/lib/route-clustering";
 import type { Tables } from "@/integrations/supabase/types";
 
-type Step = "params" | "generating" | "review" | "saving" | "done";
+type Step = "upload" | "mapping" | "review_import" | "importing" | "params" | "generating" | "review" | "saving" | "done";
 
+const STEP_LABELS = ["Upload", "Map Columns", "Review Data", "Parameters", "Generate", "Review Routes", "Save"];
+const STEP_MAP: Record<Step, number> = {
+  upload: 0,
+  mapping: 1,
+  review_import: 2,
+  importing: 2,
+  params: 3,
+  generating: 4,
+  review: 5,
+  saving: 6,
+  done: 6,
+};
 
 export default function RouteBuilder() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>("params");
+  const [step, setStep] = useState<Step>("upload");
+
+  // Upload state
+  const [file, setFile] = useState<File | null>(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rows, setRows] = useState<Record<string, string>[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [parsedBuildings, setParsedBuildings] = useState<ParsedBuilding[]>([]);
+  const [importResult, setImportResult] = useState<{ buildings: number; clients: number; regions: number; inspectors: number } | null>(null);
 
   // Parameters
   const [clients, setClients] = useState<Tables<"clients">[]>([]);
@@ -73,7 +102,220 @@ export default function RouteBuilder() {
     });
   }, [selectedRegion]);
 
-  // Generate routes
+  // ── Upload handlers ──
+
+  const handleFile = useCallback(async (f: File) => {
+    setFile(f);
+    try {
+      const data = await f.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, {
+        defval: "",
+        raw: false,
+      });
+
+      if (jsonData.length === 0) {
+        toast.error("Spreadsheet appears to be empty");
+        return;
+      }
+
+      const detectedHeaders = Object.keys(jsonData[0]);
+      setHeaders(detectedHeaders);
+      setRows(jsonData);
+
+      const autoMapping = fuzzyMatchColumns(detectedHeaders);
+      setMapping(autoMapping);
+
+      setStep("mapping");
+      toast.success(`Parsed ${jsonData.length} rows with ${detectedHeaders.length} columns`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to parse file. Make sure it's a valid Excel or CSV file.");
+    }
+  }, []);
+
+  const handleConfirmMapping = useCallback(() => {
+    const missing = SYSTEM_FIELDS.filter((f) => f.required && !mapping[f.key]);
+    if (missing.length > 0) {
+      toast.error(`Please map required fields: ${missing.map((f) => f.label).join(", ")}`);
+      return;
+    }
+
+    const buildings = rows.map((row) => mapRowToBuilding(row, mapping));
+    setParsedBuildings(buildings);
+    setStep("review_import");
+  }, [rows, mapping]);
+
+  const handleImport = useCallback(async () => {
+    setStep("importing");
+
+    try {
+      const clientNames = [...new Set(parsedBuildings.map((b) => b.client_name).filter(Boolean))];
+      const regionNames = [...new Set(parsedBuildings.map((b) => b.market_region).filter(Boolean))];
+      const inspectorNames = [...new Set(parsedBuildings.map((b) => b.inspector_name).filter(Boolean))];
+
+      // Upsert clients
+      const clientMap: Record<string, string> = {};
+      for (const name of clientNames) {
+        const { data: existing } = await supabase.from("clients").select("id").eq("name", name).maybeSingle();
+        if (existing) {
+          clientMap[name] = existing.id;
+        } else {
+          const { data: created, error } = await supabase.from("clients").insert({ name }).select("id").single();
+          if (error) throw error;
+          clientMap[name] = created.id;
+        }
+      }
+
+      // Upsert regions
+      const regionMap: Record<string, string> = {};
+      for (const rName of regionNames) {
+        const building = parsedBuildings.find((b) => b.market_region === rName && b.client_name);
+        const clientId = building ? clientMap[building.client_name] : Object.values(clientMap)[0];
+        if (!clientId) continue;
+
+        const { data: existing } = await supabase
+          .from("regions")
+          .select("id")
+          .eq("name", rName)
+          .eq("client_id", clientId)
+          .maybeSingle();
+
+        if (existing) {
+          regionMap[rName] = existing.id;
+        } else {
+          const { data: created, error } = await supabase
+            .from("regions")
+            .insert({ name: rName, client_id: clientId })
+            .select("id")
+            .single();
+          if (error) throw error;
+          regionMap[rName] = created.id;
+        }
+      }
+
+      // Upsert inspectors
+      const inspectorMap: Record<string, string> = {};
+      for (const iName of inspectorNames) {
+        const { data: existing } = await supabase.from("inspectors").select("id").eq("name", iName).maybeSingle();
+        if (existing) {
+          inspectorMap[iName] = existing.id;
+        } else {
+          const building = parsedBuildings.find((b) => b.inspector_name === iName && b.market_region);
+          const regionId = building ? regionMap[building.market_region] : null;
+
+          const { data: created, error } = await supabase
+            .from("inspectors")
+            .insert({ name: iName, region_id: regionId })
+            .select("id")
+            .single();
+          if (error) throw error;
+          inspectorMap[iName] = created.id;
+        }
+      }
+
+      // Record the upload
+      const firstClientId = Object.values(clientMap)[0] ?? null;
+      const { data: uploadRecord, error: uploadError } = await supabase
+        .from("uploads")
+        .insert({
+          file_name: file?.name ?? "unknown",
+          row_count: parsedBuildings.length,
+          status: "complete",
+          client_id: firstClientId,
+        })
+        .select("id")
+        .single();
+      if (uploadError) throw uploadError;
+
+      // Insert buildings in batches
+      const BATCH_SIZE = 50;
+      let insertedCount = 0;
+
+      for (let i = 0; i < parsedBuildings.length; i += BATCH_SIZE) {
+        const batch = parsedBuildings.slice(i, i + BATCH_SIZE).map((b) => ({
+          upload_id: uploadRecord.id,
+          client_id: clientMap[b.client_name] ?? Object.values(clientMap)[0],
+          region_id: regionMap[b.market_region] ?? Object.values(regionMap)[0],
+          inspector_id: inspectorMap[b.inspector_name] ?? null,
+          roof_group: b.roof_group || null,
+          building_code: b.building_code || null,
+          stop_number: b.stop_number || null,
+          property_name: b.property_name || "Unknown",
+          address: b.address || "Unknown",
+          city: b.city || "Unknown",
+          state: b.state || "Unknown",
+          zip_code: b.zip_code || "Unknown",
+          scheduled_week: b.scheduled_week || null,
+          square_footage: b.square_footage,
+          roof_access_type: b.roof_access_type as any,
+          roof_access_description: b.roof_access_description || null,
+          access_location: b.access_location || null,
+          lock_gate_codes: b.lock_gate_codes || null,
+          special_notes: b.special_notes || null,
+          requires_advance_notice: b.requires_advance_notice,
+          requires_escort: b.requires_escort,
+          special_equipment: b.special_equipment.length > 0 ? b.special_equipment : null,
+          is_priority: b.is_priority,
+          property_manager_name: b.property_manager_name || null,
+          property_manager_phone: b.property_manager_phone || null,
+          property_manager_email: b.property_manager_email || null,
+        }));
+
+        const { error } = await supabase.from("buildings").insert(batch);
+        if (error) throw error;
+        insertedCount += batch.length;
+      }
+
+      setImportResult({
+        buildings: insertedCount,
+        clients: clientNames.length,
+        regions: regionNames.length,
+        inspectors: inspectorNames.length,
+      });
+
+      // Auto-advance to params with client/region pre-selected
+      const { data: freshClients } = await supabase.from("clients").select("*").eq("is_active", true);
+      if (freshClients) setClients(freshClients);
+
+      if (firstClientId) {
+        setSelectedClient(firstClientId);
+        const { data: freshRegions } = await supabase.from("regions").select("*").eq("client_id", firstClientId);
+        if (freshRegions) {
+          setRegions(freshRegions);
+          const firstRegionId = Object.values(regionMap)[0];
+          if (firstRegionId) setSelectedRegion(firstRegionId);
+        }
+      }
+
+      setStep("params");
+      toast.success("Import complete — now configure route parameters");
+    } catch (err: any) {
+      console.error("Import error:", err);
+      toast.error(`Import failed: ${err.message}`);
+      setStep("review_import");
+    }
+  }, [parsedBuildings, file]);
+
+  const handleReset = () => {
+    setStep("upload");
+    setFile(null);
+    setHeaders([]);
+    setRows([]);
+    setMapping({});
+    setParsedBuildings([]);
+    setImportResult(null);
+    setClusters([]);
+    setUnassigned([]);
+    setSelectedClient("");
+    setSelectedRegion("");
+    setSelectedInspector("");
+  };
+
+  // ── Route generation handlers ──
+
   const handleGenerate = useCallback(async () => {
     setStep("generating");
     try {
@@ -209,22 +451,21 @@ export default function RouteBuilder() {
   }, [clusters, selectedClient, selectedRegion, selectedInspector, buildingsPerDay, clients, regions, inspectors]);
 
   const totalBuildings = clusters.reduce((sum, c) => sum + c.buildings.length, 0);
+  const currentStepIdx = STEP_MAP[step] ?? 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Route Builder</h1>
         <p className="text-muted-foreground mt-1">
-          Generate optimized daily inspection routes
+          Upload data and generate optimized daily inspection routes
         </p>
       </div>
 
       {/* Progress */}
-      <div className="flex items-center gap-2">
-        {(["Parameters", "Generate", "Review & Adjust", "Save"] as const).map((label, i) => {
-          const stepOrder: Step[] = ["params", "generating", "review", "saving"];
-          const currentIdx = stepOrder.indexOf(step === "done" ? "saving" : step);
-          const isActive = i <= currentIdx;
+      <div className="flex items-center gap-2 flex-wrap">
+        {STEP_LABELS.map((label, i) => {
+          const isActive = i <= currentStepIdx;
           return (
             <div key={label} className="flex items-center gap-2">
               {i > 0 && <div className={`h-px w-8 ${isActive ? "bg-primary" : "bg-border"}`} />}
@@ -238,7 +479,7 @@ export default function RouteBuilder() {
                     isActive ? "bg-primary text-primary-foreground" : "bg-muted-foreground/30 text-muted-foreground"
                   }`}
                 >
-                  {step === "done" && i === 3 ? <Check className="h-3 w-3" /> : i + 1}
+                  {step === "done" && i === 6 ? <Check className="h-3 w-3" /> : i + 1}
                 </span>
                 {label}
               </div>
@@ -247,7 +488,77 @@ export default function RouteBuilder() {
         })}
       </div>
 
-      {/* Step 1: Parameters */}
+      {/* ── Upload Step ── */}
+      {step === "upload" && (
+        <Card className="bg-card border-border">
+          <CardContent className="p-8 space-y-6">
+            <FileDropZone onFile={handleFile} file={file} loading={false} />
+            <div className="text-center">
+              <Button variant="outline" onClick={() => setStep("params")}>
+                <ArrowRight className="h-4 w-4 mr-2" />
+                Skip — I already have buildings
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Mapping Step ── */}
+      {step === "mapping" && (
+        <>
+          <ColumnMapper
+            headers={headers}
+            mapping={mapping}
+            onMappingChange={(key, val) =>
+              setMapping((prev) => {
+                const next = { ...prev };
+                if (val) next[key] = val;
+                else delete next[key];
+                return next;
+              })
+            }
+            previewRows={rows.slice(0, 5)}
+          />
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={() => setStep("upload")}>
+              <ArrowLeft className="h-4 w-4 mr-2" /> Back
+            </Button>
+            <Button onClick={handleConfirmMapping}>
+              Review Data <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* ── Review Import Step ── */}
+      {step === "review_import" && (
+        <>
+          <DataReview buildings={parsedBuildings} />
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={() => setStep("mapping")}>
+              <ArrowLeft className="h-4 w-4 mr-2" /> Re-map Columns
+            </Button>
+            <Button onClick={handleImport}>
+              <Check className="h-4 w-4 mr-2" /> Import {parsedBuildings.length} Buildings
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* ── Importing ── */}
+      {step === "importing" && (
+        <Card className="bg-card border-border">
+          <CardContent className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
+            <p className="text-lg font-medium">Importing data…</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Creating clients, regions, inspectors, and buildings
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Parameters Step ── */}
       {step === "params" && (
         <Card className="bg-card border-border">
           <CardHeader>
@@ -342,14 +653,19 @@ export default function RouteBuilder() {
               )}
             </div>
 
-            <Button onClick={handleGenerate} disabled={!selectedRegion || (useStartLocation && !startLocation.trim())} className="mt-4">
-              Generate Routes <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+            <div className="flex justify-between mt-4">
+              <Button variant="outline" onClick={() => setStep("upload")}>
+                <ArrowLeft className="h-4 w-4 mr-2" /> Back to Upload
+              </Button>
+              <Button onClick={handleGenerate} disabled={!selectedRegion || (useStartLocation && !startLocation.trim())}>
+                Generate Routes <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Generating */}
+      {/* ── Generating ── */}
       {step === "generating" && (
         <Card className="bg-card border-border">
           <CardContent className="flex flex-col items-center justify-center py-20">
@@ -362,7 +678,7 @@ export default function RouteBuilder() {
         </Card>
       )}
 
-      {/* Step 2: Review */}
+      {/* ── Review Routes Step ── */}
       {step === "review" && (
         <>
           {unresolvedZips.length > 0 && (
@@ -454,7 +770,7 @@ export default function RouteBuilder() {
         </>
       )}
 
-      {/* Saving */}
+      {/* ── Saving ── */}
       {step === "saving" && (
         <Card className="bg-card border-border">
           <CardContent className="flex flex-col items-center justify-center py-20">
@@ -464,7 +780,7 @@ export default function RouteBuilder() {
         </Card>
       )}
 
-      {/* Done */}
+      {/* ── Done ── */}
       {step === "done" && (
         <Card className="bg-card border-border">
           <CardContent className="flex flex-col items-center justify-center py-16">
@@ -476,7 +792,7 @@ export default function RouteBuilder() {
               {totalBuildings} buildings organized into {clusters.filter((c) => c.buildings.length > 0).length} days
             </p>
             <div className="flex gap-3 mt-6">
-              <Button variant="outline" onClick={() => { setStep("params"); setClusters([]); setUnassigned([]); }}>
+              <Button variant="outline" onClick={handleReset}>
                 Create Another Plan
               </Button>
               <Button onClick={() => navigate("/")}>
@@ -486,7 +802,6 @@ export default function RouteBuilder() {
           </CardContent>
         </Card>
       )}
-
     </div>
   );
 }
