@@ -1,96 +1,29 @@
 
 
-# Rename Settings to Buildings, Create Real Settings Page, Clean Up Dead Routes
+# Wire My Routes to Settings Inspector Preference
 
-## 1. Rename current Settings page to DataManager
+## 1. Rewrite `src/pages/MyRoutes.tsx`
 
-**File: `src/pages/Settings.tsx` -> `src/pages/DataManager.tsx`** (create new, delete old)
+- Remove the Select dropdown and its imports
+- Initialize `selectedId` from `localStorage.getItem("roofroute_inspector_id")`
+- Add a `storage` event listener for cross-tab sync
+- Keep the inspector fetch (for name resolution in subtitle)
+- Add first-visit empty state with a "Go to Settings" button (using Card, Button, useNavigate)
+- Add a "Switch inspector" link below subtitle when inspector is set
+- Make heading responsive: `text-xl sm:text-2xl`
 
-- Create `src/pages/DataManager.tsx` with the same tabbed content
-- Change export name from `Settings` to `DataManager`
-- Change heading to "Buildings & Data"
-- Change subtitle to "Manage building data, access codes, and inspector assignments"
+## 2. Update Route Builder defaults (`src/pages/RouteBuilder.tsx`)
 
-## 2. Create new `src/pages/Settings.tsx`
+Three state initializers read from localStorage:
 
-A real preferences page with three Card sections, all persisted to localStorage:
+- `buildingsPerDay`: read `roofroute_default_buildings_per_day`, parse as int, fallback 5
+- `useStartLocation`: true if `roofroute_default_start_location` is non-empty
+- `startLocation`: read `roofroute_default_start_location`, fallback ""
 
-**Inspector Profile**
-- Select dropdown fetching inspectors from Supabase (same query as MyRoutes: `inspectors` table with `regions(name)` join)
-- Shows "Name -- Region" format
-- Stores selected ID in `roofroute_inspector_id`
-- Pre-selects saved value on mount
+Changes are on lines 67-69 only.
 
-**Route Generation Defaults**
-- Slider (3-8, step 1) for default buildings per day -> `roofroute_default_buildings_per_day`
-- Input for home base zip/address -> `roofroute_default_start_location`
+## 3. What stays untouched
 
-**PDF Export Preferences**
-- Input for company name -> `roofroute_company_name`
-- Switch for include access codes -> `roofroute_include_codes_in_pdf` (default: true)
-- Select for font size (Standard/Large) -> `roofroute_pdf_font_size` (default: "standard")
+- SavedRoutes.tsx, Settings.tsx, DataManager.tsx, AppSidebar.tsx, App.tsx
+- All Supabase tables
 
-Each change saves immediately to localStorage. A subtle toast fires once per page visit on first change.
-
-## 3. Update `src/components/AppSidebar.tsx`
-
-- Import `Database` from lucide-react (keep `Settings as SettingsIcon`)
-- Update `mainNav` to 4 items:
-  - My Routes (`/`, Route icon)
-  - Route Builder (`/route-builder`, Route icon)
-  - Buildings (`/buildings`, Database icon)
-  - Settings (`/settings`, SettingsIcon)
-
-## 4. Update `src/App.tsx`
-
-- Remove imports: `Dashboard`, `UploadPage`, `Codes`, `Inspectors`
-- Remove old `Settings` import, add `DataManager` and new `Settings`
-- Remove routes: `/dashboard`, `/upload`, `/codes`, `/inspectors`
-- Change `/settings` route to use new `Settings`
-- Add `/buildings` route using `DataManager`
-- Remove `/buildings` old route (was using `Buildings` wrapper -- now uses `DataManager`)
-
-Final routes:
-```text
-/              -> MyRoutes
-/my-routes     -> MyRoutes
-/route-builder -> RouteBuilder
-/buildings     -> DataManager
-/settings      -> Settings
-*              -> NotFound
-```
-
-## 5. Delete orphaned page files
-
-- Delete `src/pages/Dashboard.tsx`
-- Delete `src/pages/Upload.tsx`
-
-Keep `Buildings.tsx`, `Codes.tsx`, `Inspectors.tsx` (they export Content components used by DataManager).
-
-## Technical Details
-
-### localStorage helper pattern
-```typescript
-const getSetting = (key: string, fallback: string) =>
-  localStorage.getItem(key) ?? fallback;
-```
-
-### Inspector fetch (same as MyRoutes)
-```typescript
-const { data } = await supabase
-  .from("inspectors")
-  .select("id, name, regions(name)")
-  .order("name");
-```
-
-### Toast-once pattern
-```typescript
-const hasToasted = useRef(false);
-const saveSetting = (key: string, value: string) => {
-  localStorage.setItem(key, value);
-  if (!hasToasted.current) {
-    toast.success("Settings saved");
-    hasToasted.current = true;
-  }
-};
-```
