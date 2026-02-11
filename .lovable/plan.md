@@ -1,51 +1,49 @@
 
 
-# Create Settings Page with Tabbed Interface
+# Clean Up RouteBuilder and Sidebar
 
-## 1. Refactor existing pages to export content components
+## 1. Remove SavedRoutes from RouteBuilder (`src/pages/RouteBuilder.tsx`)
 
-### Buildings.tsx
-- Extract everything below the page header into a new named export `BuildingsContent`
-- All state, hooks, and logic stay inside `BuildingsContent`
-- Default export `Buildings` becomes a wrapper: renders the header (`<h1>`, subtitle) then `<BuildingsContent />`
+- Delete line 39: `import SavedRoutes from "@/components/SavedRoutes";`
+- Delete lines 524-525: the `<SavedRoutes />` render and its comment
 
-### Codes.tsx
-- Same pattern: extract into a named export `CodesContent`
-- Default export `Codes` renders header + `<CodesContent />`
+## 2. Update "done" step buttons (lines 512-519)
 
-### Inspectors.tsx
-- Same pattern: extract into a named export `InspectorsContent`
-- Default export `Inspectors` renders header + `<InspectorsContent />`
+Replace both buttons with:
+- "Create Another Plan" -- same reset logic, goes to `"params"`
+- "View in My Routes" -- calls `navigate("/")` (useNavigate already imported on line 2)
 
-## 2. Create `src/pages/Settings.tsx` (new file)
+## 3. Remove unused imports
 
-- Page heading: "Settings" with subtitle "Manage buildings, codes, and inspectors"
-- Uses `Tabs` / `TabsList` / `TabsTrigger` / `TabsContent` from `@/components/ui/tabs`
-- Three tabs: "Buildings", "Codes", "Inspectors"
-- Each tab panel renders the corresponding Content component
-- Default tab: "buildings"
-- Tab re-fetch on switch is accepted (no `forceMount`) -- these are low-frequency admin tools and keeping it simple is the right tradeoff
+**Line 10**: Delete `import { Progress } from "@/components/ui/progress";`
 
-## 3. Update `src/App.tsx`
+**Line 11**: Delete `import { Textarea } from "@/components/ui/textarea";`
 
-- Import `Settings` from `./pages/Settings`
-- Add route: `<Route path="/settings" element={<Settings />} />`
-- Keep existing `/buildings`, `/codes`, `/inspectors` routes (cleaned up in a later prompt)
+**Lines 19-25**: Delete the entire Dialog import block
 
-## 4. Update `src/components/AppSidebar.tsx`
+**Lines 26-35**: Delete the entire AlertDialog import block
 
-- Import `Settings as SettingsIcon` from `lucide-react` (gear icon -- aliased to avoid collision with the page component name)
-- Remove `Users` and `KeyRound` from the lucide import (confirmed only used in `manageNav`)
-- Keep `Building2` (used in logo)
-- Delete the `manageNav` array entirely
-- Delete the second `SidebarGroup` (the "Manage" group, lines 72-94)
-- Add Settings to `mainNav` as the last item: `{ title: "Settings", url: "/settings", icon: SettingsIcon }`
-- Final `mainNav` order: **My Routes, Upload, Route Builder, Settings** (explicit ordering, no reordering)
-- Single sidebar group labeled "Navigation"
+**Line 38**: Change from:
+```
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation, ChevronDown, ChevronUp, Eye } from "lucide-react";
+```
+To:
+```
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation } from "lucide-react";
+```
+
+## 4. Remove unused constants (lines 45-59)
+
+Delete `STATUS_CONFIG` and `STATUS_CYCLE` -- only referenced by the now-removed SavedRoutes inline rendering.
+
+## 5. Remove Upload from sidebar (`src/components/AppSidebar.tsx`)
+
+- Line 1: Remove `Upload` from the lucide-react import
+- Line 18: Delete the Upload entry from `mainNav`
+- Final `mainNav` order: My Routes, Route Builder, Settings (3 items)
 
 ## What stays untouched
-- Individual page files continue to work at their own routes
-- Upload stays in the nav as an intermediate state before the merge prompt
-- All database tables, SavedRoutes, RouteBuilder, MyRoutes
-- `ChevronLeft` stays in the import (out of scope)
+- `src/pages/Upload.tsx` file and `/upload` route in App.tsx
+- `src/components/SavedRoutes.tsx` (still used by MyRoutes)
+- All route generation logic, BuildingRow component, drag-and-drop
 
