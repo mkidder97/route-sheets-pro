@@ -42,7 +42,9 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
+  MapPin,
 } from "lucide-react";
+import { geocodeBuildingsBatch } from "@/lib/geocoder";
 import type { Tables } from "@/integrations/supabase/types";
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
@@ -84,6 +86,10 @@ export function BuildingsContent() {
   const [noteDialog, setNoteDialog] = useState<{ id: string; status: string } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Geocoding state
+  const [geocoding, setGeocoding] = useState(false);
+  const [geoProgress, setGeoProgress] = useState<{ completed: number; total: number } | null>(null);
 
   useEffect(() => {
     loadAll();
@@ -127,6 +133,33 @@ export function BuildingsContent() {
   const completedCount = filtered.filter((b) => b.inspection_status === "complete").length;
   const priorityTotal = filtered.filter((b) => b.is_priority).length;
   const priorityComplete = filtered.filter((b) => b.is_priority && b.inspection_status === "complete").length;
+  const missingCoordsCount = buildings.filter((b) => b.latitude === null).length;
+
+  const handleGeocodeMissing = async () => {
+    const missing = buildings.filter((b) => b.latitude === null);
+    if (missing.length === 0) return;
+    setGeocoding(true);
+    setGeoProgress({ completed: 0, total: missing.length });
+
+    const results = await geocodeBuildingsBatch(missing, (completed, total) => {
+      setGeoProgress({ completed, total });
+    });
+
+    for (const result of results) {
+      if (result.success) {
+        await supabase
+          .from("buildings")
+          .update({ latitude: result.latitude, longitude: result.longitude })
+          .eq("id", result.buildingId);
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    toast.success(`Geocoded ${successCount} of ${missing.length} addresses`);
+    setGeocoding(false);
+    setGeoProgress(null);
+    loadAll();
+  };
 
   const handleStatusClick = (id: string, currentStatus: string) => {
     const next = STATUS_CYCLE[currentStatus] || "complete";
@@ -193,6 +226,31 @@ export function BuildingsContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Geocode Missing */}
+      {missingCoordsCount > 0 && (
+        <Card className="bg-card border-border">
+          <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-warning" />
+              <span className="text-sm">
+                <strong>{missingCoordsCount}</strong> building{missingCoordsCount !== 1 ? "s" : ""} missing coordinates
+              </span>
+            </div>
+            {geocoding && geoProgress ? (
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">{geoProgress.completed}/{geoProgress.total}</span>
+                <Progress value={(geoProgress.completed / geoProgress.total) * 100} className="w-32" />
+              </div>
+            ) : (
+              <Button size="sm" onClick={handleGeocodeMissing} disabled={geocoding}>
+                <MapPin className="h-4 w-4 mr-1" /> Geocode Now
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">

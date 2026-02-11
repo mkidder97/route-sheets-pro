@@ -28,6 +28,8 @@ import { FileDropZone } from "@/components/upload/FileDropZone";
 import { ColumnMapper } from "@/components/upload/ColumnMapper";
 import { DataReview } from "@/components/upload/DataReview";
 import { generateClusters, type DayCluster, type ClusterBuilding } from "@/lib/route-clustering";
+import { geocodeBuildingsBatch } from "@/lib/geocoder";
+import { Progress } from "@/components/ui/progress";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Step = "upload" | "mapping" | "review_import" | "importing" | "params" | "generating" | "review" | "saving" | "done";
@@ -74,6 +76,9 @@ export default function RouteBuilder() {
   const [startLocation, setStartLocation] = useState(() => {
     return localStorage.getItem("roofroute_default_start_location") ?? "";
   });
+
+  // Geocoding progress
+  const [geoProgress, setGeoProgress] = useState<{ completed: number; total: number } | null>(null);
 
   // Results
   const [clusters, setClusters] = useState<DayCluster[]>([]);
@@ -283,6 +288,31 @@ export default function RouteBuilder() {
         inspectors: inspectorNames.length,
       });
 
+      // Geocode the imported buildings
+      const { data: inserted } = await supabase
+        .from("buildings")
+        .select("id, address, city, state, zip_code")
+        .eq("upload_id", uploadRecord.id);
+
+      if (inserted && inserted.length > 0) {
+        const geocodeResults = await geocodeBuildingsBatch(inserted, (completed, total) => {
+          setGeoProgress({ completed, total });
+        });
+
+        for (const result of geocodeResults) {
+          if (result.success) {
+            await supabase
+              .from("buildings")
+              .update({ latitude: result.latitude, longitude: result.longitude })
+              .eq("id", result.buildingId);
+          }
+        }
+
+        const successCount = geocodeResults.filter((r) => r.success).length;
+        toast.success(`Geocoded ${successCount} of ${inserted.length} addresses`);
+        setGeoProgress(null);
+      }
+
       // Auto-advance to params with client/region pre-selected
       const { data: freshClients } = await supabase.from("clients").select("*").eq("is_active", true);
       if (freshClients) setClients(freshClients);
@@ -314,6 +344,7 @@ export default function RouteBuilder() {
     setMapping({});
     setParsedBuildings([]);
     setImportResult(null);
+    setGeoProgress(null);
     setClusters([]);
     setUnassigned([]);
     setSelectedClient("");
@@ -557,10 +588,24 @@ export default function RouteBuilder() {
         <Card className="bg-card border-border">
           <CardContent className="flex flex-col items-center justify-center py-20">
             <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
-            <p className="text-lg font-medium">Importing data…</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Creating clients, regions, inspectors, and buildings
-            </p>
+            {geoProgress ? (
+              <>
+                <p className="text-lg font-medium">Geocoding addresses…</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {geoProgress.completed} of {geoProgress.total} addresses
+                </p>
+                <div className="w-64 mt-4">
+                  <Progress value={(geoProgress.completed / geoProgress.total) * 100} />
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-medium">Importing data…</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Creating clients, regions, inspectors, and buildings
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
