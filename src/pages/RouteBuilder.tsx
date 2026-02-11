@@ -7,8 +7,6 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -16,47 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation, ChevronDown, ChevronUp, Eye } from "lucide-react";
-import SavedRoutes from "@/components/SavedRoutes";
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, AlertTriangle, GripVertical, X, Navigation } from "lucide-react";
+
 import { generateClusters, type DayCluster, type ClusterBuilding } from "@/lib/route-clustering";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Step = "params" | "generating" | "review" | "saving" | "done";
 
-const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
-  pending: { label: "Pending", badge: "bg-muted text-muted-foreground" },
-  in_progress: { label: "In Progress", badge: "bg-info/20 text-info" },
-  complete: { label: "Complete", badge: "bg-success/20 text-success" },
-  skipped: { label: "Skipped", badge: "bg-warning/20 text-warning" },
-  needs_revisit: { label: "Needs Revisit", badge: "bg-destructive/20 text-destructive" },
-};
-
-const STATUS_CYCLE: Record<string, string> = {
-  pending: "complete",
-  complete: "skipped",
-  skipped: "needs_revisit",
-  needs_revisit: "pending",
-  in_progress: "complete",
-};
 
 export default function RouteBuilder() {
   const navigate = useNavigate();
@@ -513,16 +479,14 @@ export default function RouteBuilder() {
               <Button variant="outline" onClick={() => { setStep("params"); setClusters([]); setUnassigned([]); }}>
                 Create Another Plan
               </Button>
-              <Button onClick={() => { setStep("params"); setClusters([]); setUnassigned([]); }}>
-                View Saved Routes ↓
+              <Button onClick={() => navigate("/")}>
+                View in My Routes →
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* ── SAVED ROUTES ── */}
-      <SavedRoutes />
     </div>
   );
 }
