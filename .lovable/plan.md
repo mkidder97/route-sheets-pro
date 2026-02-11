@@ -1,41 +1,24 @@
 
 
-# Fix Geocoding for Missing 185 Buildings
+# Fix Last Missing Building Coordinate
 
 ## Problem
 
-The geocoder ran correctly through all 424 buildings but Nominatim (the free OpenStreetMap API) simply returned no results for 185 addresses. This is not a rate-limit issue — it's an accuracy issue with commercial/industrial addresses containing abbreviations like "Ind Blvd", "Bldg.", "Pkwy", etc.
+One building remains without coordinates: **1706 Blairs Bridge Rd, Lithia Springs, GA 30112**. Both Nominatim and the zip centroid fallback failed because zip code 30112 is not in the bundled dataset.
 
-- Georgia: 59% failure rate (158/267)
-- Texas: 17% failure rate (27/157)
+## Solution
 
-## Solution: Multi-Strategy Geocoder with Zip Centroid Fallback
-
-Update `src/lib/geocoder.ts` to try three strategies before giving up:
-
-1. **Full address query** (current behavior) -- try the complete address string
-2. **Simplified address** -- strip unit/building numbers, expand abbreviations (Blvd, Pkwy, Rd, Dr, etc.), retry
-3. **Zip code centroid fallback** -- use the bundled `us-zip-centroids.json` dataset (already in the project) to place the building at the center of its zip code. Not street-level accurate, but good enough for route clustering and proximity sorting.
+Manually update this single record in the database with its known coordinates (33.7748, -84.6580) via a SQL migration.
 
 ### Technical Details
 
-**Changes to `src/lib/geocoder.ts`:**
+Run a single SQL update:
 
-- Update `geocodeAddress` to attempt the simplified address as a second try when the full address returns no results
-- Add an `addressSimplify` helper that:
-  - Removes parenthetical text, "Bldg" / "Building" / "Suite" / "Ste" suffixes
-  - Expands common abbreviations (Rd, Dr, Blvd, Pkwy, Ln, Ct, Ave, NW/NE/SW/SE)
-- Add a new exported function `geocodeBuildingsBatchWithFallback` (or update the existing batch function) that:
-  - First tries Nominatim (with the retry logic above)
-  - For any remaining failures, loads zip centroids via `loadZipCentroids()` from `geo-utils.ts` and fills in approximate coordinates
-- The result will include a `source` field: `"nominatim"` or `"zip_centroid"` so the caller knows precision level
+```sql
+UPDATE buildings
+SET latitude = 33.7748, longitude = -84.6580
+WHERE id = 'a2554298-afd7-489f-891a-a5a3221761d7';
+```
 
-**Changes to `src/pages/Buildings.tsx`:**
+This is a one-line database fix. No code changes needed.
 
-- Update `handleGeocodeMissing` to use the improved batch function
-- Toast message will show breakdown: "Geocoded X by address, Y by zip code, Z still missing"
-
-**What stays untouched:**
-- Route Builder import flow (already calls `geocodeBuildingsBatch` which will get the improvements)
-- Database schema, geo-utils.ts, route-clustering.ts
-- All other pages and components
