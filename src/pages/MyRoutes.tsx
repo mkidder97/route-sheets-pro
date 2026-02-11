@@ -1,12 +1,8 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import SavedRoutes from "@/components/SavedRoutes";
 
 interface InspectorOption {
@@ -16,9 +12,21 @@ interface InspectorOption {
 }
 
 export default function MyRoutes() {
+  const navigate = useNavigate();
   const [inspectors, setInspectors] = useState<InspectorOption[]>([]);
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => {
+    return localStorage.getItem("roofroute_inspector_id") ?? undefined;
+  });
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "roofroute_inspector_id") {
+        setSelectedId(e.newValue ?? undefined);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   useEffect(() => {
     const fetchInspectors = async () => {
@@ -32,7 +40,6 @@ export default function MyRoutes() {
         regionName: i.regions?.name ?? null,
       }));
       setInspectors(options);
-      setLoading(false);
     };
     fetchInspectors();
   }, []);
@@ -45,36 +52,33 @@ export default function MyRoutes() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">My Routes</h1>
+        <h1 className="text-xl sm:text-2xl font-bold">My Routes</h1>
         <p className="text-muted-foreground text-sm">{subtitle}</p>
+        {selected && (
+          <button
+            onClick={() => navigate("/settings")}
+            className="text-xs text-muted-foreground hover:text-primary underline"
+          >
+            Switch inspector
+          </button>
+        )}
       </div>
 
-      <div className="max-w-sm">
-        <Select
-          value={selectedId}
-          onValueChange={setSelectedId}
-          disabled={loading}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={loading ? "Loading…" : "Select your name"} />
-          </SelectTrigger>
-          <SelectContent>
-            {inspectors.map((i) => (
-              <SelectItem key={i.id} value={i.id}>
-                {i.name}{i.regionName ? ` — ${i.regionName}` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {selectedId ? (
-        <SavedRoutes inspectorId={selectedId} />
-      ) : (
-        <p className="text-muted-foreground text-sm py-8 text-center">
-          Select your name above to view your routes.
-        </p>
+      {!selectedId && (
+        <Card className="mx-4 sm:mx-0">
+          <CardContent className="flex flex-col items-center py-12 text-center space-y-4">
+            <h2 className="text-lg font-semibold">Welcome to RoofRoute</h2>
+            <p className="text-muted-foreground text-sm max-w-md">
+              Set your name in Settings to see your daily inspection routes here.
+            </p>
+            <Button onClick={() => navigate("/settings")}>
+              Go to Settings
+            </Button>
+          </CardContent>
+        </Card>
       )}
+
+      {selectedId && <SavedRoutes inspectorId={selectedId} />}
     </div>
   );
 }
