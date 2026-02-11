@@ -1,60 +1,41 @@
 
 
-# Add "Sort by Location" to SavedRoutes
+# Fix Geocoding for Missing 185 Buildings
 
-## 1. Update `SavedDayBuilding` interface and query
+## Problem
 
-- Add `latitude: number | null` and `longitude: number | null` to the `SavedDayBuilding` interface (line ~51)
-- Update the buildings select string in `toggleExpand` (line ~168) to include `latitude, longitude`
-- Map them in the result builder (lines ~180-201)
+The geocoder ran correctly through all 424 buildings but Nominatim (the free OpenStreetMap API) simply returned no results for 185 addresses. This is not a rate-limit issue — it's an accuracy issue with commercial/industrial addresses containing abbreviations like "Ind Blvd", "Bldg.", "Pkwy", etc.
 
-## 2. Add new state variables
+- Georgia: 59% failure rate (158/267)
+- Texas: 17% failure rate (27/157)
 
-After existing state declarations (around line 101):
+## Solution: Multi-Strategy Geocoder with Zip Centroid Fallback
 
-- `locationSort: boolean` (default false)
-- `userLocation: { lat: number; lng: number } | null` (default null)
-- `locationLoading: boolean` (default false)
-- `priorityFirst: boolean` (default true)
+Update `src/lib/geocoder.ts` to try three strategies before giving up:
 
-## 3. Add `handleLocationSort` function
+1. **Full address query** (current behavior) -- try the complete address string
+2. **Simplified address** -- strip unit/building numbers, expand abbreviations (Blvd, Pkwy, Rd, Dr, etc.), retry
+3. **Zip code centroid fallback** -- use the bundled `us-zip-centroids.json` dataset (already in the project) to place the building at the center of its zip code. Not street-level accurate, but good enough for route clustering and proximity sorting.
 
-Uses `navigator.geolocation.getCurrentPosition` with high accuracy, 10s timeout, 60s max age. On success sets `userLocation` and `locationSort = true`. On error shows a toast.
+### Technical Details
 
-## 4. Compute `sortedByDistance` with `useMemo`
+**Changes to `src/lib/geocoder.ts`:**
 
-- Import `useMemo` from React and `haversineDistance` from `@/lib/geo-utils`
-- Import `Crosshair` (or `LocateFixed`) from lucide-react for the button icon
-- Flatten all buildings from all days, annotate with `dayNumber` and `dayId`
-- Calculate distance from `userLocation` using `haversineDistance`
-- If `priorityFirst`, sort priorities first then non-priorities, each sub-group by distance
-- Buildings without coords get `distanceMiles = null` and sort to the bottom (999 fallback)
+- Update `geocodeAddress` to attempt the simplified address as a second try when the full address returns no results
+- Add an `addressSimplify` helper that:
+  - Removes parenthetical text, "Bldg" / "Building" / "Suite" / "Ste" suffixes
+  - Expands common abbreviations (Rd, Dr, Blvd, Pkwy, Ln, Ct, Ave, NW/NE/SW/SE)
+- Add a new exported function `geocodeBuildingsBatchWithFallback` (or update the existing batch function) that:
+  - First tries Nominatim (with the retry logic above)
+  - For any remaining failures, loads zip centroids via `loadZipCentroids()` from `geo-utils.ts` and fills in approximate coordinates
+- The result will include a `source` field: `"nominatim"` or `"zip_centroid"` so the caller knows precision level
 
-## 5. Add UI controls between progress bar and day picker
+**Changes to `src/pages/Buildings.tsx`:**
 
-Inside the expanded plan area (after the hide-complete toggle, before day picker chips):
+- Update `handleGeocodeMissing` to use the improved batch function
+- Toast message will show breakdown: "Geocoded X by address, Y by zip code, Z still missing"
 
-- "Sort by Location" button with Crosshair icon (shows loading spinner when getting GPS)
-- When active: shows a "Priority first" checkbox toggle and a "Back to Days" button
-- When `locationSort` is true, hide the day picker chips and day summary bar
-
-## 6. Render proximity-sorted view
-
-When `locationSort && userLocation` is true, render the flat sorted list instead of the day view:
-
-- Each building card shows: property name, priority badge, status badge, distance (miles or feet), address, "Day X" label, access codes, sq ft
-- Distance display: less than 1 mile shows feet, otherwise shows miles with 1 decimal; null coords show "No coords" in muted text
-- Expanded card content is identical to the existing day view (access details, equipment, notes, property manager, navigate button, status buttons)
-- Respects the "Hide completed" toggle
-
-## 7. Reset location sort state
-
-- Reset `locationSort`, `userLocation`, `locationLoading` when collapsing a plan (in `toggleExpand`)
-- Reset when switching plans
-
-## What stays untouched
-
-- Day view, day picker, day summary (hidden when location sort active, shown otherwise)
-- Status update logic, export, delete, progress bar
+**What stays untouched:**
+- Route Builder import flow (already calls `geocodeBuildingsBatch` which will get the improvements)
+- Database schema, geo-utils.ts, route-clustering.ts
 - All other pages and components
-
