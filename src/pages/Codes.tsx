@@ -25,7 +25,7 @@ interface FilterOption {
   name: string;
 }
 
-export default function Codes() {
+export function CodesContent() {
   const [entries, setEntries] = useState<CodeEntry[]>([]);
   const [filtered, setFiltered] = useState<CodeEntry[]>([]);
   const [clients, setClients] = useState<FilterOption[]>([]);
@@ -110,13 +110,6 @@ export default function Codes() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Lockbox Codes</h1>
-        <p className="text-muted-foreground mt-1">
-          Quick reference for lockbox codes by client and region
-        </p>
-      </div>
-
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -180,6 +173,20 @@ export default function Codes() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+export default function Codes() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Lockbox Codes</h1>
+        <p className="text-muted-foreground mt-1">
+          Quick reference for lockbox codes by client and region
+        </p>
+      </div>
+      <CodesContent />
     </div>
   );
 }

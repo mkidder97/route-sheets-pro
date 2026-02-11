@@ -1,4 +1,4 @@
-import { Upload, Building2, Users, ChevronLeft, Route, KeyRound } from "lucide-react";
+import { Upload, Building2, ChevronLeft, Route, Settings as SettingsIcon } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -17,12 +17,7 @@ const mainNav = [
   { title: "My Routes", url: "/", icon: Route },
   { title: "Upload", url: "/upload", icon: Upload },
   { title: "Route Builder", url: "/route-builder", icon: Route },
-];
-
-const manageNav = [
-  { title: "Buildings", url: "/buildings", icon: Building2 },
-  { title: "Codes", url: "/codes", icon: KeyRound },
-  { title: "Inspectors", url: "/inspectors", icon: Users },
+  { title: "Settings", url: "/settings", icon: SettingsIcon },
 ];
 
 export function AppSidebar() {
@@ -69,29 +64,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-sidebar-foreground/60">
-            Manage
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {manageNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild tooltip={item.title}>
-                    <NavLink
-                      to={item.url}
-                      className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                      activeClassName="bg-sidebar-accent text-primary font-medium"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
 
       <div className="mt-auto border-t border-sidebar-border p-2">

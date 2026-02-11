@@ -12,6 +12,7 @@ import RouteBuilder from "./pages/RouteBuilder";
 import Buildings from "./pages/Buildings";
 import Inspectors from "./pages/Inspectors";
 import Codes from "./pages/Codes";
+import Settings from "./pages/Settings";
 
 import NotFound from "./pages/NotFound";
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/buildings" element={<Buildings />} />
             <Route path="/inspectors" element={<Inspectors />} />
             <Route path="/codes" element={<Codes />} />
+            <Route path="/settings" element={<Settings />} />
             
             <Route path="*" element={<NotFound />} />
           </Routes>
