@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -12,12 +12,35 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+
+interface InspectorOption {
+  id: string;
+  name: string;
+}
 
 const getSetting = (key: string, fallback: string) =>
   localStorage.getItem(key) ?? fallback;
 
 export default function Settings() {
   const hasToasted = useRef(false);
+
+  // Inspector profile
+  const [inspectors, setInspectors] = useState<InspectorOption[]>([]);
+  const [selectedInspector, setSelectedInspector] = useState(
+    getSetting("roofroute_inspector_id", "")
+  );
+
+  useEffect(() => {
+    const fetchInspectors = async () => {
+      const { data } = await supabase
+        .from("inspectors")
+        .select("id, name")
+        .order("name");
+      setInspectors((data as InspectorOption[]) || []);
+    };
+    fetchInspectors();
+  }, []);
 
   // Route Defaults
   const [buildingsPerDay, setBuildingsPerDay] = useState(
@@ -52,6 +75,38 @@ export default function Settings() {
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-1">Customize your experience</p>
       </div>
+
+      {/* Inspector Profile */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Inspector Profile</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label>Who are you?</Label>
+          <Select
+            value={selectedInspector}
+            onValueChange={(val) => {
+              setSelectedInspector(val);
+              localStorage.setItem("roofroute_inspector_id", val);
+              toast.success("Inspector profile saved");
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select your name" />
+            </SelectTrigger>
+            <SelectContent>
+              {inspectors.map((i) => (
+                <SelectItem key={i.id} value={i.id}>
+                  {i.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            This filters My Routes to show only your assigned inspections.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Route Generation Defaults */}
       <Card>
