@@ -489,14 +489,92 @@ export type Database = {
           },
         ]
       }
+      user_profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          inspector_id: string | null
+          is_active: boolean | null
+          notification_preferences: Json | null
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name: string
+          id: string
+          inspector_id?: string | null
+          is_active?: boolean | null
+          notification_preferences?: Json | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          inspector_id?: string | null
+          is_active?: boolean | null
+          notification_preferences?: Json | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "inspectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["ops_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["ops_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["ops_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_ops_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["ops_role"]
+      }
+      has_ops_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["ops_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      ops_role:
+        | "admin"
+        | "office_manager"
+        | "inspector"
+        | "engineer"
+        | "construction_manager"
       region_status: "not_started" | "in_progress" | "complete"
       roof_access_type:
         | "roof_hatch"
@@ -631,6 +709,13 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ops_role: [
+        "admin",
+        "office_manager",
+        "inspector",
+        "engineer",
+        "construction_manager",
+      ],
       region_status: ["not_started", "in_progress", "complete"],
       roof_access_type: [
         "roof_hatch",
