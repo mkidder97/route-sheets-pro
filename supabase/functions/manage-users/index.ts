@@ -6,6 +6,21 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const VALID_ROLES = [
+  "admin",
+  "office_manager",
+  "inspector",
+  "engineer",
+  "construction_manager",
+];
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -18,15 +33,12 @@ Deno.serve(async (req) => {
 
     const { action, ...payload } = await req.json();
 
-    // --- check-setup: anyone can call, returns whether bootstrap is needed ---
+    // --- check-setup: anyone can call ---
     if (action === "check-setup") {
       const { count } = await supabaseAdmin
         .from("user_roles")
         .select("*", { count: "exact", head: true });
-      return new Response(
-        JSON.stringify({ needsSetup: (count ?? 0) === 0 }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json({ needsSetup: (count ?? 0) === 0 });
     }
 
     // --- bootstrap: create first admin (only when 0 users exist) ---
@@ -35,18 +47,12 @@ Deno.serve(async (req) => {
         .from("user_roles")
         .select("*", { count: "exact", head: true });
       if ((count ?? 0) > 0) {
-        return new Response(
-          JSON.stringify({ error: "System already has users. Bootstrap is disabled." }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        return json({ error: "System already has users. Bootstrap is disabled." }, 403);
       }
 
       const { email, password, full_name } = payload;
       if (!email || !password || !full_name) {
-        return new Response(
-          JSON.stringify({ error: "email, password, and full_name are required." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        return json({ error: "email, password, and full_name are required." }, 400);
       }
 
       const { data: newUser, error: createErr } =
@@ -56,31 +62,18 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: { full_name },
         });
-      if (createErr) {
-        return new Response(
-          JSON.stringify({ error: createErr.message }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+      if (createErr) return json({ error: createErr.message }, 400);
 
       await supabaseAdmin
         .from("user_roles")
         .insert({ user_id: newUser.user.id, role: "admin" });
 
-      return new Response(
-        JSON.stringify({ success: true, user_id: newUser.user.id }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json({ success: true, user_id: newUser.user.id });
     }
 
-    // --- All other actions require admin auth ---
+    // --- Auth required for all other actions ---
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Not authenticated" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    if (!authHeader) return json({ error: "Not authenticated" }, 401);
 
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -89,28 +82,24 @@ Deno.serve(async (req) => {
     const {
       data: { user },
     } = await userClient.auth.getUser();
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: "Not authenticated" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    if (!user) return json({ error: "Not authenticated" }, 401);
 
-    // Check admin role using service role client to bypass RLS
     const { data: roleRow } = await supabaseAdmin
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
       .single();
-    if (roleRow?.role !== "admin") {
-      return new Response(
-        JSON.stringify({ error: "Admin access required" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
 
-    // --- list: return all profiles with roles ---
+    const callerRole = roleRow?.role;
+    const isAdmin = callerRole === "admin";
+    const isOfficeManager = callerRole === "office_manager";
+
+    // --- list: admin or office_manager ---
     if (action === "list") {
+      if (!isAdmin && !isOfficeManager) {
+        return json({ error: "Admin or office manager access required" }, 403);
+      }
+
       const { data: profiles } = await supabaseAdmin
         .from("user_profiles")
         .select("id, email, full_name, phone, is_active, inspector_id, created_at");
@@ -119,42 +108,27 @@ Deno.serve(async (req) => {
         .select("user_id, role");
 
       const roleMap: Record<string, string> = {};
-      for (const r of roles ?? []) {
-        roleMap[r.user_id] = r.role;
-      }
+      for (const r of roles ?? []) roleMap[r.user_id] = r.role;
 
-      const users = (profiles ?? []).map((p) => ({
+      const users = (profiles ?? []).map((p: any) => ({
         ...p,
         role: roleMap[p.id] || "unknown",
       }));
 
-      return new Response(JSON.stringify({ users }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ users });
     }
 
-    // --- create: create a new user with role ---
-    if (action === "create") {
-      const { email, password, full_name, role, inspector_id } = payload;
-      if (!email || !password || !full_name || !role) {
-        return new Response(
-          JSON.stringify({ error: "email, password, full_name, and role are required." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+    // --- All remaining actions: admin only ---
+    if (!isAdmin) return json({ error: "Admin access required" }, 403);
 
-      const validRoles = [
-        "admin",
-        "office_manager",
-        "inspector",
-        "engineer",
-        "construction_manager",
-      ];
-      if (!validRoles.includes(role)) {
-        return new Response(
-          JSON.stringify({ error: `Invalid role. Must be one of: ${validRoles.join(", ")}` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+    // --- create ---
+    if (action === "create") {
+      const { email, password, full_name, role, inspector_id, phone } = payload;
+      if (!email || !password || !full_name || !role) {
+        return json({ error: "email, password, full_name, and role are required." }, 400);
+      }
+      if (!VALID_ROLES.includes(role)) {
+        return json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` }, 400);
       }
 
       const { data: newUser, error: createErr } =
@@ -164,60 +138,79 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: { full_name },
         });
-      if (createErr) {
-        return new Response(
-          JSON.stringify({ error: createErr.message }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+      if (createErr) return json({ error: createErr.message }, 400);
 
       await supabaseAdmin
         .from("user_roles")
         .insert({ user_id: newUser.user.id, role });
 
-      // If inspector_id provided, update the profile
-      if (inspector_id) {
+      const profileUpdates: Record<string, unknown> = {};
+      if (inspector_id) profileUpdates.inspector_id = inspector_id;
+      if (phone) profileUpdates.phone = phone;
+      if (Object.keys(profileUpdates).length > 0) {
         await supabaseAdmin
           .from("user_profiles")
-          .update({ inspector_id })
+          .update(profileUpdates)
           .eq("id", newUser.user.id);
       }
 
-      return new Response(
-        JSON.stringify({ success: true, user_id: newUser.user.id }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json({ success: true, user_id: newUser.user.id });
     }
 
-    // --- deactivate: set is_active = false ---
+    // --- update ---
+    if (action === "update") {
+      const { user_id, full_name, phone, role, inspector_id } = payload;
+      if (!user_id) return json({ error: "user_id is required." }, 400);
+
+      const profileUpdates: Record<string, unknown> = {};
+      if (full_name !== undefined) profileUpdates.full_name = full_name;
+      if (phone !== undefined) profileUpdates.phone = phone;
+      if (inspector_id !== undefined) profileUpdates.inspector_id = inspector_id || null;
+
+      if (Object.keys(profileUpdates).length > 0) {
+        await supabaseAdmin
+          .from("user_profiles")
+          .update(profileUpdates)
+          .eq("id", user_id);
+      }
+
+      if (role && VALID_ROLES.includes(role)) {
+        await supabaseAdmin
+          .from("user_roles")
+          .upsert({ user_id, role }, { onConflict: "user_id" });
+      }
+
+      return json({ success: true });
+    }
+
+    // --- activate ---
+    if (action === "activate") {
+      const { user_id } = payload;
+      if (!user_id) return json({ error: "user_id is required." }, 400);
+
+      await supabaseAdmin
+        .from("user_profiles")
+        .update({ is_active: true })
+        .eq("id", user_id);
+
+      return json({ success: true });
+    }
+
+    // --- deactivate ---
     if (action === "deactivate") {
       const { user_id } = payload;
-      if (!user_id) {
-        return new Response(
-          JSON.stringify({ error: "user_id is required." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+      if (!user_id) return json({ error: "user_id is required." }, 400);
 
       await supabaseAdmin
         .from("user_profiles")
         .update({ is_active: false })
         .eq("id", user_id);
 
-      return new Response(
-        JSON.stringify({ success: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json({ success: true });
     }
 
-    return new Response(
-      JSON.stringify({ error: `Unknown action: ${action}` }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({ error: err.message }, 500);
   }
 });

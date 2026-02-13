@@ -45,7 +45,11 @@ const App = () => (
               <Route path="jobs" element={<OpsJobBoard />} />
               <Route path="scheduling" element={<OpsScheduling />} />
               <Route path="time-mileage" element={<OpsTimeMileage />} />
-              <Route path="settings" element={<OpsSettings />} />
+              <Route path="settings" element={
+                <ProtectedRoute allowedRoles={["admin", "office_manager"]}>
+                  <OpsSettings />
+                </ProtectedRoute>
+              } />
             </Route>
 
             <Route path="*" element={<NotFound />} />
