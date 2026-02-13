@@ -1,6 +1,7 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { OpsSidebar } from "@/components/ops/OpsSidebar";
+import { NotificationBell } from "@/components/ops/NotificationBell";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { LayoutDashboard, Kanban, Calendar, Clock } from "lucide-react";
 
@@ -20,10 +21,18 @@ export default function OpsLayout() {
         <div className="flex min-h-screen w-full">
           <OpsSidebar />
           <div className="flex-1 flex flex-col overflow-auto">
+            {/* Desktop top bar */}
+            <header className="sticky top-0 z-20 hidden lg:flex items-center justify-end border-b border-border bg-background px-6 h-12">
+              <NotificationBell />
+            </header>
+
             {/* Mobile top bar */}
             <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background px-4 h-12 lg:hidden">
               <SidebarTrigger className="text-foreground" />
               <span className="text-sm font-bold text-foreground">RoofOps</span>
+              <div className="ml-auto">
+                <NotificationBell />
+              </div>
             </header>
 
             <main className="flex-1 overflow-auto pb-16 lg:pb-0">
