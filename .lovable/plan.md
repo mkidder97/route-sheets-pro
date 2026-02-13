@@ -1,88 +1,73 @@
 
 
-# Admin User Management for RoofOps
+# Enhanced RoofOps Settings Page
 
-## The Problem
+## Overview
 
-There's no sign-up form (by design), so there's no way to create the first user or any subsequent users. Admins need to manage employee accounts from within the app.
+The OpsSettings page already has a basic user management table and add-user dialog. This plan enhances it to match the full requirements: role filtering, linked inspector column, edit dialog, toggle active/inactive, phone field, and route-level role restriction. The edge function also needs new actions for `update` and `activate`.
 
-## Solution: Two-Part Approach
+## Changes
 
-### Part 1: Backend Function to Create Users
+### 1. Route restriction in `src/App.tsx`
 
-Create a backend function (`manage-users`) that uses the admin API to create auth accounts and assign roles. It will support:
+Wrap the `/ops/settings` route with its own `ProtectedRoute` using `allowedRoles`:
 
-- **Create user**: Takes email, password, full_name, role, and optional inspector_id. Creates the auth user, then inserts a role into `user_roles`.
-- **List users**: Returns all user profiles with their roles (admin-only).
-- **Deactivate user**: Sets `is_active = false` on a profile (admin-only).
+```text
+<Route path="settings" element={
+  <ProtectedRoute allowedRoles={["admin", "office_manager"]}>
+    <OpsSettings />
+  </ProtectedRoute>
+} />
+```
 
-The function verifies the calling user is an admin before executing any action. For the **first-ever call** (when zero users exist in `user_roles`), it allows creating the initial admin without authentication -- this is a one-time bootstrap that only works when the system is completely empty.
+### 2. Edge function updates (`supabase/functions/manage-users/index.ts`)
 
-### Part 2: Admin UI in OpsSettings
+Add two new actions (admin-only):
 
-Build a "User Management" tab in the OpsSettings page (visible only to admins) with:
+- **`update`**: Accepts `user_id`, and optional `full_name`, `phone`, `role`, `inspector_id`. Updates `user_profiles` fields and, if role changed, upserts `user_roles`.
+- **`activate`**: Sets `is_active = true` on a user profile (inverse of existing `deactivate`).
 
-- A table listing all users: name, email, role, active status
-- An "Add User" button that opens a dialog/form with fields for:
-  - Full Name
-  - Email
-  - Temporary Password
-  - Role (dropdown: Admin, Office Manager, Inspector, Engineer, Construction Manager)
-  - Inspector Link (optional dropdown, populated from the inspectors table)
-- A deactivate button on each user row
+Also update the `list` action to include `inspector_id` in the response (already does) and join inspector names from the `inspectors` table for display.
 
-### Part 3: Bootstrap Flow
+### 3. Full rewrite of `src/pages/ops/OpsSettings.tsx`
 
-When you first visit `/ops/login`, you'll see the normal login form. Since no accounts exist yet, we add a small "Set up first admin" link below the sign-in button that only appears when zero users exist. It shows a simple form (name, email, password) and calls the backend function's bootstrap endpoint. Once the first admin is created, this link disappears permanently.
+**User table enhancements:**
+- Add "Linked Inspector" column showing inspector name (resolved from the inspectors list)
+- Add role filter dropdown above the table
+- Sort users by name alphabetically
+- Clicking a row opens an Edit User dialog
+- Replace the deactivate-only icon with a toggle Switch for is_active
 
-## New Files
+**Add User dialog enhancements:**
+- Add optional Phone input field
+- Only show "Link to Inspector" dropdown when selected role is `inspector`
+- Pass phone to the edge function
 
-### `supabase/functions/manage-users/index.ts`
+**New Edit User dialog:**
+- Pre-populated fields for Full Name, Phone, Role, Inspector Link
+- Email shown as read-only text (not editable)
+- On submit, calls edge function with action `update`
+- Inspector dropdown only shown when role is `inspector`
 
-Backend function with three actions:
+### 4. Allow office_manager access to user list
 
-| Action | Auth Required | Description |
-|--------|--------------|-------------|
-| `bootstrap` | None (only works when 0 users in user_roles) | Creates first admin account |
-| `create` | Admin only | Creates a new user with role |
-| `list` | Admin only | Returns all profiles + roles |
-| `deactivate` | Admin only | Sets is_active = false |
+Update the edge function's admin check for `list` action to also allow `office_manager` role. The `create`, `update`, `deactivate`, `activate` actions remain admin-only.
 
-For `create` and `bootstrap`:
-1. Call `supabase.auth.admin.createUser()` with email, password, and `email_confirm: true` (so the user can log in immediately)
-2. Insert a row into `user_roles` with the chosen role
-3. The existing `handle_new_user` trigger auto-creates the `user_profiles` row
-
-### `src/pages/ops/OpsSettings.tsx` (rewrite)
-
-Transforms the stub into a tabbed settings page:
-- **User Management tab** (admin-only): user table + add user dialog
-- **General tab**: placeholder for future settings
-
-### `src/pages/ops/OpsLogin.tsx` (modify)
-
-Add a "First-time setup" link that:
-- Only shows when a quick check confirms zero users exist (calls `manage-users` with action `check-setup`)
-- Opens inline fields for name, email, password
-- Calls the bootstrap endpoint
-- On success, logs the user in automatically
-
-## Modified Files
+## Files Modified
 
 | File | Change |
 |------|--------|
-| `supabase/functions/manage-users/index.ts` | New -- backend function for user CRUD |
-| `src/pages/ops/OpsSettings.tsx` | Rewrite -- add user management UI |
-| `src/pages/ops/OpsLogin.tsx` | Add bootstrap setup flow for first admin |
+| `src/App.tsx` | Wrap settings route with `allowedRoles` |
+| `supabase/functions/manage-users/index.ts` | Add `update` and `activate` actions; allow office_manager for `list` |
+| `src/pages/ops/OpsSettings.tsx` | Full rewrite with filtering, sorting, edit dialog, toggle, phone field |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| New files | 1 backend function |
-| Modified files | 2 (OpsSettings, OpsLogin) |
-| Admin API | `supabase.auth.admin.createUser()` via service role key |
-| Bootstrap security | Only works when `user_roles` table has zero rows |
-| Email confirmation | Skipped (`email_confirm: true`) since admins create accounts |
-| Role assignment | Inserted into `user_roles` table, not on profile |
+| Modified files | 3 |
+| New files | 0 |
+| Edge function actions added | 2 (`update`, `activate`) |
+| Role restriction | `allowedRoles={["admin", "office_manager"]}` on the route |
+| UI components used | Table, Dialog, Select, Switch, Badge, Input, Button (all existing) |
 
