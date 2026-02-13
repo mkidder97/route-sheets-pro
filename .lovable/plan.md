@@ -1,88 +1,127 @@
 
 
-# Enhanced New Campaign Dialog + Campaign Detail Page
+# Campaign Snapshot Model + Multi-Type Inspections
 
 ## Overview
 
-Two additions to the Job Board:
-1. Improve the "New Campaign" dialog to auto-fill the name and auto-populate building counts on creation
-2. Add a new Campaign Detail page at `/ops/jobs/campaign/:id` with a full buildings table, filters, expandable rows, and editable status
+Switch campaigns from live-querying the buildings table to a snapshot model using a `campaign_buildings` junction table. Add `inspection_type` support (Annual, Due Diligence, Survey, Storm). Each campaign creation snapshots the current buildings into the junction table for independent per-campaign tracking.
 
-## 1. Update `src/pages/ops/OpsJobBoard.tsx` -- Enhanced New Campaign Dialog
+## 1. Database Migration
 
-### Changes to the dialog:
-- Reorder fields: Client first, then Region, then Campaign Name
-- Auto-fill Campaign Name as "[Client Name] -- [Region Name]" when both are selected (user can still edit)
-- Remove the Status dropdown from the dialog (new campaigns always start as "active")
-- On submit: after inserting the campaign, query `buildings` where `client_id` and `region_id` match. Count total rows and rows where `inspection_status = 'complete'`. Update the new campaign record with those counts.
+### A) Add `inspection_type` to `inspection_campaigns`
+- New column: `inspection_type text NOT NULL DEFAULT 'annual'`
+- CHECK constraint: values must be one of `annual`, `due_diligence`, `survey`, `storm`
 
-### Changes to the card grid:
-- Wrap each card in a click handler that navigates to `/ops/jobs/campaign/${c.id}` using `useNavigate`
+### B) Create `campaign_buildings` junction table
 
-## 2. New file: `src/pages/ops/OpsCampaignDetail.tsx`
+| Column | Type | Details |
+|--------|------|---------|
+| id | uuid | PK, gen_random_uuid() |
+| campaign_id | uuid | NOT NULL, FK to inspection_campaigns ON DELETE CASCADE |
+| building_id | uuid | NOT NULL, FK to buildings ON DELETE CASCADE |
+| inspection_status | text | NOT NULL, default 'pending', CHECK constraint |
+| inspector_id | uuid | FK to inspectors |
+| scheduled_week | text | Nullable |
+| is_priority | boolean | NOT NULL, default false |
+| completion_date | date | Nullable |
+| inspector_notes | text | Nullable |
+| photo_url | text | Nullable |
+| created_at | timestamptz | NOT NULL, default now() |
 
-### Header section:
-- Back button (arrow left, navigates to `/ops/jobs`)
-- Campaign name (large heading)
-- Client -- Region subtitle
-- Status badge as an editable `Select` dropdown for admin/office_manager; read-only badge for others
-- Date range text
-- Progress bar with "X of Y buildings complete (Z%)"
+- UNIQUE(campaign_id, building_id) to prevent duplicates
+- Indexes on campaign_id, building_id, and inspection_status for query performance
 
-### Filter bar above table:
-- Status dropdown (pending, in_progress, complete, skipped, needs_revisit)
-- Inspector dropdown (from inspectors table)
-- Search input (filters by property_name or address)
-- "Priority Only" toggle switch
+### C) RLS on `campaign_buildings`
+- Enable RLS
+- Single permissive policy: authenticated users (`auth.uid() IS NOT NULL`) can perform ALL operations
 
-### Buildings table:
-- Fetches buildings where `client_id` and `region_id` match the campaign
-- Joins inspectors table via `inspector_id` for inspector name
-- Columns: Stop #, Property Name, Address (city, state), Status (color-coded badge), Inspector, Scheduled Week, Flags (star/bell/person icons)
-- Sortable by clicking column headers (client-side sort)
-- Clickable rows expand inline to show full detail panel
+## 2. Update `src/pages/ops/OpsJobBoard.tsx`
 
-### Expanded row detail:
-Shows all building fields in a structured layout:
-- Full address (address, city, state, zip_code)
-- Building code, roof group, square footage
-- Roof access: type, description, access location, lock/gate codes
-- Property manager: name, phone, email
-- Special notes, special equipment list
-- Inspector notes, completion date
-- Photo URL (as clickable link if present)
+### Tab and type changes
+- Rename tab from "Annuals" to "Inspections"
+- Add `inspection_type` to the Campaign type definition
+- Add an Inspection Type filter dropdown in the filter bar (All Types, Annual, Due Diligence, Survey, Storm)
+- Wire filter to `fetchCampaigns` query
 
-### Status badge colors:
-- pending = gray
-- in_progress = blue
-- complete = green
-- skipped = red
-- needs_revisit = orange
+### New Campaign dialog updates
+- Add Inspection Type dropdown as the first field (default: Annual)
+- Update description text to "Create a new inspection campaign."
+- Add `inspection_type` to form state and insert payload
 
-## 3. Update `src/App.tsx` -- Add route
+### Updated `handleCreate` logic
+1. Insert campaign with `inspection_type`
+2. Fetch all buildings matching `client_id + region_id` (select `id, is_priority`)
+3. Build an array of `campaign_buildings` rows from the results
+4. Bulk insert into `campaign_buildings` -- if more than 500 rows, chunk into batches of 500 to avoid timeout/truncation issues with the Supabase client
+5. Set `total_buildings` to the count of inserted rows, `completed_buildings` to 0
+6. Error handling: if the bulk insert fails, show a warning toast but still keep the campaign (it can be re-synced later)
 
-Add a new child route under `/ops`:
+### Campaign card updates
+- Add a type badge below the status badge on each card
+- Color scheme: annual = blue outline, due_diligence = purple outline, survey = teal outline, storm = red outline
+- Use Badge variant="outline" with className for colored text/border
+
+## 3. Update `src/pages/ops/OpsCampaignDetail.tsx`
+
+### Type and header updates
+- Add `inspection_type` to Campaign type
+- Show type badge in header next to the status (same color scheme as cards)
+
+### Replace buildings query
+Current query fetches from `buildings` table directly. Replace with:
+
 ```text
-<Route path="jobs/campaign/:id" element={<OpsCampaignDetail />} />
+supabase.from("campaign_buildings").select(`
+  id, inspection_status, inspector_id, scheduled_week,
+  is_priority, completion_date, inspector_notes, photo_url,
+  building:buildings (
+    id, stop_number, property_name, address, city, state, zip_code,
+    building_code, roof_group, square_footage,
+    roof_access_type, roof_access_description, access_location, lock_gate_codes,
+    property_manager_name, property_manager_phone, property_manager_email,
+    special_notes, special_equipment, requires_advance_notice, requires_escort
+  ),
+  inspector:inspectors ( name )
+`).eq("campaign_id", id).order("created_at")
 ```
+
+### Update Building type
+- Top-level fields: `id`, `inspection_status`, `inspector_id`, `scheduled_week`, `is_priority`, `completion_date`, `inspector_notes`, `photo_url`, `inspector`
+- Nested `building` object: all master building fields (property_name, address, city, state, etc.)
+
+### Update all JSX references
+- `b.property_name` becomes `b.building.property_name`
+- `b.address` becomes `b.building.address`
+- `b.city` becomes `b.building.city`
+- `b.inspectors?.name` becomes `b.inspector?.name`
+- `b.requires_advance_notice` becomes `b.building.requires_advance_notice`
+- `b.requires_escort` becomes `b.building.requires_escort`
+- Campaign-level fields (`inspection_status`, `is_priority`, `inspector_notes`, `completion_date`, `photo_url`) stay at top level
+
+### Update filter and sort logic
+- Search references `b.building.property_name` and `b.building.address`
+- Sort: building-level keys (stop_number, property_name, city) access via `item.building[key]`; campaign-level keys (inspection_status, scheduled_week) access directly
+
+### Update BuildingDetail component
+- Building-level fields (address, codes, roof access, PM info, equipment): access via `b.building.*`
+- Campaign-level fields (inspector_notes, completion_date, photo_url): access via `b.*`
 
 ## Files
 
 | File | Action |
 |------|--------|
-| `src/pages/ops/OpsJobBoard.tsx` | Edit -- enhanced dialog with auto-name and building count sync, card click navigation |
-| `src/pages/ops/OpsCampaignDetail.tsx` | New -- full campaign detail page with buildings table |
-| `src/App.tsx` | Edit -- add campaign detail route |
+| New migration SQL | Add inspection_type column + create campaign_buildings table with RLS |
+| `src/pages/ops/OpsJobBoard.tsx` | Add type filter, type in dialog, snapshot creation with chunked bulk insert, type badge on cards |
+| `src/pages/ops/OpsCampaignDetail.tsx` | Switch to campaign_buildings query, update types, all JSX references, filters, sort |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| Files modified | 2 |
-| Files created | 1 |
-| No database changes | Building counts populated via client-side queries on campaign creation |
-| UI components | Table, Collapsible, Select, Switch, Badge, Progress, Input, Button |
-| Data joins | buildings -> inspectors (for inspector name column) |
-| Navigation | useNavigate for card click and back button |
-| Role check | useAuth().role for conditional edit controls |
+| Bulk insert safety | Chunk into batches of 500 to prevent timeout on large building sets |
+| Error resilience | Campaign is kept even if bulk insert partially fails; user sees warning |
+| No changes to | App.tsx (route already exists) |
+| Junction table | campaign_buildings with per-campaign status snapshot |
+| Inspection types | annual, due_diligence, survey, storm |
+| RLS | Permissive ALL for authenticated users on campaign_buildings |
 
