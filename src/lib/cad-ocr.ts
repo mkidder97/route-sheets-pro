@@ -211,11 +211,19 @@ export function matchBuilding(
   const normalizedText = normalize(rawText);
   const fields = titleBlockFields ?? extractTitleBlockFields(rawText);
 
+  const COMMON_WORDS = new Set([
+    "center", "park", "building", "plaza", "tower", "suite",
+    "north", "south", "east", "west", "drive", "road", "street",
+    "avenue", "lane", "court", "place", "way", "unit",
+  ]);
+
   let bestMatch: BuildingCandidate | null = null;
   let bestScore = 0;
+  let bestHadStructured = false;
 
   for (const b of buildings) {
     let score = 0;
+    let hadStructuredMatch = false;
     const normName = normalize(b.property_name);
     const normAddr = normalize(b.address);
 
@@ -226,15 +234,17 @@ export function matchBuilding(
       const normProject = normalize(fields.project);
       if (normName.length > 3 && normProject.includes(normName)) {
         score += 12;
+        hadStructuredMatch = true;
       } else if (normProject.length > 3 && normName.includes(normProject)) {
         score += 12;
+        hadStructuredMatch = true;
       } else {
         // Word overlap between project and property name
         const projWords = normProject.split(" ").filter((w) => w.length > 2);
         const nameWords = normName.split(" ").filter((w) => w.length > 2);
         const overlap = projWords.filter((pw) => nameWords.some((nw) => nw === pw || pw.includes(nw) || nw.includes(pw)));
-        if (overlap.length >= 2) score += 8;
-        else if (overlap.length === 1) score += 4;
+        if (overlap.length >= 2) { score += 8; hadStructuredMatch = true; }
+        else if (overlap.length === 1) { score += 4; hadStructuredMatch = true; }
       }
     }
 
@@ -243,13 +253,13 @@ export function matchBuilding(
       const normExtAddr = normalize(fields.address);
       if (normExtAddr.includes(normAddr) || normAddr.includes(normExtAddr)) {
         score += 10;
+        hadStructuredMatch = true;
       } else {
-        // Partial: compare street number + some words
         const extParts = normExtAddr.split(" ");
         const bldParts = normAddr.split(" ");
         if (extParts[0] && bldParts[0] && extParts[0] === bldParts[0]) {
           score += 4;
-          // Check street name overlap
+          hadStructuredMatch = true;
           const extStreet = extParts.slice(1);
           const bldStreet = bldParts.slice(1);
           const streetOverlap = extStreet.filter((w) => w.length > 2 && bldStreet.includes(w));
@@ -263,19 +273,24 @@ export function matchBuilding(
       const normCust = normalize(fields.customer);
       if (normName.includes(normCust) || normCust.includes(normName)) {
         score += 5;
+        hadStructuredMatch = true;
       }
     }
 
-    // ── Fallback: raw text word matching (existing logic) ──
+    // ── Fallback: raw text word matching ──
 
     if (score < 6) {
-      // Property name in raw text
+      // Full property name in raw text
       if (normName.length > 3 && normalizedText.includes(normName)) {
         score += 10;
       } else {
-        const nameWords = normName.split(" ").filter((w) => w.length > 3);
+        // Filter out common words, require 4+ chars
+        const nameWords = normName.split(" ").filter((w) => w.length > 3 && !COMMON_WORDS.has(w));
         const wordMatches = nameWords.filter((w) => normalizedText.includes(w));
-        score += wordMatches.length * 3;
+        // Only award points if 2+ significant words match
+        if (wordMatches.length >= 2) {
+          score += wordMatches.length * 2;
+        }
       }
 
       // Address in raw text
@@ -294,10 +309,12 @@ export function matchBuilding(
     if (score > bestScore) {
       bestScore = score;
       bestMatch = b;
+      bestHadStructured = hadStructuredMatch;
     }
   }
 
-  if (bestScore >= 8) return { building: bestMatch, confidence: "high" };
+  // High confidence requires structured field contribution
+  if (bestScore >= 8 && bestHadStructured) return { building: bestMatch, confidence: "high" };
   if (bestScore >= 3) return { building: bestMatch, confidence: "low" };
   return { building: null, confidence: "none" };
 }
