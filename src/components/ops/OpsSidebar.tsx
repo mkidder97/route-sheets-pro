@@ -26,9 +26,8 @@ const opsNav = [
 const roleLabels: Record<string, string> = {
   admin: "Admin",
   office_manager: "Office Manager",
-  inspector: "Inspector",
+  field_ops: "Field Ops",
   engineer: "Engineer",
-  construction_manager: "Construction Mgr",
 };
 
 export function OpsSidebar() {

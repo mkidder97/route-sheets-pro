@@ -38,9 +38,8 @@ interface Inspector {
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
   { value: "office_manager", label: "Office Manager" },
-  { value: "inspector", label: "Inspector" },
+  { value: "field_ops", label: "Field Ops" },
   { value: "engineer", label: "Engineer" },
-  { value: "construction_manager", label: "Construction Manager" },
 ];
 
 const roleLabelMap: Record<string, string> = Object.fromEntries(
@@ -261,7 +260,7 @@ function AddUserDialog({ open, onOpenChange, inspectors, onCreated }: {
               </SelectContent>
             </Select>
           </div>
-          {selectedRole === "inspector" && (
+{(selectedRole === "field_ops" || selectedRole === "admin") && (
             <div className="space-y-2">
               <Label>Link to Inspector</Label>
               <Select value={inspectorId} onValueChange={setInspectorId}>
@@ -311,7 +310,7 @@ function EditUserDialog({ user, onOpenChange, inspectors, onSaved }: {
     const res = await invokeManageUsers({
       action: "update", user_id: user.id, full_name: fullName,
       phone: phone || null, role: selectedRole,
-      inspector_id: selectedRole === "inspector" ? inspectorId || null : null,
+      inspector_id: (selectedRole === "field_ops" || selectedRole === "admin") ? inspectorId || null : null,
     });
     if (res.error || res.data?.error) toast.error(res.data?.error || "Failed to update user");
     else { toast.success("User updated"); onSaved(); }
@@ -343,7 +342,7 @@ function EditUserDialog({ user, onOpenChange, inspectors, onSaved }: {
               </SelectContent>
             </Select>
           </div>
-          {selectedRole === "inspector" && (
+{(selectedRole === "field_ops" || selectedRole === "admin") && (
             <div className="space-y-2">
               <Label>Link to Inspector</Label>
               <Select value={inspectorId} onValueChange={setInspectorId}>

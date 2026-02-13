@@ -9,9 +9,8 @@ const corsHeaders = {
 const VALID_ROLES = [
   "admin",
   "office_manager",
-  "inspector",
+  "field_ops",
   "engineer",
-  "construction_manager",
 ];
 
 function json(body: unknown, status = 200) {
