@@ -38,6 +38,7 @@ type Campaign = {
   start_date: string;
   end_date: string;
   status: string;
+  inspection_type: string;
   total_buildings: number;
   completed_buildings: number;
   notes: string | null;
@@ -62,6 +63,20 @@ const STATUS_COLORS: Record<string, string> = {
   on_hold: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
 };
 
+const INSPECTION_TYPE_OPTIONS = [
+  { value: "annual", label: "Annual" },
+  { value: "due_diligence", label: "Due Diligence" },
+  { value: "survey", label: "Survey" },
+  { value: "storm", label: "Storm" },
+] as const;
+
+const TYPE_BADGE_COLORS: Record<string, string> = {
+  annual: "border-blue-500 text-blue-700 dark:text-blue-300",
+  due_diligence: "border-purple-500 text-purple-700 dark:text-purple-300",
+  survey: "border-teal-500 text-teal-700 dark:text-teal-300",
+  storm: "border-red-500 text-red-700 dark:text-red-300",
+};
+
 export default function OpsJobBoard() {
   const { role } = useAuth();
   const navigate = useNavigate();
@@ -76,12 +91,14 @@ export default function OpsJobBoard() {
   const [filterClient, setFilterClient] = useState<string>("all");
   const [filterRegion, setFilterRegion] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterType, setFilterType] = useState<string>("all");
 
   // Dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [form, setForm] = useState({
+    inspection_type: "annual",
     name: "",
     client_id: "",
     region_id: "",
@@ -125,7 +142,7 @@ export default function OpsJobBoard() {
 
   useEffect(() => {
     fetchCampaigns();
-  }, [filterClient, filterRegion, filterStatus]);
+  }, [filterClient, filterRegion, filterStatus, filterType]);
 
   useEffect(() => {
     setFilterRegion("all");
@@ -158,6 +175,7 @@ export default function OpsJobBoard() {
     if (filterClient && filterClient !== "all") query = query.eq("client_id", filterClient);
     if (filterRegion && filterRegion !== "all") query = query.eq("region_id", filterRegion);
     if (filterStatus && filterStatus !== "all") query = query.eq("status", filterStatus);
+    if (filterType && filterType !== "all") query = query.eq("inspection_type", filterType);
 
     const { data, error } = await query;
     if (error) {
@@ -185,8 +203,9 @@ export default function OpsJobBoard() {
         start_date: form.start_date,
         end_date: form.end_date,
         status: "active",
+        inspection_type: form.inspection_type,
         notes: form.notes || null,
-      })
+      } as any)
       .select("id")
       .single();
 
@@ -196,40 +215,69 @@ export default function OpsJobBoard() {
       return;
     }
 
-    // Query building counts and update campaign
-    const [totalRes, completedRes] = await Promise.all([
-      supabase
-        .from("buildings")
-        .select("*", { count: "exact", head: true })
-        .eq("client_id", form.client_id)
-        .eq("region_id", form.region_id),
-      supabase
-        .from("buildings")
-        .select("*", { count: "exact", head: true })
-        .eq("client_id", form.client_id)
-        .eq("region_id", form.region_id)
-        .eq("inspection_status", "complete"),
-    ]);
+    // Fetch buildings for this client/region to snapshot into campaign_buildings
+    const { data: buildingsData, error: buildingsError } = await supabase
+      .from("buildings")
+      .select("id, is_priority")
+      .eq("client_id", form.client_id)
+      .eq("region_id", form.region_id);
 
+    if (buildingsError || !buildingsData) {
+      toast.warning("Campaign created but failed to load buildings for snapshot.");
+      setSaving(false);
+      setDialogOpen(false);
+      setForm({ inspection_type: "annual", name: "", client_id: "", region_id: "", start_date: "", end_date: "", notes: "" });
+      setNameManuallyEdited(false);
+      fetchCampaigns();
+      return;
+    }
+
+    // Build campaign_buildings rows
+    const rows = buildingsData.map((b) => ({
+      campaign_id: inserted.id,
+      building_id: b.id,
+      is_priority: b.is_priority ?? false,
+    }));
+
+    // Chunked bulk insert (batches of 500)
+    const BATCH_SIZE = 500;
+    let insertFailed = false;
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const batch = rows.slice(i, i + BATCH_SIZE);
+      const { error: batchError } = await supabase
+        .from("campaign_buildings" as any)
+        .insert(batch as any);
+      if (batchError) {
+        console.error("Batch insert error:", batchError);
+        insertFailed = true;
+        break;
+      }
+    }
+
+    if (insertFailed) {
+      toast.warning("Campaign created but some buildings may not have been added. You can re-sync later.");
+    }
+
+    // Update campaign with total count
     await supabase
       .from("inspection_campaigns")
       .update({
-        total_buildings: totalRes.count ?? 0,
-        completed_buildings: completedRes.count ?? 0,
+        total_buildings: rows.length,
+        completed_buildings: 0,
       })
       .eq("id", inserted.id);
 
     setSaving(false);
     toast.success("Campaign created");
     setDialogOpen(false);
-    setForm({ name: "", client_id: "", region_id: "", start_date: "", end_date: "", notes: "" });
+    setForm({ inspection_type: "annual", name: "", client_id: "", region_id: "", start_date: "", end_date: "", notes: "" });
     setNameManuallyEdited(false);
     fetchCampaigns();
   }
 
   function resetDialog() {
     setDialogOpen(false);
-    setForm({ name: "", client_id: "", region_id: "", start_date: "", end_date: "", notes: "" });
+    setForm({ inspection_type: "annual", name: "", client_id: "", region_id: "", start_date: "", end_date: "", notes: "" });
     setNameManuallyEdited(false);
   }
 
@@ -249,13 +297,13 @@ export default function OpsJobBoard() {
         )}
       </div>
 
-      <Tabs defaultValue="annuals">
+      <Tabs defaultValue="inspections">
         <TabsList>
-          <TabsTrigger value="annuals">Annuals</TabsTrigger>
+          <TabsTrigger value="inspections">Inspections</TabsTrigger>
           <TabsTrigger value="cm">CM Jobs</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="annuals" className="space-y-4">
+        <TabsContent value="inspections" className="space-y-4">
           <div className="flex flex-wrap gap-3">
             <Select value={filterClient} onValueChange={setFilterClient}>
               <SelectTrigger className="w-[180px]">
@@ -292,6 +340,18 @@ export default function OpsJobBoard() {
                 ))}
               </SelectContent>
             </Select>
+
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {INSPECTION_TYPE_OPTIONS.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {loading ? (
@@ -316,9 +376,14 @@ export default function OpsJobBoard() {
                         <CardTitle className="text-base leading-tight">
                           {c.name}
                         </CardTitle>
-                        <Badge variant="secondary" className={STATUS_COLORS[c.status] ?? ""}>
-                          {STATUS_OPTIONS.find((s) => s.value === c.status)?.label ?? c.status}
-                        </Badge>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="secondary" className={STATUS_COLORS[c.status] ?? ""}>
+                            {STATUS_OPTIONS.find((s) => s.value === c.status)?.label ?? c.status}
+                          </Badge>
+                          <Badge variant="outline" className={TYPE_BADGE_COLORS[c.inspection_type] ?? ""}>
+                            {INSPECTION_TYPE_OPTIONS.find((t) => t.value === c.inspection_type)?.label ?? c.inspection_type}
+                          </Badge>
+                        </div>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {c.clients?.name} — {c.regions?.name}
@@ -354,9 +419,23 @@ export default function OpsJobBoard() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Campaign</DialogTitle>
-            <DialogDescription>Create a new annual inspection campaign.</DialogDescription>
+            <DialogDescription>Create a new inspection campaign.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Inspection Type *</Label>
+              <Select
+                value={form.inspection_type}
+                onValueChange={(v) => setForm((prev) => ({ ...prev, inspection_type: v }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                <SelectContent>
+                  {INSPECTION_TYPE_OPTIONS.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Client *</Label>
