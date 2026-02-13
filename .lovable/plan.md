@@ -1,73 +1,72 @@
 
 
-# Enhanced RoofOps Settings Page
+# Simplify Roles: Remove "Inspector" and "Construction Manager", Add "Field Ops"
 
-## Overview
+## What's Changing
 
-The OpsSettings page already has a basic user management table and add-user dialog. This plan enhances it to match the full requirements: role filtering, linked inspector column, edit dialog, toggle active/inactive, phone field, and route-level role restriction. The edge function also needs new actions for `update` and `activate`.
+You want two things:
+1. **Merge "Inspector" and "Construction Manager" into a single role** -- since employees often do both. We'll call it **"field_ops"** (displayed as "Field Ops").
+2. **No dual-role support needed** -- since you're the admin and also do field work, we'll just keep you as "admin" and let admins always have the option to link to an inspector profile. That way you don't need two roles on one account.
 
 ## Changes
 
-### 1. Route restriction in `src/App.tsx`
+### 1. Database migration
 
-Wrap the `/ops/settings` route with its own `ProtectedRoute` using `allowedRoles`:
+- Add `field_ops` to the `ops_role` enum
+- Remove `inspector` and `construction_manager` from the enum (after migrating any existing rows)
+- Update the `get_ops_role` and `has_ops_role` functions accordingly (they work off the enum, so they'll automatically support the new value)
 
 ```text
-<Route path="settings" element={
-  <ProtectedRoute allowedRoles={["admin", "office_manager"]}>
-    <OpsSettings />
-  </ProtectedRoute>
-} />
+Migration steps:
+1. UPDATE user_roles SET role = 'field_ops' WHERE role IN ('inspector', 'construction_manager')
+2. ALTER TYPE ops_role ADD VALUE 'field_ops'
+3. (Postgres can't remove enum values, so we recreate the type)
+   - Rename old enum, create new one with: admin, office_manager, field_ops, engineer
+   - Alter column to use new enum
+   - Drop old enum
 ```
 
-### 2. Edge function updates (`supabase/functions/manage-users/index.ts`)
+We keep **"engineer"** since that's a distinct role. If you want to remove it too, let me know.
 
-Add two new actions (admin-only):
+### 2. Edge function (`supabase/functions/manage-users/index.ts`)
 
-- **`update`**: Accepts `user_id`, and optional `full_name`, `phone`, `role`, `inspector_id`. Updates `user_profiles` fields and, if role changed, upserts `user_roles`.
-- **`activate`**: Sets `is_active = true` on a user profile (inverse of existing `deactivate`).
+- Update `VALID_ROLES` array: replace `inspector` and `construction_manager` with `field_ops`
 
-Also update the `list` action to include `inspector_id` in the response (already does) and join inspector names from the `inspectors` table for display.
+### 3. Settings page (`src/pages/ops/OpsSettings.tsx`)
 
-### 3. Full rewrite of `src/pages/ops/OpsSettings.tsx`
+- Update `ROLE_OPTIONS`: remove Inspector and Construction Manager, add "Field Ops"
+- Show the "Link to Inspector" dropdown for **both** `field_ops` and `admin` roles (so you as admin can link yourself to an inspector profile)
 
-**User table enhancements:**
-- Add "Linked Inspector" column showing inspector name (resolved from the inspectors list)
-- Add role filter dropdown above the table
-- Sort users by name alphabetically
-- Clicking a row opens an Edit User dialog
-- Replace the deactivate-only icon with a toggle Switch for is_active
+### 4. Sidebar (`src/components/ops/OpsSidebar.tsx`)
 
-**Add User dialog enhancements:**
-- Add optional Phone input field
-- Only show "Link to Inspector" dropdown when selected role is `inspector`
-- Pass phone to the edge function
+- Update `roleLabels` map: remove old roles, add `field_ops: "Field Ops"`
 
-**New Edit User dialog:**
-- Pre-populated fields for Full Name, Phone, Role, Inspector Link
-- Email shown as read-only text (not editable)
-- On submit, calls edge function with action `update`
-- Inspector dropdown only shown when role is `inspector`
+### 5. Auth types (`src/hooks/useAuth.tsx`, `src/components/ops/ProtectedRoute.tsx`)
 
-### 4. Allow office_manager access to user list
+- Update the `OpsRole` type to: `"admin" | "office_manager" | "field_ops" | "engineer"`
 
-Update the edge function's admin check for `list` action to also allow `office_manager` role. The `create`, `update`, `deactivate`, `activate` actions remain admin-only.
+### 6. Anywhere referencing `inspector` role for conditional logic
+
+- The inspector link dropdown condition changes from `role === "inspector"` to `role === "field_ops" || role === "admin"`
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/App.tsx` | Wrap settings route with `allowedRoles` |
-| `supabase/functions/manage-users/index.ts` | Add `update` and `activate` actions; allow office_manager for `list` |
-| `src/pages/ops/OpsSettings.tsx` | Full rewrite with filtering, sorting, edit dialog, toggle, phone field |
+| New migration SQL | Recreate enum with 4 values, migrate existing data |
+| `supabase/functions/manage-users/index.ts` | Update VALID_ROLES |
+| `src/pages/ops/OpsSettings.tsx` | Update ROLE_OPTIONS and inspector-link conditions |
+| `src/components/ops/OpsSidebar.tsx` | Update roleLabels |
+| `src/hooks/useAuth.tsx` | Update OpsRole type |
+| `src/components/ops/ProtectedRoute.tsx` | Update OpsRole type |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| Modified files | 3 |
-| New files | 0 |
-| Edge function actions added | 2 (`update`, `activate`) |
-| Role restriction | `allowedRoles={["admin", "office_manager"]}` on the route |
-| UI components used | Table, Dialog, Select, Switch, Badge, Input, Button (all existing) |
+| Files modified | 5 + 1 migration |
+| New roles | `field_ops` replaces `inspector` + `construction_manager` |
+| Kept roles | `admin`, `office_manager`, `engineer`, `field_ops` |
+| Inspector link shown for | `admin` and `field_ops` roles |
+| Enum migration | Recreate enum (Postgres can't drop values from an existing enum) |
 
