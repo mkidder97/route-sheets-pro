@@ -1,202 +1,88 @@
 
 
-# Add Authentication to RoofOps Section
+# Admin User Management for RoofOps
 
-## Overview
+## The Problem
 
-Add email/password login gating to all `/ops/*` routes while leaving the existing RoofRoute pages completely untouched. Admins create accounts (no self-signup).
+There's no sign-up form (by design), so there's no way to create the first user or any subsequent users. Admins need to manage employee accounts from within the app.
 
-## Database Changes (Migration)
+## Solution: Two-Part Approach
 
-### 1. Create `user_roles` table (security best practice)
+### Part 1: Backend Function to Create Users
 
-Per security requirements, roles are stored in a separate table rather than on the profile itself. A security definer function `has_role()` is used for RLS checks.
+Create a backend function (`manage-users`) that uses the admin API to create auth accounts and assign roles. It will support:
 
-```sql
--- Role enum
-CREATE TYPE public.ops_role AS ENUM (
-  'admin', 'office_manager', 'inspector', 'engineer', 'construction_manager'
-);
+- **Create user**: Takes email, password, full_name, role, and optional inspector_id. Creates the auth user, then inserts a role into `user_roles`.
+- **List users**: Returns all user profiles with their roles (admin-only).
+- **Deactivate user**: Sets `is_active = false` on a profile (admin-only).
 
--- Roles table
-CREATE TABLE public.user_roles (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  role ops_role NOT NULL,
-  UNIQUE (user_id, role)
-);
-ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+The function verifies the calling user is an admin before executing any action. For the **first-ever call** (when zero users exist in `user_roles`), it allows creating the initial admin without authentication -- this is a one-time bootstrap that only works when the system is completely empty.
 
--- Security definer function for RLS
-CREATE OR REPLACE FUNCTION public.has_ops_role(_user_id uuid, _role ops_role)
-RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.user_roles
-    WHERE user_id = _user_id AND role = _role
-  )
-$$;
+### Part 2: Admin UI in OpsSettings
 
--- Helper: check if user has any ops role
-CREATE OR REPLACE FUNCTION public.get_ops_role(_user_id uuid)
-RETURNS ops_role
-LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT role FROM public.user_roles
-  WHERE user_id = _user_id LIMIT 1
-$$;
-```
+Build a "User Management" tab in the OpsSettings page (visible only to admins) with:
 
-### 2. Create `user_profiles` table
+- A table listing all users: name, email, role, active status
+- An "Add User" button that opens a dialog/form with fields for:
+  - Full Name
+  - Email
+  - Temporary Password
+  - Role (dropdown: Admin, Office Manager, Inspector, Engineer, Construction Manager)
+  - Inspector Link (optional dropdown, populated from the inspectors table)
+- A deactivate button on each user row
 
-```sql
-CREATE TABLE public.user_profiles (
-  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email text NOT NULL,
-  full_name text NOT NULL,
-  inspector_id uuid REFERENCES public.inspectors(id),
-  phone text,
-  is_active boolean DEFAULT true,
-  notification_preferences jsonb DEFAULT '{"email": true, "sms": false}'::jsonb,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
-```
+### Part 3: Bootstrap Flow
 
-### 3. RLS Policies
-
-```sql
--- user_profiles: users read own, admin/office_manager read all
-CREATE POLICY "Users read own profile" ON public.user_profiles
-  FOR SELECT TO authenticated
-  USING (id = auth.uid());
-
-CREATE POLICY "Admins read all profiles" ON public.user_profiles
-  FOR SELECT TO authenticated
-  USING (
-    public.has_ops_role(auth.uid(), 'admin')
-    OR public.has_ops_role(auth.uid(), 'office_manager')
-  );
-
-CREATE POLICY "Users update own profile" ON public.user_profiles
-  FOR UPDATE TO authenticated
-  USING (id = auth.uid())
-  WITH CHECK (id = auth.uid());
-
--- user_roles: only readable, not self-modifiable
-CREATE POLICY "Users read own role" ON public.user_roles
-  FOR SELECT TO authenticated
-  USING (user_id = auth.uid());
-
-CREATE POLICY "Admins read all roles" ON public.user_roles
-  FOR SELECT TO authenticated
-  USING (public.has_ops_role(auth.uid(), 'admin'));
-```
-
-### 4. Trigger for updated_at
-
-```sql
-CREATE TRIGGER update_user_profiles_updated_at
-  BEFORE UPDATE ON public.user_profiles
-  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-```
-
-### 5. Auto-create profile on signup (trigger)
-
-```sql
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  INSERT INTO public.user_profiles (id, email, full_name)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.email, ''),
-    COALESCE(NEW.raw_user_meta_data->>'full_name', '')
-  );
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-```
+When you first visit `/ops/login`, you'll see the normal login form. Since no accounts exist yet, we add a small "Set up first admin" link below the sign-in button that only appears when zero users exist. It shows a simple form (name, email, password) and calls the backend function's bootstrap endpoint. Once the first admin is created, this link disappears permanently.
 
 ## New Files
 
-### `src/hooks/useAuth.ts`
+### `supabase/functions/manage-users/index.ts`
 
-Custom hook providing:
-- `user` -- current Supabase auth user (from `onAuthStateChange` listener set up before `getSession()`)
-- `profile` -- fetched from `user_profiles` table
-- `role` -- fetched from `user_roles` table via `get_ops_role()` RPC
-- `isLoading` -- true while auth state initializing
-- `signIn(email, password)` -- calls `supabase.auth.signInWithPassword`
-- `signOut()` -- calls `supabase.auth.signOut`
+Backend function with three actions:
 
-Uses React context (`AuthProvider`) so it can be consumed anywhere under the provider.
+| Action | Auth Required | Description |
+|--------|--------------|-------------|
+| `bootstrap` | None (only works when 0 users in user_roles) | Creates first admin account |
+| `create` | Admin only | Creates a new user with role |
+| `list` | Admin only | Returns all profiles + roles |
+| `deactivate` | Admin only | Sets is_active = false |
 
-### `src/components/ops/ProtectedRoute.tsx`
+For `create` and `bootstrap`:
+1. Call `supabase.auth.admin.createUser()` with email, password, and `email_confirm: true` (so the user can log in immediately)
+2. Insert a row into `user_roles` with the chosen role
+3. The existing `handle_new_user` trigger auto-creates the `user_profiles` row
 
-- Wraps children; checks `useAuth()` for authenticated user
-- If not authenticated and not loading, redirects to `/ops/login`
-- Accepts optional `allowedRoles: ops_role[]` prop
-- If user's role is not in `allowedRoles`, renders an "Access Denied" card instead of the children
+### `src/pages/ops/OpsSettings.tsx` (rewrite)
 
-### `src/pages/ops/OpsLogin.tsx`
+Transforms the stub into a tabbed settings page:
+- **User Management tab** (admin-only): user table + add user dialog
+- **General tab**: placeholder for future settings
 
-- Clean login page with dark blue (#1B4F72) header bar showing white "RoofOps" text
-- Email + password fields using existing `Input` and `Button` components
-- "Sign In" button, error message display
-- No sign-up form
-- On successful login, redirect to `/ops`
+### `src/pages/ops/OpsLogin.tsx` (modify)
+
+Add a "First-time setup" link that:
+- Only shows when a quick check confirms zero users exist (calls `manage-users` with action `check-setup`)
+- Opens inline fields for name, email, password
+- Calls the bootstrap endpoint
+- On success, logs the user in automatically
 
 ## Modified Files
 
-### `src/App.tsx`
-
-- Wrap the app (or just the ops routes) with `AuthProvider`
-- Add `/ops/login` route **outside** the OpsLayout (it has its own layout)
-- Wrap OpsLayout with `ProtectedRoute`
-
-```text
-<Route path="/ops/login" element={<OpsLogin />} />
-<Route path="/ops" element={<ProtectedRoute><OpsLayout /></ProtectedRoute>}>
-  <Route index element={<OpsDashboard />} />
-  ...
-</Route>
-```
-
-Existing RoofRoute routes remain completely untouched.
-
-### `src/components/ops/OpsSidebar.tsx`
-
-- Add user info section at the bottom (above "Switch to RoofRoute"):
-  - Display user's full_name and role from `useAuth()`
-  - Sign out button (LogOut icon)
-- When sidebar is collapsed, show just the sign-out icon button
-
-### Files NOT modified
-
-- All existing RoofRoute pages and components stay exactly as they are
-- `src/components/AppLayout.tsx`, `AppSidebar.tsx` -- no changes
-- `src/integrations/supabase/client.ts` -- never touched
+| File | Change |
+|------|--------|
+| `supabase/functions/manage-users/index.ts` | New -- backend function for user CRUD |
+| `src/pages/ops/OpsSettings.tsx` | Rewrite -- add user management UI |
+| `src/pages/ops/OpsLogin.tsx` | Add bootstrap setup flow for first admin |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| New files | 3 (useAuth.ts, ProtectedRoute.tsx, OpsLogin.tsx) |
-| Modified files | 2 (App.tsx, OpsSidebar.tsx) |
-| Migration | 1 (creates 2 tables, 1 enum, 2 functions, RLS policies, triggers) |
-| Auth method | Email/password only via `signInWithPassword` |
-| Session handling | `onAuthStateChange` listener set up before `getSession()` |
-| Role storage | Separate `user_roles` table with security definer function |
+| New files | 1 backend function |
+| Modified files | 2 (OpsSettings, OpsLogin) |
+| Admin API | `supabase.auth.admin.createUser()` via service role key |
+| Bootstrap security | Only works when `user_roles` table has zero rows |
+| Email confirmation | Skipped (`email_confirm: true`) since admins create accounts |
+| Role assignment | Inserted into `user_roles` table, not on profile |
 
