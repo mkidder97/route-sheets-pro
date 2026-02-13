@@ -9,6 +9,12 @@ import RouteBuilder from "./pages/RouteBuilder";
 import DataManager from "./pages/DataManager";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import OpsLayout from "./components/ops/OpsLayout";
+import OpsDashboard from "./pages/ops/OpsDashboard";
+import OpsJobBoard from "./pages/ops/OpsJobBoard";
+import OpsScheduling from "./pages/ops/OpsScheduling";
+import OpsTimeMileage from "./pages/ops/OpsTimeMileage";
+import OpsSettings from "./pages/ops/OpsSettings";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +31,13 @@ const App = () => (
             <Route path="/route-builder" element={<RouteBuilder />} />
             <Route path="/buildings" element={<DataManager />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/ops" element={<OpsLayout />}>
+              <Route index element={<OpsDashboard />} />
+              <Route path="jobs" element={<OpsJobBoard />} />
+              <Route path="scheduling" element={<OpsScheduling />} />
+              <Route path="time-mileage" element={<OpsTimeMileage />} />
+              <Route path="settings" element={<OpsSettings />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>

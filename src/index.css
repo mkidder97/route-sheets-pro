@@ -74,3 +74,15 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
   }
 }
+
+/* RoofOps theme overrides */
+.ops-theme {
+  --sidebar-background: 207 58% 12%;
+  --sidebar-foreground: 210 15% 70%;
+  --sidebar-primary: 207 58% 27%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 207 50% 20%;
+  --sidebar-accent-foreground: 210 20% 92%;
+  --sidebar-border: 207 50% 18%;
+  --sidebar-ring: 207 58% 27%;
+}
