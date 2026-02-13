@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_log: {
+        Row: {
+          action: string
+          created_at: string | null
+          details: Json | null
+          entity_id: string
+          entity_type: string
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       buildings: {
         Row: {
           access_location: string | null
@@ -280,6 +318,50 @@ export type Database = {
             columns: ["region_id"]
             isOneToOne: false
             referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          reference_id: string | null
+          reference_type: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          reference_id?: string | null
+          reference_type?: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
