@@ -1,127 +1,107 @@
 
 
-# Campaign Snapshot Model + Multi-Type Inspections
+# Campaign Detail: Status Updates, Bulk Actions, and Comments
 
 ## Overview
 
-Switch campaigns from live-querying the buildings table to a snapshot model using a `campaign_buildings` junction table. Add `inspection_type` support (Annual, Due Diligence, Survey, Storm). Each campaign creation snapshots the current buildings into the junction table for independent per-campaign tracking.
+Add three capabilities to the Campaign Detail page:
+1. Inline status dropdown per building row (admin/office_manager only)
+2. Bulk actions via checkboxes and a floating action bar
+3. A comments section backed by a new `comments` table
+
+**Note on master buildings sync**: Status updates will sync to the master `buildings` table as a "last known status" convenience. The `campaign_buildings` snapshot remains the source of truth per-campaign. This is acceptable for now since overlapping campaigns on the same buildings are not yet common.
+
+---
 
 ## 1. Database Migration
 
-### A) Add `inspection_type` to `inspection_campaigns`
-- New column: `inspection_type text NOT NULL DEFAULT 'annual'`
-- CHECK constraint: values must be one of `annual`, `due_diligence`, `survey`, `storm`
-
-### B) Create `campaign_buildings` junction table
+### Create `comments` table
 
 | Column | Type | Details |
 |--------|------|---------|
 | id | uuid | PK, gen_random_uuid() |
-| campaign_id | uuid | NOT NULL, FK to inspection_campaigns ON DELETE CASCADE |
-| building_id | uuid | NOT NULL, FK to buildings ON DELETE CASCADE |
-| inspection_status | text | NOT NULL, default 'pending', CHECK constraint |
-| inspector_id | uuid | FK to inspectors |
-| scheduled_week | text | Nullable |
-| is_priority | boolean | NOT NULL, default false |
-| completion_date | date | Nullable |
-| inspector_notes | text | Nullable |
-| photo_url | text | Nullable |
-| created_at | timestamptz | NOT NULL, default now() |
+| user_id | uuid | NOT NULL, FK to auth.users(id) ON DELETE CASCADE |
+| entity_type | text | NOT NULL |
+| entity_id | uuid | NOT NULL |
+| content | text | NOT NULL |
+| created_at | timestamptz | DEFAULT now() |
 
-- UNIQUE(campaign_id, building_id) to prevent duplicates
-- Indexes on campaign_id, building_id, and inspection_status for query performance
+- Index on (entity_type, entity_id) for efficient lookups
+- RLS: SELECT for authenticated users, INSERT with check `auth.uid() = user_id`
 
-### C) RLS on `campaign_buildings`
-- Enable RLS
-- Single permissive policy: authenticated users (`auth.uid() IS NOT NULL`) can perform ALL operations
+### Add validation trigger on `campaign_buildings`
 
-## 2. Update `src/pages/ops/OpsJobBoard.tsx`
+Replace the existing CHECK constraint on `inspection_status` with a validation trigger (consistent with the existing `validate_inspection_status` function pattern), to avoid immutability issues.
 
-### Tab and type changes
-- Rename tab from "Annuals" to "Inspections"
-- Add `inspection_type` to the Campaign type definition
-- Add an Inspection Type filter dropdown in the filter bar (All Types, Annual, Due Diligence, Survey, Storm)
-- Wire filter to `fetchCampaigns` query
+---
 
-### New Campaign dialog updates
-- Add Inspection Type dropdown as the first field (default: Annual)
-- Update description text to "Create a new inspection campaign."
-- Add `inspection_type` to form state and insert payload
+## 2. Update `src/pages/ops/OpsCampaignDetail.tsx`
 
-### Updated `handleCreate` logic
-1. Insert campaign with `inspection_type`
-2. Fetch all buildings matching `client_id + region_id` (select `id, is_priority`)
-3. Build an array of `campaign_buildings` rows from the results
-4. Bulk insert into `campaign_buildings` -- if more than 500 rows, chunk into batches of 500 to avoid timeout/truncation issues with the Supabase client
-5. Set `total_buildings` to the count of inserted rows, `completed_buildings` to 0
-6. Error handling: if the bulk insert fails, show a warning toast but still keep the campaign (it can be re-synced later)
+### A) Inline Status Dropdown (admin/office_manager only)
 
-### Campaign card updates
-- Add a type badge below the status badge on each card
-- Color scheme: annual = blue outline, due_diligence = purple outline, survey = teal outline, storm = red outline
-- Use Badge variant="outline" with className for colored text/border
+- In the Status column, replace the read-only Badge with a Select dropdown when `canEdit` is true
+- Use `e.stopPropagation()` on the Select to prevent row expansion
+- On status change, call `updateBuildingStatus()` which:
+  1. Updates `campaign_buildings.inspection_status` (and sets `completion_date` to today if status is `complete`, clears it otherwise)
+  2. Syncs the master `buildings.inspection_status` as a convenience write
+  3. Recalculates `completed_buildings` count on the campaign by counting `campaign_buildings` where status is `complete`
+  4. Inserts into `activity_log` with action `status_change`, entity_type `building`, entity_id the building UUID, and details containing old/new status and campaign_id
+  5. Updates local state optimistically and shows a success toast
+- Read-only Badge remains for non-edit roles
 
-## 3. Update `src/pages/ops/OpsCampaignDetail.tsx`
+### B) Bulk Actions
 
-### Type and header updates
-- Add `inspection_type` to Campaign type
-- Show type badge in header next to the status (same color scheme as cards)
+**Selection state:**
+- New `selectedIds` state as `Set<string>` tracking campaign_building IDs
+- Checkbox column added as the first column (before the expand chevron)
+- Header checkbox toggles select-all for currently filtered rows
+- Individual row checkboxes toggle selection; `e.stopPropagation()` prevents row expand
 
-### Replace buildings query
-Current query fetches from `buildings` table directly. Replace with:
+**Floating action bar:**
+- Renders as a fixed-position bar at the bottom when `selectedIds.size > 0`
+- Shows count label ("X selected")
+- "Update Status" button with a Select dropdown (5 status options) -- on selection, loops through all selected rows and applies the same logic as inline status update, with a single campaign count recalculation at the end
+- "Reassign Inspector" button with a Select dropdown populated from the inspectors list -- updates `inspector_id` on selected `campaign_buildings` rows and logs activity for each
+- "Clear" button to deselect all
+- After bulk action: clear selection, re-fetch buildings, show success toast
 
-```text
-supabase.from("campaign_buildings").select(`
-  id, inspection_status, inspector_id, scheduled_week,
-  is_priority, completion_date, inspector_notes, photo_url,
-  building:buildings (
-    id, stop_number, property_name, address, city, state, zip_code,
-    building_code, roof_group, square_footage,
-    roof_access_type, roof_access_description, access_location, lock_gate_codes,
-    property_manager_name, property_manager_phone, property_manager_email,
-    special_notes, special_equipment, requires_advance_notice, requires_escort
-  ),
-  inspector:inspectors ( name )
-`).eq("campaign_id", id).order("created_at")
-```
+### C) Comments Section
 
-### Update Building type
-- Top-level fields: `id`, `inspection_status`, `inspector_id`, `scheduled_week`, `is_priority`, `completion_date`, `inspector_notes`, `photo_url`, `inspector`
-- Nested `building` object: all master building fields (property_name, address, city, state, etc.)
+- New section below the buildings table with "Comments" heading
+- Fetches from `comments` where `entity_type = 'campaign'` and `entity_id = campaign.id`
+- Joins `user_profiles` on `user_id` for `full_name`
+- Each comment displays: author name (bold), relative time via `formatDistanceToNow` from date-fns, and content
+- Text input + "Post" button at the bottom
+- On submit: inserts with `user_id` from `useAuth().user.id`, refreshes list
+- Empty state message when no comments exist
 
-### Update all JSX references
-- `b.property_name` becomes `b.building.property_name`
-- `b.address` becomes `b.building.address`
-- `b.city` becomes `b.building.city`
-- `b.inspectors?.name` becomes `b.inspector?.name`
-- `b.requires_advance_notice` becomes `b.building.requires_advance_notice`
-- `b.requires_escort` becomes `b.building.requires_escort`
-- Campaign-level fields (`inspection_status`, `is_priority`, `inspector_notes`, `completion_date`, `photo_url`) stay at top level
+---
 
-### Update filter and sort logic
-- Search references `b.building.property_name` and `b.building.address`
-- Sort: building-level keys (stop_number, property_name, city) access via `item.building[key]`; campaign-level keys (inspection_status, scheduled_week) access directly
+## New imports needed
 
-### Update BuildingDetail component
-- Building-level fields (address, codes, roof access, PM info, equipment): access via `b.building.*`
-- Campaign-level fields (inspector_notes, completion_date, photo_url): access via `b.*`
+- `Checkbox` from `@/components/ui/checkbox`
+- `Textarea` from `@/components/ui/textarea`
+- `formatDistanceToNow` from `date-fns`
+- `MessageSquare` from `lucide-react` (for comments heading icon)
+
+---
 
 ## Files
 
 | File | Action |
 |------|--------|
-| New migration SQL | Add inspection_type column + create campaign_buildings table with RLS |
-| `src/pages/ops/OpsJobBoard.tsx` | Add type filter, type in dialog, snapshot creation with chunked bulk insert, type badge on cards |
-| `src/pages/ops/OpsCampaignDetail.tsx` | Switch to campaign_buildings query, update types, all JSX references, filters, sort |
+| New migration SQL | Create `comments` table with indexes and RLS |
+| `src/pages/ops/OpsCampaignDetail.tsx` | Add inline status dropdown, bulk actions with floating bar, comments section |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| Bulk insert safety | Chunk into batches of 500 to prevent timeout on large building sets |
-| Error resilience | Campaign is kept even if bulk insert partially fails; user sees warning |
-| No changes to | App.tsx (route already exists) |
-| Junction table | campaign_buildings with per-campaign status snapshot |
-| Inspection types | annual, due_diligence, survey, storm |
-| RLS | Permissive ALL for authenticated users on campaign_buildings |
+| New table | `comments` with authenticated read/insert RLS |
+| Status update flow | campaign_buildings then buildings then recount then activity_log then toast |
+| Bulk updates | Per-row loop for activity logging, single recount at end |
+| Comments join | `user_profiles` for `full_name` display |
+| Role gating | `canEdit` (admin/office_manager) controls status dropdown, checkboxes, and bulk bar |
+| Event propagation | `stopPropagation` on Select and Checkbox clicks to prevent row expand |
+| Master sync caveat | Documented as "last known status" -- campaign_buildings is source of truth |
 
