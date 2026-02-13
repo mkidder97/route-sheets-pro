@@ -290,6 +290,66 @@ export type Database = {
           },
         ]
       }
+      inspection_campaigns: {
+        Row: {
+          client_id: string
+          completed_buildings: number
+          created_at: string
+          end_date: string
+          id: string
+          name: string
+          notes: string | null
+          region_id: string
+          start_date: string
+          status: string
+          total_buildings: number
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          completed_buildings?: number
+          created_at?: string
+          end_date: string
+          id?: string
+          name: string
+          notes?: string | null
+          region_id: string
+          start_date: string
+          status?: string
+          total_buildings?: number
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          completed_buildings?: number
+          created_at?: string
+          end_date?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          region_id?: string
+          start_date?: string
+          status?: string
+          total_buildings?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_campaigns_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_campaigns_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspectors: {
         Row: {
           created_at: string
