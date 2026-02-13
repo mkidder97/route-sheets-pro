@@ -1,72 +1,69 @@
 
 
-# Simplify Roles: Remove "Inspector" and "Construction Manager", Add "Field Ops"
+# Job Board Page with Inspection Campaigns
 
-## What's Changing
+## Overview
 
-You want two things:
-1. **Merge "Inspector" and "Construction Manager" into a single role** -- since employees often do both. We'll call it **"field_ops"** (displayed as "Field Ops").
-2. **No dual-role support needed** -- since you're the admin and also do field work, we'll just keep you as "admin" and let admins always have the option to link to an inspector profile. That way you don't need two roles on one account.
+Build the `/ops/jobs` page with an "Annuals" / "CM Jobs" toggle, a new `inspection_campaigns` database table, and a card-based campaign viewer with client/region/status filters.
 
-## Changes
+## 1. Database Migration
 
-### 1. Database migration
+Create `inspection_campaigns` table with:
 
-- Add `field_ops` to the `ops_role` enum
-- Remove `inspector` and `construction_manager` from the enum (after migrating any existing rows)
-- Update the `get_ops_role` and `has_ops_role` functions accordingly (they work off the enum, so they'll automatically support the new value)
+| Column | Type | Details |
+|--------|------|---------|
+| id | uuid | PK, gen_random_uuid() |
+| client_id | uuid | NOT NULL, references clients |
+| region_id | uuid | NOT NULL, references regions |
+| name | text | NOT NULL |
+| start_date | date | NOT NULL |
+| end_date | date | NOT NULL |
+| status | text | CHECK constraint: planning, active, complete, on_hold. Default 'active' |
+| total_buildings | integer | Default 0 |
+| completed_buildings | integer | Default 0 |
+| notes | text | Nullable |
+| created_at / updated_at | timestamptz | Default now(), trigger for updated_at |
 
-```text
-Migration steps:
-1. UPDATE user_roles SET role = 'field_ops' WHERE role IN ('inspector', 'construction_manager')
-2. ALTER TYPE ops_role ADD VALUE 'field_ops'
-3. (Postgres can't remove enum values, so we recreate the type)
-   - Rename old enum, create new one with: admin, office_manager, field_ops, engineer
-   - Alter column to use new enum
-   - Drop old enum
-```
+RLS policies:
+- SELECT: all authenticated users
+- INSERT / UPDATE / DELETE: admin or office_manager (via `has_ops_role`)
 
-We keep **"engineer"** since that's a distinct role. If you want to remove it too, let me know.
+## 2. Rewrite `src/pages/ops/OpsJobBoard.tsx`
 
-### 2. Edge function (`supabase/functions/manage-users/index.ts`)
+### Top-level layout
+- Title "Job Board" on the left, Tabs toggle (Annuals / CM Jobs) on the right
+- CM Jobs tab shows a "Coming Soon -- Phase 2" placeholder
 
-- Update `VALID_ROLES` array: replace `inspector` and `construction_manager` with `field_ops`
+### Annuals tab
+- **Filter bar**: Client dropdown (from clients table), Region dropdown (filtered by selected client, resets when client changes), Status dropdown, and a "New Campaign" button (admin/office_manager only)
+- **Campaign card grid**: Responsive grid (1/2/3 columns) of cards, each showing:
+  - Campaign name
+  - Client -- Region subtitle
+  - Status badge (planning=gray, active=blue, complete=green, on_hold=orange)
+  - Date range formatted with date-fns
+  - Progress bar with "X / Y buildings" and percentage
+  - Cards have cursor-pointer and hover shadow (no navigation target yet)
+- **Empty state**: "No campaigns found. Create your first campaign to get started."
 
-### 3. Settings page (`src/pages/ops/OpsSettings.tsx`)
+### New Campaign dialog
+- Fields: Campaign Name, Client (select), Region (select, filtered by client), Start Date, End Date, Status, Notes (optional)
+- Inserts directly via Supabase client into `inspection_campaigns`
+- total_buildings and completed_buildings both start at 0 (auto-sync comes in Phase 1.2)
 
-- Update `ROLE_OPTIONS`: remove Inspector and Construction Manager, add "Field Ops"
-- Show the "Link to Inspector" dropdown for **both** `field_ops` and `admin` roles (so you as admin can link yourself to an inspector profile)
+## Files
 
-### 4. Sidebar (`src/components/ops/OpsSidebar.tsx`)
-
-- Update `roleLabels` map: remove old roles, add `field_ops: "Field Ops"`
-
-### 5. Auth types (`src/hooks/useAuth.tsx`, `src/components/ops/ProtectedRoute.tsx`)
-
-- Update the `OpsRole` type to: `"admin" | "office_manager" | "field_ops" | "engineer"`
-
-### 6. Anywhere referencing `inspector` role for conditional logic
-
-- The inspector link dropdown condition changes from `role === "inspector"` to `role === "field_ops" || role === "admin"`
-
-## Files Modified
-
-| File | Change |
+| File | Action |
 |------|--------|
-| New migration SQL | Recreate enum with 4 values, migrate existing data |
-| `supabase/functions/manage-users/index.ts` | Update VALID_ROLES |
-| `src/pages/ops/OpsSettings.tsx` | Update ROLE_OPTIONS and inspector-link conditions |
-| `src/components/ops/OpsSidebar.tsx` | Update roleLabels |
-| `src/hooks/useAuth.tsx` | Update OpsRole type |
-| `src/components/ops/ProtectedRoute.tsx` | Update OpsRole type |
+| New migration SQL | Create `inspection_campaigns` table + RLS |
+| `src/pages/ops/OpsJobBoard.tsx` | Full rewrite with tabs, filters, cards, dialog |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| Files modified | 5 + 1 migration |
-| New roles | `field_ops` replaces `inspector` + `construction_manager` |
-| Kept roles | `admin`, `office_manager`, `engineer`, `field_ops` |
-| Inspector link shown for | `admin` and `field_ops` roles |
-| Enum migration | Recreate enum (Postgres can't drop values from an existing enum) |
+| New table | `inspection_campaigns` |
+| RLS | Authenticated read, admin/office_manager write |
+| UI components | Tabs, Card, Badge, Progress, Select, Dialog, Input, Textarea, Button |
+| Data fetching | Direct Supabase queries with filters |
+| Date formatting | date-fns `format()` |
 
