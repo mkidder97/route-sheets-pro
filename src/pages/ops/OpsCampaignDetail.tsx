@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { format } from "date-fns";
-import { ArrowLeft, Star, Bell, UserRound, ChevronDown, ChevronRight } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { ArrowLeft, Star, Bell, UserRound, ChevronDown, ChevronRight, MessageSquare, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -88,6 +90,14 @@ type CampaignBuilding = {
 
 type Inspector = { id: string; name: string };
 
+type Comment = {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  author_name: string;
+};
+
 const BUILDING_STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
   { value: "in_progress", label: "In Progress" },
@@ -139,7 +149,7 @@ const BUILDING_LEVEL_SORT_KEYS = new Set(["stop_number", "property_name", "city"
 export default function OpsCampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { user, role } = useAuth();
   const canEdit = role === "admin" || role === "office_manager";
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -147,6 +157,14 @@ export default function OpsCampaignDetail() {
   const [inspectors, setInspectors] = useState<Inspector[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Selection for bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Comments
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
 
   // Filters
   const [filterStatus, setFilterStatus] = useState("all");
@@ -162,6 +180,7 @@ export default function OpsCampaignDetail() {
     if (id) {
       fetchCampaign();
       fetchInspectors();
+      fetchComments();
     }
   }, [id]);
 
@@ -217,6 +236,59 @@ export default function OpsCampaignDetail() {
     if (data) setInspectors(data);
   }
 
+  async function fetchComments() {
+    if (!id) return;
+    const { data } = await supabase
+      .from("comments" as any)
+      .select("id, user_id, content, created_at")
+      .eq("entity_type", "campaign")
+      .eq("entity_id", id)
+      .order("created_at", { ascending: true });
+
+    if (!data || (data as any[]).length === 0) {
+      setComments([]);
+      return;
+    }
+
+    // Fetch author names
+    const userIds = [...new Set((data as any[]).map((c: any) => c.user_id))];
+    const { data: profiles } = await supabase
+      .from("user_profiles")
+      .select("id, full_name")
+      .in("id", userIds);
+
+    const nameMap: Record<string, string> = {};
+    (profiles ?? []).forEach((p: any) => { nameMap[p.id] = p.full_name; });
+
+    setComments(
+      (data as any[]).map((c: any) => ({
+        id: c.id,
+        user_id: c.user_id,
+        content: c.content,
+        created_at: c.created_at,
+        author_name: nameMap[c.user_id] ?? "Unknown",
+      }))
+    );
+  }
+
+  async function postComment() {
+    if (!newComment.trim() || !user || !id) return;
+    setPostingComment(true);
+    const { error } = await supabase.from("comments" as any).insert({
+      user_id: user.id,
+      entity_type: "campaign",
+      entity_id: id,
+      content: newComment.trim(),
+    } as any);
+    setPostingComment(false);
+    if (error) {
+      toast.error("Failed to post comment");
+    } else {
+      setNewComment("");
+      fetchComments();
+    }
+  }
+
   async function updateCampaignStatus(newStatus: string) {
     if (!campaign) return;
     const { error } = await supabase
@@ -228,6 +300,160 @@ export default function OpsCampaignDetail() {
     } else {
       setCampaign({ ...campaign, status: newStatus });
       toast.success("Status updated");
+    }
+  }
+
+  async function updateBuildingStatus(
+    campaignBuildingId: string,
+    buildingId: string,
+    oldStatus: string,
+    newStatus: string
+  ) {
+    if (!campaign) return;
+    const today = new Date().toISOString().split("T")[0];
+
+    // 1. Update campaign_buildings
+    const { error: cbErr } = await supabase
+      .from("campaign_buildings" as any)
+      .update({
+        inspection_status: newStatus,
+        completion_date: newStatus === "complete" ? today : null,
+      } as any)
+      .eq("id", campaignBuildingId);
+    if (cbErr) {
+      toast.error("Failed to update status");
+      return;
+    }
+
+    // 2. Sync master buildings table (last known status convenience)
+    await supabase
+      .from("buildings")
+      .update({
+        inspection_status: newStatus,
+        completion_date: newStatus === "complete" ? today : null,
+      })
+      .eq("id", buildingId);
+
+    // 3. Recount completed
+    await recalcCampaignCount();
+
+    // 4. Activity log
+    await supabase.from("activity_log").insert({
+      action: "status_change",
+      entity_type: "building",
+      entity_id: buildingId,
+      user_id: user?.id ?? null,
+      details: { old_status: oldStatus, new_status: newStatus, campaign_id: campaign.id },
+    });
+
+    // 5. Optimistic update local state
+    setBuildings((prev) =>
+      prev.map((b) =>
+        b.id === campaignBuildingId
+          ? { ...b, inspection_status: newStatus, completion_date: newStatus === "complete" ? today : null }
+          : b
+      )
+    );
+    toast.success("Status updated");
+  }
+
+  async function recalcCampaignCount() {
+    if (!campaign) return;
+    const { count } = await supabase
+      .from("campaign_buildings" as any)
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaign.id)
+      .eq("inspection_status", "complete");
+
+    const completed = count ?? 0;
+    await supabase
+      .from("inspection_campaigns")
+      .update({ completed_buildings: completed })
+      .eq("id", campaign.id);
+
+    setCampaign((prev) => prev ? { ...prev, completed_buildings: completed } : prev);
+  }
+
+  // Bulk actions
+  async function bulkUpdateStatus(newStatus: string) {
+    if (!campaign || selectedIds.size === 0) return;
+    const today = new Date().toISOString().split("T")[0];
+
+    for (const cbId of selectedIds) {
+      const row = buildings.find((b) => b.id === cbId);
+      if (!row || row.inspection_status === newStatus) continue;
+
+      await supabase
+        .from("campaign_buildings" as any)
+        .update({
+          inspection_status: newStatus,
+          completion_date: newStatus === "complete" ? today : null,
+        } as any)
+        .eq("id", cbId);
+
+      await supabase
+        .from("buildings")
+        .update({
+          inspection_status: newStatus,
+          completion_date: newStatus === "complete" ? today : null,
+        })
+        .eq("id", row.building.id);
+
+      await supabase.from("activity_log").insert({
+        action: "status_change",
+        entity_type: "building",
+        entity_id: row.building.id,
+        user_id: user?.id ?? null,
+        details: { old_status: row.inspection_status, new_status: newStatus, campaign_id: campaign.id },
+      });
+    }
+
+    await recalcCampaignCount();
+    setSelectedIds(new Set());
+    await fetchBuildings();
+    toast.success(`Updated ${selectedIds.size} building(s)`);
+  }
+
+  async function bulkReassignInspector(inspectorId: string) {
+    if (!campaign || selectedIds.size === 0) return;
+
+    for (const cbId of selectedIds) {
+      const row = buildings.find((b) => b.id === cbId);
+      if (!row) continue;
+
+      await supabase
+        .from("campaign_buildings" as any)
+        .update({ inspector_id: inspectorId } as any)
+        .eq("id", cbId);
+
+      await supabase.from("activity_log").insert({
+        action: "inspector_reassign",
+        entity_type: "building",
+        entity_id: row.building.id,
+        user_id: user?.id ?? null,
+        details: { old_inspector_id: row.inspector_id, new_inspector_id: inspectorId, campaign_id: campaign.id },
+      });
+    }
+
+    setSelectedIds(new Set());
+    await fetchBuildings();
+    toast.success(`Reassigned ${selectedIds.size} building(s)`);
+  }
+
+  function toggleSelect(cbId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cbId)) next.delete(cbId);
+      else next.add(cbId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((b) => b.id)));
     }
   }
 
@@ -278,8 +504,10 @@ export default function OpsCampaignDetail() {
     ? Math.round((campaign.completed_buildings / campaign.total_buildings) * 100)
     : 0;
 
+  const allFilteredSelected = filtered.length > 0 && selectedIds.size === filtered.length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* Header */}
       <div className="space-y-3">
         <Button variant="ghost" size="sm" onClick={() => navigate("/ops/jobs")}>
@@ -374,6 +602,15 @@ export default function OpsCampaignDetail() {
         <Table>
           <TableHeader>
             <TableRow>
+              {canEdit && (
+                <TableHead className="w-8">
+                  <Checkbox
+                    checked={allFilteredSelected}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                  />
+                </TableHead>
+              )}
               <TableHead className="w-8" />
               <SortableHead label="Stop #" sortKey="stop_number" current={sortKey} asc={sortAsc} onSort={handleSort} />
               <SortableHead label="Property Name" sortKey="property_name" current={sortKey} asc={sortAsc} onSort={handleSort} />
@@ -390,16 +627,41 @@ export default function OpsCampaignDetail() {
                 <>
                   <CollapsibleTrigger asChild>
                     <TableRow className="cursor-pointer">
+                      {canEdit && (
+                        <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedIds.has(b.id)}
+                            onCheckedChange={() => toggleSelect(b.id)}
+                            aria-label={`Select ${b.building.property_name}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="w-8">
                         {expandedId === b.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </TableCell>
                       <TableCell>{b.building.stop_number ?? "—"}</TableCell>
                       <TableCell className="font-medium">{b.building.property_name}</TableCell>
                       <TableCell>{b.building.city}, {b.building.state}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={BUILDING_STATUS_COLORS[b.inspection_status] ?? ""}>
-                          {BUILDING_STATUS_OPTIONS.find((s) => s.value === b.inspection_status)?.label ?? b.inspection_status}
-                        </Badge>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {canEdit ? (
+                          <Select
+                            value={b.inspection_status}
+                            onValueChange={(val) => updateBuildingStatus(b.id, b.building.id, b.inspection_status, val)}
+                          >
+                            <SelectTrigger className="h-8 w-[140px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {BUILDING_STATUS_OPTIONS.map((s) => (
+                                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge variant="secondary" className={BUILDING_STATUS_COLORS[b.inspection_status] ?? ""}>
+                            {BUILDING_STATUS_OPTIONS.find((s) => s.value === b.inspection_status)?.label ?? b.inspection_status}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>{b.inspector?.name ?? "—"}</TableCell>
                       <TableCell>{b.scheduled_week ?? "—"}</TableCell>
@@ -414,7 +676,7 @@ export default function OpsCampaignDetail() {
                   </CollapsibleTrigger>
                   <CollapsibleContent asChild>
                     <tr>
-                      <td colSpan={8} className="bg-muted/30 p-4">
+                      <td colSpan={canEdit ? 10 : 9} className="bg-muted/30 p-4">
                         <BuildingDetail row={b} />
                       </td>
                     </tr>
@@ -424,6 +686,81 @@ export default function OpsCampaignDetail() {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {/* Comments Section */}
+      <div className="space-y-4 border-t pt-6">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Comments</h2>
+        </div>
+
+        {comments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No comments yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {comments.map((c) => (
+              <div key={c.id} className="space-y-0.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-sm font-medium">{c.author_name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
+                  </span>
+                </div>
+                <p className="text-sm">{c.content}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Textarea
+            placeholder="Add a comment…"
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            className="min-h-[60px]"
+          />
+          <Button
+            onClick={postComment}
+            disabled={!newComment.trim() || postingComment}
+            className="self-end"
+          >
+            Post
+          </Button>
+        </div>
+      </div>
+
+      {/* Floating Bulk Action Bar */}
+      {canEdit && selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-lg border bg-background px-4 py-3 shadow-lg">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+
+          <Select onValueChange={bulkUpdateStatus}>
+            <SelectTrigger className="h-8 w-[150px]">
+              <SelectValue placeholder="Update Status" />
+            </SelectTrigger>
+            <SelectContent>
+              {BUILDING_STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select onValueChange={bulkReassignInspector}>
+            <SelectTrigger className="h-8 w-[170px]">
+              <SelectValue placeholder="Reassign Inspector" />
+            </SelectTrigger>
+            <SelectContent>
+              {inspectors.map((i) => (
+                <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            <X className="h-4 w-4 mr-1" /> Clear
+          </Button>
+        </div>
       )}
     </div>
   );
