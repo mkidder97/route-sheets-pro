@@ -31,7 +31,7 @@ import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, Ski
 import { haversineDistance } from "@/lib/geo-utils";
 import { generateInspectorPDF, type DayData, type BuildingData, type DocumentMetadata } from "@/lib/pdf-generator";
 import { generateInspectorExcel } from "@/lib/excel-generator";
-import { extractSquareFootage, compareSF } from "@/lib/cad-ocr";
+import { ocrImage, matchBuilding, compareSF, type CadMatch } from "@/lib/cad-ocr";
 import * as XLSX from "xlsx";
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
@@ -97,10 +97,15 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     () => localStorage.getItem("roofroute_auto_hide_complete") === "true"
   );
   const [needsCadFilter, setNeedsCadFilter] = useState(false);
-  const [cadUploading, setCadUploading] = useState<string | null>(null);
   const [cadPreview, setCadPreview] = useState<string | null>(null);
-  const cadInputRef = useRef<HTMLInputElement>(null);
-  const cadTargetRef = useRef<string | null>(null);
+  
+  // Batch CAD upload state
+  const [cadProcessing, setCadProcessing] = useState(false);
+  const [cadMatches, setCadMatches] = useState<CadMatch[]>([]);
+  const [cadChecked, setCadChecked] = useState<Record<number, boolean>>({});
+  const [cadConfirmOpen, setCadConfirmOpen] = useState(false);
+  const [cadSaving, setCadSaving] = useState(false);
+  const batchCadInputRef = useRef<HTMLInputElement>(null);
 
   // Confirm status dialog
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string } | null>(null);
@@ -216,81 +221,127 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     window.open(url, "_blank");
   };
 
-  const handleCadUpload = useCallback(async (file: File, buildingId: string) => {
-    setCadUploading(buildingId);
-    try {
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `${buildingId}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("cad-drawings")
-        .upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
+  const handleBatchCadUpload = useCallback(async (files: FileList) => {
+    const allBuildings = days.flatMap((d) => d.buildings);
+    if (allBuildings.length === 0) return;
 
-      const { data: urlData } = supabase.storage
-        .from("cad-drawings")
-        .getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
+    setCadProcessing(true);
+    const matches: CadMatch[] = [];
 
-      // Update building with photo_url and mark complete
-      const { error: updateError } = await supabase
-        .from("buildings")
-        .update({
-          photo_url: publicUrl,
-          inspection_status: "complete",
-          completion_date: new Date().toISOString(),
-        })
-        .eq("id", buildingId);
-      if (updateError) throw updateError;
-
-      // Update local state
-      setDays((prev) =>
-        prev.map((d) => ({
-          ...d,
-          buildings: d.buildings.map((b) =>
-            b.id === buildingId
-              ? { ...b, photo_url: publicUrl, inspection_status: "complete" }
-              : b
-          ),
-        }))
-      );
-
-      // Run OCR for SF validation
+    for (const file of Array.from(files)) {
       try {
-        const { extractedSF } = await extractSquareFootage(file);
-        const building = days.flatMap((d) => d.buildings).find((b) => b.id === buildingId);
-        if (extractedSF && building?.square_footage) {
-          const result = compareSF(extractedSF, building.square_footage);
-          if (result === "match") {
-            toast.success(`CAD uploaded — ${extractedSF.toLocaleString()} SF confirmed ✓`);
-          } else {
-            toast.warning(
-              `CAD shows ${extractedSF.toLocaleString()} SF but building has ${building.square_footage.toLocaleString()} SF — please verify`,
-              { duration: 8000 }
-            );
-          }
-        } else if (extractedSF) {
-          toast.success(`CAD uploaded — ${extractedSF.toLocaleString()} SF detected`);
-        } else {
-          toast.success("CAD uploaded & marked complete");
-        }
+        const { extractedSF, rawText } = await ocrImage(file);
+        const { building, confidence } = matchBuilding(
+          rawText,
+          allBuildings.map((b) => ({ id: b.id, property_name: b.property_name, address: b.address }))
+        );
+        matches.push({
+          file,
+          matchedBuilding: building,
+          confidence,
+          extractedSF,
+          rawText,
+        });
       } catch {
-        toast.success("CAD uploaded & marked complete");
+        matches.push({
+          file,
+          matchedBuilding: null,
+          confidence: "none",
+          extractedSF: null,
+          rawText: "",
+        });
       }
-    } catch (err: any) {
-      toast.error(`Upload failed: ${err.message}`);
     }
-    setCadUploading(null);
+
+    setCadMatches(matches);
+    // Pre-check high-confidence matches
+    const checked: Record<number, boolean> = {};
+    matches.forEach((m, i) => {
+      checked[i] = m.confidence === "high";
+    });
+    setCadChecked(checked);
+    setCadProcessing(false);
+    setCadConfirmOpen(true);
   }, [days]);
 
-  const triggerCadUpload = (buildingId: string) => {
-    cadTargetRef.current = buildingId;
-    cadInputRef.current?.click();
-  };
+  const confirmBatchCadUpload = useCallback(async () => {
+    setCadSaving(true);
+    let successCount = 0;
+    const sfWarnings: string[] = [];
 
-  const onCadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && cadTargetRef.current) {
-      handleCadUpload(file, cadTargetRef.current);
+    for (let i = 0; i < cadMatches.length; i++) {
+      if (!cadChecked[i] || !cadMatches[i].matchedBuilding) continue;
+      const match = cadMatches[i];
+      const buildingId = match.matchedBuilding!.id;
+
+      try {
+        const ext = match.file.name.split(".").pop() || "jpg";
+        const path = `${buildingId}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("cad-drawings")
+          .upload(path, match.file, { upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from("cad-drawings")
+          .getPublicUrl(path);
+
+        await supabase
+          .from("buildings")
+          .update({
+            photo_url: urlData.publicUrl,
+            inspection_status: "complete",
+            completion_date: new Date().toISOString(),
+          })
+          .eq("id", buildingId);
+
+        // Update local state
+        setDays((prev) =>
+          prev.map((d) => ({
+            ...d,
+            buildings: d.buildings.map((b) =>
+              b.id === buildingId
+                ? { ...b, photo_url: urlData.publicUrl, inspection_status: "complete" }
+                : b
+            ),
+          }))
+        );
+
+        // SF validation
+        if (match.extractedSF) {
+          const building = days.flatMap((d) => d.buildings).find((b) => b.id === buildingId);
+          if (building?.square_footage) {
+            const result = compareSF(match.extractedSF, building.square_footage);
+            if (result === "mismatch") {
+              sfWarnings.push(
+                `${match.matchedBuilding!.property_name}: CAD shows ${match.extractedSF.toLocaleString()} SF vs ${building.square_footage.toLocaleString()} SF`
+              );
+            }
+          }
+        }
+
+        successCount++;
+      } catch {
+        // Skip failed uploads silently
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`${successCount} CAD${successCount > 1 ? "s" : ""} uploaded & marked complete`);
+    }
+    if (sfWarnings.length > 0) {
+      toast.warning(sfWarnings.join("\n"), { duration: 10000 });
+    }
+
+    setCadSaving(false);
+    setCadConfirmOpen(false);
+    setCadMatches([]);
+    setCadChecked({});
+  }, [cadMatches, cadChecked, days]);
+
+  const onBatchCadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleBatchCadUpload(e.target.files);
     }
     e.target.value = "";
   };
@@ -617,13 +668,14 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
 
   return (
     <>
-      {/* Hidden CAD file input */}
+      {/* Hidden batch CAD file input */}
       <input
-        ref={cadInputRef}
+        ref={batchCadInputRef}
         type="file"
         accept="image/png,image/jpeg,image/jpg"
+        multiple
         className="hidden"
-        onChange={onCadFileChange}
+        onChange={onBatchCadFileChange}
       />
       <Card className="bg-card border-border">
         <CardHeader>
@@ -675,6 +727,21 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                             <Label htmlFor={`needs-cad-${expandedPlan}`} className="text-xs cursor-pointer">Needs CAD</Label>
                           </div>
                         </div>
+
+                        {/* Batch CAD Upload */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={cadProcessing}
+                          onClick={() => batchCadInputRef.current?.click()}
+                        >
+                          {cadProcessing ? (
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          ) : (
+                            <Camera className="h-4 w-4 mr-1" />
+                          )}
+                          {cadProcessing ? "Processing CADs…" : "Upload CADs"}
+                        </Button>
 
                         {/* Location sort controls */}
                         <div className="flex items-center gap-2 flex-wrap">
@@ -845,31 +912,16 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                         >
                                           <ArrowRightLeft className="h-4 w-4 mr-2" /> Move to Another Day
                                         </Button>
-                                        {/* CAD Upload */}
-                                        <div className="flex gap-2">
+                                        {/* CAD View */}
+                                        {b.photo_url && (
                                           <Button
                                             variant="outline"
-                                            className="flex-1"
-                                            disabled={cadUploading === b.id}
-                                            onClick={(e) => { e.stopPropagation(); triggerCadUpload(b.id); }}
+                                            className="w-full"
+                                            onClick={(e) => { e.stopPropagation(); setCadPreview(b.photo_url); }}
                                           >
-                                            {cadUploading === b.id ? (
-                                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            ) : (
-                                              <Camera className="h-4 w-4 mr-2" />
-                                            )}
-                                            Upload CAD
+                                            <ImageIcon className="h-4 w-4 mr-2" /> View CAD
                                           </Button>
-                                          {b.photo_url && (
-                                            <Button
-                                              variant="outline"
-                                              size="icon"
-                                              onClick={(e) => { e.stopPropagation(); setCadPreview(b.photo_url); }}
-                                            >
-                                              <ImageIcon className="h-4 w-4" />
-                                            </Button>
-                                          )}
-                                        </div>
+                                        )}
                                         <div className="grid grid-cols-3 gap-2 pt-1">
                                           <Button
                                             className={`h-12 flex-col gap-1 border ${
@@ -1148,31 +1200,16 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                             <ArrowRightLeft className="h-4 w-4 mr-2" /> Move to Another Day
                                           </Button>
 
-                                          {/* CAD Upload */}
-                                          <div className="flex gap-2">
+                                          {/* CAD View */}
+                                          {b.photo_url && (
                                             <Button
                                               variant="outline"
-                                              className="flex-1"
-                                              disabled={cadUploading === b.id}
-                                              onClick={(e) => { e.stopPropagation(); triggerCadUpload(b.id); }}
+                                              className="w-full"
+                                              onClick={(e) => { e.stopPropagation(); setCadPreview(b.photo_url); }}
                                             >
-                                              {cadUploading === b.id ? (
-                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                              ) : (
-                                                <Camera className="h-4 w-4 mr-2" />
-                                              )}
-                                              Upload CAD
+                                              <ImageIcon className="h-4 w-4 mr-2" /> View CAD
                                             </Button>
-                                            {b.photo_url && (
-                                              <Button
-                                                variant="outline"
-                                                size="icon"
-                                                onClick={(e) => { e.stopPropagation(); setCadPreview(b.photo_url); }}
-                                              >
-                                                <ImageIcon className="h-4 w-4" />
-                                              </Button>
-                                            )}
-                                          </div>
+                                          )}
 
                                           {/* Status tap buttons */}
                                           <div className="grid grid-cols-3 gap-2 pt-1">
@@ -1343,6 +1380,63 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Batch CAD confirmation dialog */}
+      <Dialog open={cadConfirmOpen} onOpenChange={(o) => { if (!o) { setCadConfirmOpen(false); setCadMatches([]); setCadChecked({}); } }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Verify CAD Matches</DialogTitle>
+            <DialogDescription>
+              {cadMatches.length} screenshot{cadMatches.length !== 1 ? "s" : ""} processed. Check the buildings to upload and mark complete.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {cadMatches.map((m, i) => (
+              <div key={i} className={`p-3 rounded-lg border ${m.confidence === "high" ? "border-success/50 bg-success/5" : m.confidence === "low" ? "border-warning/50 bg-warning/5" : "border-border bg-muted/30"}`}>
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    checked={cadChecked[i] || false}
+                    disabled={!m.matchedBuilding}
+                    onCheckedChange={(v) => setCadChecked((prev) => ({ ...prev, [i]: !!v }))}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{m.file.name}</div>
+                    {m.matchedBuilding ? (
+                      <div className="mt-1">
+                        <div className="text-sm text-foreground">{m.matchedBuilding.property_name}</div>
+                        <div className="text-xs text-muted-foreground">{m.matchedBuilding.address}</div>
+                        {m.extractedSF && (
+                          <div className="text-xs mt-0.5">
+                            <span className="text-muted-foreground">Detected SF: </span>
+                            <span className="font-medium">{m.extractedSF.toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground mt-1">No building match found</div>
+                    )}
+                    <Badge className={`mt-1.5 text-[10px] ${m.confidence === "high" ? "bg-success/20 text-success" : m.confidence === "low" ? "bg-warning/20 text-warning" : "bg-muted text-muted-foreground"} border-0`}>
+                      {m.confidence === "high" ? "High confidence" : m.confidence === "low" ? "Low confidence" : "No match"}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCadConfirmOpen(false); setCadMatches([]); setCadChecked({}); }}>
+              Cancel
+            </Button>
+            <Button
+              disabled={cadSaving || Object.values(cadChecked).filter(Boolean).length === 0}
+              onClick={confirmBatchCadUpload}
+            >
+              {cadSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Upload {Object.values(cadChecked).filter(Boolean).length} CAD{Object.values(cadChecked).filter(Boolean).length !== 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
