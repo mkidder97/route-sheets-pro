@@ -9,6 +9,9 @@ import RouteBuilder from "./pages/RouteBuilder";
 import DataManager from "./pages/DataManager";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import { AuthProvider } from "@/hooks/useAuth";
+import OpsLogin from "./pages/ops/OpsLogin";
+import ProtectedRoute from "./components/ops/ProtectedRoute";
 import OpsLayout from "./components/ops/OpsLayout";
 import OpsDashboard from "./pages/ops/OpsDashboard";
 import OpsJobBoard from "./pages/ops/OpsJobBoard";
@@ -24,23 +27,26 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AppLayout>
-          <Routes>
-            <Route path="/" element={<MyRoutes />} />
-            <Route path="/my-routes" element={<MyRoutes />} />
-            <Route path="/route-builder" element={<RouteBuilder />} />
-            <Route path="/buildings" element={<DataManager />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/ops" element={<OpsLayout />}>
-              <Route index element={<OpsDashboard />} />
-              <Route path="jobs" element={<OpsJobBoard />} />
-              <Route path="scheduling" element={<OpsScheduling />} />
-              <Route path="time-mileage" element={<OpsTimeMileage />} />
-              <Route path="settings" element={<OpsSettings />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AppLayout>
+        <AuthProvider>
+          <AppLayout>
+            <Routes>
+              <Route path="/" element={<MyRoutes />} />
+              <Route path="/my-routes" element={<MyRoutes />} />
+              <Route path="/route-builder" element={<RouteBuilder />} />
+              <Route path="/buildings" element={<DataManager />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/ops/login" element={<OpsLogin />} />
+              <Route path="/ops" element={<ProtectedRoute><OpsLayout /></ProtectedRoute>}>
+                <Route index element={<OpsDashboard />} />
+                <Route path="jobs" element={<OpsJobBoard />} />
+                <Route path="scheduling" element={<OpsScheduling />} />
+                <Route path="time-mileage" element={<OpsTimeMileage />} />
+                <Route path="settings" element={<OpsSettings />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AppLayout>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
