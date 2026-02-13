@@ -1,69 +1,88 @@
 
 
-# Job Board Page with Inspection Campaigns
+# Enhanced New Campaign Dialog + Campaign Detail Page
 
 ## Overview
 
-Build the `/ops/jobs` page with an "Annuals" / "CM Jobs" toggle, a new `inspection_campaigns` database table, and a card-based campaign viewer with client/region/status filters.
+Two additions to the Job Board:
+1. Improve the "New Campaign" dialog to auto-fill the name and auto-populate building counts on creation
+2. Add a new Campaign Detail page at `/ops/jobs/campaign/:id` with a full buildings table, filters, expandable rows, and editable status
 
-## 1. Database Migration
+## 1. Update `src/pages/ops/OpsJobBoard.tsx` -- Enhanced New Campaign Dialog
 
-Create `inspection_campaigns` table with:
+### Changes to the dialog:
+- Reorder fields: Client first, then Region, then Campaign Name
+- Auto-fill Campaign Name as "[Client Name] -- [Region Name]" when both are selected (user can still edit)
+- Remove the Status dropdown from the dialog (new campaigns always start as "active")
+- On submit: after inserting the campaign, query `buildings` where `client_id` and `region_id` match. Count total rows and rows where `inspection_status = 'complete'`. Update the new campaign record with those counts.
 
-| Column | Type | Details |
-|--------|------|---------|
-| id | uuid | PK, gen_random_uuid() |
-| client_id | uuid | NOT NULL, references clients |
-| region_id | uuid | NOT NULL, references regions |
-| name | text | NOT NULL |
-| start_date | date | NOT NULL |
-| end_date | date | NOT NULL |
-| status | text | CHECK constraint: planning, active, complete, on_hold. Default 'active' |
-| total_buildings | integer | Default 0 |
-| completed_buildings | integer | Default 0 |
-| notes | text | Nullable |
-| created_at / updated_at | timestamptz | Default now(), trigger for updated_at |
+### Changes to the card grid:
+- Wrap each card in a click handler that navigates to `/ops/jobs/campaign/${c.id}` using `useNavigate`
 
-RLS policies:
-- SELECT: all authenticated users
-- INSERT / UPDATE / DELETE: admin or office_manager (via `has_ops_role`)
+## 2. New file: `src/pages/ops/OpsCampaignDetail.tsx`
 
-## 2. Rewrite `src/pages/ops/OpsJobBoard.tsx`
+### Header section:
+- Back button (arrow left, navigates to `/ops/jobs`)
+- Campaign name (large heading)
+- Client -- Region subtitle
+- Status badge as an editable `Select` dropdown for admin/office_manager; read-only badge for others
+- Date range text
+- Progress bar with "X of Y buildings complete (Z%)"
 
-### Top-level layout
-- Title "Job Board" on the left, Tabs toggle (Annuals / CM Jobs) on the right
-- CM Jobs tab shows a "Coming Soon -- Phase 2" placeholder
+### Filter bar above table:
+- Status dropdown (pending, in_progress, complete, skipped, needs_revisit)
+- Inspector dropdown (from inspectors table)
+- Search input (filters by property_name or address)
+- "Priority Only" toggle switch
 
-### Annuals tab
-- **Filter bar**: Client dropdown (from clients table), Region dropdown (filtered by selected client, resets when client changes), Status dropdown, and a "New Campaign" button (admin/office_manager only)
-- **Campaign card grid**: Responsive grid (1/2/3 columns) of cards, each showing:
-  - Campaign name
-  - Client -- Region subtitle
-  - Status badge (planning=gray, active=blue, complete=green, on_hold=orange)
-  - Date range formatted with date-fns
-  - Progress bar with "X / Y buildings" and percentage
-  - Cards have cursor-pointer and hover shadow (no navigation target yet)
-- **Empty state**: "No campaigns found. Create your first campaign to get started."
+### Buildings table:
+- Fetches buildings where `client_id` and `region_id` match the campaign
+- Joins inspectors table via `inspector_id` for inspector name
+- Columns: Stop #, Property Name, Address (city, state), Status (color-coded badge), Inspector, Scheduled Week, Flags (star/bell/person icons)
+- Sortable by clicking column headers (client-side sort)
+- Clickable rows expand inline to show full detail panel
 
-### New Campaign dialog
-- Fields: Campaign Name, Client (select), Region (select, filtered by client), Start Date, End Date, Status, Notes (optional)
-- Inserts directly via Supabase client into `inspection_campaigns`
-- total_buildings and completed_buildings both start at 0 (auto-sync comes in Phase 1.2)
+### Expanded row detail:
+Shows all building fields in a structured layout:
+- Full address (address, city, state, zip_code)
+- Building code, roof group, square footage
+- Roof access: type, description, access location, lock/gate codes
+- Property manager: name, phone, email
+- Special notes, special equipment list
+- Inspector notes, completion date
+- Photo URL (as clickable link if present)
+
+### Status badge colors:
+- pending = gray
+- in_progress = blue
+- complete = green
+- skipped = red
+- needs_revisit = orange
+
+## 3. Update `src/App.tsx` -- Add route
+
+Add a new child route under `/ops`:
+```text
+<Route path="jobs/campaign/:id" element={<OpsCampaignDetail />} />
+```
 
 ## Files
 
 | File | Action |
 |------|--------|
-| New migration SQL | Create `inspection_campaigns` table + RLS |
-| `src/pages/ops/OpsJobBoard.tsx` | Full rewrite with tabs, filters, cards, dialog |
+| `src/pages/ops/OpsJobBoard.tsx` | Edit -- enhanced dialog with auto-name and building count sync, card click navigation |
+| `src/pages/ops/OpsCampaignDetail.tsx` | New -- full campaign detail page with buildings table |
+| `src/App.tsx` | Edit -- add campaign detail route |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| New table | `inspection_campaigns` |
-| RLS | Authenticated read, admin/office_manager write |
-| UI components | Tabs, Card, Badge, Progress, Select, Dialog, Input, Textarea, Button |
-| Data fetching | Direct Supabase queries with filters |
-| Date formatting | date-fns `format()` |
+| Files modified | 2 |
+| Files created | 1 |
+| No database changes | Building counts populated via client-side queries on campaign creation |
+| UI components | Table, Collapsible, Select, Switch, Badge, Progress, Input, Button |
+| Data joins | buildings -> inspectors (for inspector name column) |
+| Navigation | useNavigate for card click and back button |
+| Role check | useAuth().role for conditional edit controls |
 
