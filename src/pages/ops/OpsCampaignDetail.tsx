@@ -41,6 +41,7 @@ type Campaign = {
   start_date: string;
   end_date: string;
   status: string;
+  inspection_type: string;
   total_buildings: number;
   completed_buildings: number;
   notes: string | null;
@@ -48,7 +49,7 @@ type Campaign = {
   regions?: { name: string } | null;
 };
 
-type Building = {
+type BuildingData = {
   id: string;
   stop_number: string | null;
   property_name: string;
@@ -56,12 +57,6 @@ type Building = {
   city: string;
   state: string;
   zip_code: string;
-  inspection_status: string;
-  inspector_id: string | null;
-  scheduled_week: string | null;
-  is_priority: boolean | null;
-  requires_advance_notice: boolean | null;
-  requires_escort: boolean | null;
   building_code: string | null;
   roof_group: string | null;
   square_footage: number | null;
@@ -74,10 +69,21 @@ type Building = {
   property_manager_email: string | null;
   special_notes: string | null;
   special_equipment: string[] | null;
-  inspector_notes: string | null;
+  requires_advance_notice: boolean | null;
+  requires_escort: boolean | null;
+};
+
+type CampaignBuilding = {
+  id: string;
+  inspection_status: string;
+  inspector_id: string | null;
+  scheduled_week: string | null;
+  is_priority: boolean;
   completion_date: string | null;
+  inspector_notes: string | null;
   photo_url: string | null;
-  inspectors?: { name: string } | null;
+  building: BuildingData;
+  inspector: { name: string } | null;
 };
 
 type Inspector = { id: string; name: string };
@@ -112,7 +118,23 @@ const CAMPAIGN_STATUS_COLORS: Record<string, string> = {
   on_hold: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
 };
 
+const TYPE_BADGE_COLORS: Record<string, string> = {
+  annual: "border-blue-500 text-blue-700 dark:text-blue-300",
+  due_diligence: "border-purple-500 text-purple-700 dark:text-purple-300",
+  survey: "border-teal-500 text-teal-700 dark:text-teal-300",
+  storm: "border-red-500 text-red-700 dark:text-red-300",
+};
+
+const INSPECTION_TYPE_LABELS: Record<string, string> = {
+  annual: "Annual",
+  due_diligence: "Due Diligence",
+  survey: "Survey",
+  storm: "Storm",
+};
+
 type SortKey = "stop_number" | "property_name" | "city" | "inspection_status" | "scheduled_week";
+
+const BUILDING_LEVEL_SORT_KEYS = new Set(["stop_number", "property_name", "city"]);
 
 export default function OpsCampaignDetail() {
   const { id } = useParams<{ id: string }>();
@@ -121,7 +143,7 @@ export default function OpsCampaignDetail() {
   const canEdit = role === "admin" || role === "office_manager";
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [buildings, setBuildings] = useState<CampaignBuilding[]>([]);
   const [inspectors, setInspectors] = useState<Inspector[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -145,7 +167,7 @@ export default function OpsCampaignDetail() {
 
   useEffect(() => {
     if (campaign) fetchBuildings();
-  }, [campaign?.client_id, campaign?.region_id]);
+  }, [campaign?.id]);
 
   async function fetchCampaign() {
     const { data, error } = await supabase
@@ -165,12 +187,28 @@ export default function OpsCampaignDetail() {
     if (!campaign) return;
     setLoading(true);
     const { data } = await supabase
-      .from("buildings")
-      .select("*, inspectors(name)")
-      .eq("client_id", campaign.client_id)
-      .eq("region_id", campaign.region_id)
-      .order("stop_number");
-    setBuildings((data as Building[]) ?? []);
+      .from("campaign_buildings" as any)
+      .select(`
+        id,
+        inspection_status,
+        inspector_id,
+        scheduled_week,
+        is_priority,
+        completion_date,
+        inspector_notes,
+        photo_url,
+        building:buildings (
+          id, stop_number, property_name, address, city, state, zip_code,
+          building_code, roof_group, square_footage,
+          roof_access_type, roof_access_description, access_location, lock_gate_codes,
+          property_manager_name, property_manager_phone, property_manager_email,
+          special_notes, special_equipment, requires_advance_notice, requires_escort
+        ),
+        inspector:inspectors ( name )
+      `)
+      .eq("campaign_id", id!)
+      .order("created_at");
+    setBuildings((data as unknown as CampaignBuilding[]) ?? []);
     setLoading(false);
   }
 
@@ -211,14 +249,21 @@ export default function OpsCampaignDetail() {
       const q = search.toLowerCase();
       result = result.filter(
         (b) =>
-          b.property_name.toLowerCase().includes(q) ||
-          b.address.toLowerCase().includes(q)
+          b.building.property_name.toLowerCase().includes(q) ||
+          b.building.address.toLowerCase().includes(q)
       );
     }
 
     result = [...result].sort((a, b) => {
-      const aVal = (a[sortKey] ?? "") as string;
-      const bVal = (b[sortKey] ?? "") as string;
+      let aVal: string;
+      let bVal: string;
+      if (BUILDING_LEVEL_SORT_KEYS.has(sortKey)) {
+        aVal = ((a.building as any)[sortKey] ?? "") as string;
+        bVal = ((b.building as any)[sortKey] ?? "") as string;
+      } else {
+        aVal = ((a as any)[sortKey] ?? "") as string;
+        bVal = ((b as any)[sortKey] ?? "") as string;
+      }
       return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     });
 
@@ -251,7 +296,10 @@ export default function OpsCampaignDetail() {
               {format(new Date(campaign.end_date), "MMM d, yyyy")}
             </p>
           </div>
-          <div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className={TYPE_BADGE_COLORS[campaign.inspection_type] ?? ""}>
+              {INSPECTION_TYPE_LABELS[campaign.inspection_type] ?? campaign.inspection_type}
+            </Badge>
             {canEdit ? (
               <Select value={campaign.status} onValueChange={updateCampaignStatus}>
                 <SelectTrigger className="w-[140px]">
@@ -345,21 +393,21 @@ export default function OpsCampaignDetail() {
                       <TableCell className="w-8">
                         {expandedId === b.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </TableCell>
-                      <TableCell>{b.stop_number ?? "—"}</TableCell>
-                      <TableCell className="font-medium">{b.property_name}</TableCell>
-                      <TableCell>{b.city}, {b.state}</TableCell>
+                      <TableCell>{b.building.stop_number ?? "—"}</TableCell>
+                      <TableCell className="font-medium">{b.building.property_name}</TableCell>
+                      <TableCell>{b.building.city}, {b.building.state}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={BUILDING_STATUS_COLORS[b.inspection_status] ?? ""}>
                           {BUILDING_STATUS_OPTIONS.find((s) => s.value === b.inspection_status)?.label ?? b.inspection_status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{b.inspectors?.name ?? "—"}</TableCell>
+                      <TableCell>{b.inspector?.name ?? "—"}</TableCell>
                       <TableCell>{b.scheduled_week ?? "—"}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
                           {b.is_priority && <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
-                          {b.requires_advance_notice && <Bell className="h-4 w-4 text-muted-foreground" />}
-                          {b.requires_escort && <UserRound className="h-4 w-4 text-muted-foreground" />}
+                          {b.building.requires_advance_notice && <Bell className="h-4 w-4 text-muted-foreground" />}
+                          {b.building.requires_escort && <UserRound className="h-4 w-4 text-muted-foreground" />}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -367,7 +415,7 @@ export default function OpsCampaignDetail() {
                   <CollapsibleContent asChild>
                     <tr>
                       <td colSpan={8} className="bg-muted/30 p-4">
-                        <BuildingDetail building={b} />
+                        <BuildingDetail row={b} />
                       </td>
                     </tr>
                   </CollapsibleContent>
@@ -404,7 +452,8 @@ function SortableHead({
   );
 }
 
-function BuildingDetail({ building: b }: { building: Building }) {
+function BuildingDetail({ row }: { row: CampaignBuilding }) {
+  const b = row.building;
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm">
       <div className="space-y-1">
@@ -435,13 +484,13 @@ function BuildingDetail({ building: b }: { building: Building }) {
         <p className="font-medium">Notes & Equipment</p>
         <p>Special Notes: {b.special_notes ?? "—"}</p>
         <p>Equipment: {b.special_equipment?.join(", ") ?? "—"}</p>
-        <p>Inspector Notes: {b.inspector_notes ?? "—"}</p>
+        <p>Inspector Notes: {row.inspector_notes ?? "—"}</p>
       </div>
       <div className="space-y-1">
         <p className="font-medium">Completion</p>
-        <p>Date: {b.completion_date ? format(new Date(b.completion_date), "MMM d, yyyy") : "—"}</p>
-        {b.photo_url && (
-          <a href={b.photo_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+        <p>Date: {row.completion_date ? format(new Date(row.completion_date), "MMM d, yyyy") : "—"}</p>
+        {row.photo_url && (
+          <a href={row.photo_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
             View Photo
           </a>
         )}

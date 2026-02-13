@@ -204,6 +204,70 @@ export type Database = {
           },
         ]
       }
+      campaign_buildings: {
+        Row: {
+          building_id: string
+          campaign_id: string
+          completion_date: string | null
+          created_at: string
+          id: string
+          inspection_status: string
+          inspector_id: string | null
+          inspector_notes: string | null
+          is_priority: boolean
+          photo_url: string | null
+          scheduled_week: string | null
+        }
+        Insert: {
+          building_id: string
+          campaign_id: string
+          completion_date?: string | null
+          created_at?: string
+          id?: string
+          inspection_status?: string
+          inspector_id?: string | null
+          inspector_notes?: string | null
+          is_priority?: boolean
+          photo_url?: string | null
+          scheduled_week?: string | null
+        }
+        Update: {
+          building_id?: string
+          campaign_id?: string
+          completion_date?: string | null
+          created_at?: string
+          id?: string
+          inspection_status?: string
+          inspector_id?: string | null
+          inspector_notes?: string | null
+          is_priority?: boolean
+          photo_url?: string | null
+          scheduled_week?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_buildings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_buildings_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_buildings_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "inspectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           created_at: string
@@ -297,6 +361,7 @@ export type Database = {
           created_at: string
           end_date: string
           id: string
+          inspection_type: string
           name: string
           notes: string | null
           region_id: string
@@ -311,6 +376,7 @@ export type Database = {
           created_at?: string
           end_date: string
           id?: string
+          inspection_type?: string
           name: string
           notes?: string | null
           region_id: string
@@ -325,6 +391,7 @@ export type Database = {
           created_at?: string
           end_date?: string
           id?: string
+          inspection_type?: string
           name?: string
           notes?: string | null
           region_id?: string
