@@ -15,6 +15,7 @@ import ProtectedRoute from "./components/ops/ProtectedRoute";
 import OpsLayout from "./components/ops/OpsLayout";
 import OpsDashboard from "./pages/ops/OpsDashboard";
 import OpsJobBoard from "./pages/ops/OpsJobBoard";
+import OpsCampaignDetail from "./pages/ops/OpsCampaignDetail";
 import OpsScheduling from "./pages/ops/OpsScheduling";
 import OpsTimeMileage from "./pages/ops/OpsTimeMileage";
 import OpsSettings from "./pages/ops/OpsSettings";
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/ops" element={<ProtectedRoute><OpsLayout /></ProtectedRoute>}>
               <Route index element={<OpsDashboard />} />
               <Route path="jobs" element={<OpsJobBoard />} />
+              <Route path="jobs/campaign/:id" element={<OpsCampaignDetail />} />
               <Route path="scheduling" element={<OpsScheduling />} />
               <Route path="time-mileage" element={<OpsTimeMileage />} />
               <Route path="settings" element={
