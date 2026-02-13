@@ -651,12 +651,7 @@ export type Database = {
       }
     }
     Enums: {
-      ops_role:
-        | "admin"
-        | "office_manager"
-        | "inspector"
-        | "engineer"
-        | "construction_manager"
+      ops_role: "admin" | "office_manager" | "field_ops" | "engineer"
       region_status: "not_started" | "in_progress" | "complete"
       roof_access_type:
         | "roof_hatch"
@@ -791,13 +786,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      ops_role: [
-        "admin",
-        "office_manager",
-        "inspector",
-        "engineer",
-        "construction_manager",
-      ],
+      ops_role: ["admin", "office_manager", "field_ops", "engineer"],
       region_status: ["not_started", "in_progress", "complete"],
       roof_access_type: [
         "roof_hatch",
