@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
@@ -63,6 +64,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function OpsJobBoard() {
   const { role } = useAuth();
+  const navigate = useNavigate();
   const canWrite = role === "admin" || role === "office_manager";
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -78,13 +80,13 @@ export default function OpsJobBoard() {
   // Dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [form, setForm] = useState({
     name: "",
     client_id: "",
     region_id: "",
     start_date: "",
     end_date: "",
-    status: "active",
     notes: "",
   });
 
@@ -104,6 +106,18 @@ export default function OpsJobBoard() {
     [regions, form.client_id]
   );
 
+  // Auto-fill campaign name when client and region are selected
+  useEffect(() => {
+    if (nameManuallyEdited) return;
+    if (form.client_id && form.region_id) {
+      const client = clients.find((c) => c.id === form.client_id);
+      const region = regions.find((r) => r.id === form.region_id);
+      if (client && region) {
+        setForm((prev) => ({ ...prev, name: `${client.name} — ${region.name}` }));
+      }
+    }
+  }, [form.client_id, form.region_id, clients, regions, nameManuallyEdited]);
+
   useEffect(() => {
     fetchClients();
     fetchRegions();
@@ -113,7 +127,6 @@ export default function OpsJobBoard() {
     fetchCampaigns();
   }, [filterClient, filterRegion, filterStatus]);
 
-  // Reset region filter when client changes
   useEffect(() => {
     setFilterRegion("all");
   }, [filterClient]);
@@ -161,24 +174,63 @@ export default function OpsJobBoard() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("inspection_campaigns").insert({
-      name: form.name,
-      client_id: form.client_id,
-      region_id: form.region_id,
-      start_date: form.start_date,
-      end_date: form.end_date,
-      status: form.status,
-      notes: form.notes || null,
-    });
-    setSaving(false);
-    if (error) {
+
+    // Insert campaign
+    const { data: inserted, error } = await supabase
+      .from("inspection_campaigns")
+      .insert({
+        name: form.name,
+        client_id: form.client_id,
+        region_id: form.region_id,
+        start_date: form.start_date,
+        end_date: form.end_date,
+        status: "active",
+        notes: form.notes || null,
+      })
+      .select("id")
+      .single();
+
+    if (error || !inserted) {
+      setSaving(false);
       toast.error("Failed to create campaign");
-    } else {
-      toast.success("Campaign created");
-      setDialogOpen(false);
-      setForm({ name: "", client_id: "", region_id: "", start_date: "", end_date: "", status: "active", notes: "" });
-      fetchCampaigns();
+      return;
     }
+
+    // Query building counts and update campaign
+    const [totalRes, completedRes] = await Promise.all([
+      supabase
+        .from("buildings")
+        .select("*", { count: "exact", head: true })
+        .eq("client_id", form.client_id)
+        .eq("region_id", form.region_id),
+      supabase
+        .from("buildings")
+        .select("*", { count: "exact", head: true })
+        .eq("client_id", form.client_id)
+        .eq("region_id", form.region_id)
+        .eq("inspection_status", "complete"),
+    ]);
+
+    await supabase
+      .from("inspection_campaigns")
+      .update({
+        total_buildings: totalRes.count ?? 0,
+        completed_buildings: completedRes.count ?? 0,
+      })
+      .eq("id", inserted.id);
+
+    setSaving(false);
+    toast.success("Campaign created");
+    setDialogOpen(false);
+    setForm({ name: "", client_id: "", region_id: "", start_date: "", end_date: "", notes: "" });
+    setNameManuallyEdited(false);
+    fetchCampaigns();
+  }
+
+  function resetDialog() {
+    setDialogOpen(false);
+    setForm({ name: "", client_id: "", region_id: "", start_date: "", end_date: "", notes: "" });
+    setNameManuallyEdited(false);
   }
 
   function progressPercent(completed: number, total: number) {
@@ -204,7 +256,6 @@ export default function OpsJobBoard() {
         </TabsList>
 
         <TabsContent value="annuals" className="space-y-4">
-          {/* Filter bar */}
           <div className="flex flex-wrap gap-3">
             <Select value={filterClient} onValueChange={setFilterClient}>
               <SelectTrigger className="w-[180px]">
@@ -243,7 +294,6 @@ export default function OpsJobBoard() {
             </Select>
           </div>
 
-          {/* Campaign grid */}
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : campaigns.length === 0 ? (
@@ -259,6 +309,7 @@ export default function OpsJobBoard() {
                   <Card
                     key={c.id}
                     className="cursor-pointer transition-shadow hover:shadow-md"
+                    onClick={() => navigate(`/ops/jobs/campaign/${c.id}`)}
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between gap-2">
@@ -299,23 +350,22 @@ export default function OpsJobBoard() {
       </Tabs>
 
       {/* New Campaign Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetDialog(); else setDialogOpen(true); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Campaign</DialogTitle>
             <DialogDescription>Create a new annual inspection campaign.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Campaign Name *</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Client *</Label>
                 <Select
                   value={form.client_id}
-                  onValueChange={(v) => setForm({ ...form, client_id: v, region_id: "" })}
+                  onValueChange={(v) => {
+                    setForm((prev) => ({ ...prev, client_id: v, region_id: "" }));
+                    setNameManuallyEdited(false);
+                  }}
                 >
                   <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
                   <SelectContent>
@@ -329,7 +379,10 @@ export default function OpsJobBoard() {
                 <Label>Region *</Label>
                 <Select
                   value={form.region_id}
-                  onValueChange={(v) => setForm({ ...form, region_id: v })}
+                  onValueChange={(v) => {
+                    setForm((prev) => ({ ...prev, region_id: v }));
+                    setNameManuallyEdited(false);
+                  }}
                   disabled={!form.client_id}
                 >
                   <SelectTrigger><SelectValue placeholder="Select region" /></SelectTrigger>
@@ -340,6 +393,16 @@ export default function OpsJobBoard() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Campaign Name *</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, name: e.target.value }));
+                  setNameManuallyEdited(true);
+                }}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -352,23 +415,12 @@ export default function OpsJobBoard() {
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
               <Label>Notes</Label>
               <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={resetDialog}>Cancel</Button>
             <Button onClick={handleCreate} disabled={saving}>
               {saving ? "Creating…" : "Create Campaign"}
             </Button>
