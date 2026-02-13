@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -26,10 +27,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet, Crosshair, ArrowRightLeft } from "lucide-react";
+import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet, Crosshair, ArrowRightLeft, Camera, Image as ImageIcon } from "lucide-react";
 import { haversineDistance } from "@/lib/geo-utils";
 import { generateInspectorPDF, type DayData, type BuildingData, type DocumentMetadata } from "@/lib/pdf-generator";
 import { generateInspectorExcel } from "@/lib/excel-generator";
+import { extractSquareFootage, compareSF } from "@/lib/cad-ocr";
 import * as XLSX from "xlsx";
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
@@ -74,6 +76,7 @@ interface SavedDayBuilding {
   requires_escort: boolean | null;
   latitude: number | null;
   longitude: number | null;
+  photo_url: string | null;
 }
 
 interface SavedDay {
@@ -90,7 +93,17 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [expandedBuilding, setExpandedBuilding] = useState<string | null>(null);
   const [days, setDays] = useState<SavedDay[]>([]);
-  const [hideComplete, setHideComplete] = useState(false);
+  const [hideComplete, setHideComplete] = useState(
+    () => localStorage.getItem("roofroute_auto_hide_complete") === "true"
+  );
+  const [needsCadFilter, setNeedsCadFilter] = useState(false);
+  const [cadUploading, setCadUploading] = useState<string | null>(null);
+  const [cadPreview, setCadPreview] = useState<string | null>(null);
+  const cadInputRef = useRef<HTMLInputElement>(null);
+  const cadTargetRef = useRef<string | null>(null);
+
+  // Confirm status dialog
+  const [confirmAction, setConfirmAction] = useState<{ id: string; status: string } | null>(null);
   const [loadingDays, setLoadingDays] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SavedRoutePlan | null>(null);
 
@@ -185,11 +198,101 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
 
   const openNavigation = (address: string, city: string, state: string, zipCode: string) => {
     const addr = encodeURIComponent(`${address}, ${city}, ${state} ${zipCode}`);
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const url = isIOS
-      ? `maps://maps.apple.com/?daddr=${addr}`
-      : `https://www.google.com/maps/dir/?api=1&destination=${addr}`;
+    const navPref = localStorage.getItem("roofroute_nav_app") || "auto";
+    let url: string;
+    if (navPref === "google") {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${addr}`;
+    } else if (navPref === "apple") {
+      url = `maps://maps.apple.com/?daddr=${addr}`;
+    } else if (navPref === "waze") {
+      url = `https://waze.com/ul?q=${addr}&navigate=yes`;
+    } else {
+      // Auto: detect device
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      url = isIOS
+        ? `maps://maps.apple.com/?daddr=${addr}`
+        : `https://www.google.com/maps/dir/?api=1&destination=${addr}`;
+    }
     window.open(url, "_blank");
+  };
+
+  const handleCadUpload = useCallback(async (file: File, buildingId: string) => {
+    setCadUploading(buildingId);
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${buildingId}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("cad-drawings")
+        .upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("cad-drawings")
+        .getPublicUrl(path);
+      const publicUrl = urlData.publicUrl;
+
+      // Update building with photo_url and mark complete
+      const { error: updateError } = await supabase
+        .from("buildings")
+        .update({
+          photo_url: publicUrl,
+          inspection_status: "complete",
+          completion_date: new Date().toISOString(),
+        })
+        .eq("id", buildingId);
+      if (updateError) throw updateError;
+
+      // Update local state
+      setDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          buildings: d.buildings.map((b) =>
+            b.id === buildingId
+              ? { ...b, photo_url: publicUrl, inspection_status: "complete" }
+              : b
+          ),
+        }))
+      );
+
+      // Run OCR for SF validation
+      try {
+        const { extractedSF } = await extractSquareFootage(file);
+        const building = days.flatMap((d) => d.buildings).find((b) => b.id === buildingId);
+        if (extractedSF && building?.square_footage) {
+          const result = compareSF(extractedSF, building.square_footage);
+          if (result === "match") {
+            toast.success(`CAD uploaded — ${extractedSF.toLocaleString()} SF confirmed ✓`);
+          } else {
+            toast.warning(
+              `CAD shows ${extractedSF.toLocaleString()} SF but building has ${building.square_footage.toLocaleString()} SF — please verify`,
+              { duration: 8000 }
+            );
+          }
+        } else if (extractedSF) {
+          toast.success(`CAD uploaded — ${extractedSF.toLocaleString()} SF detected`);
+        } else {
+          toast.success("CAD uploaded & marked complete");
+        }
+      } catch {
+        toast.success("CAD uploaded & marked complete");
+      }
+    } catch (err: any) {
+      toast.error(`Upload failed: ${err.message}`);
+    }
+    setCadUploading(null);
+  }, [days]);
+
+  const triggerCadUpload = (buildingId: string) => {
+    cadTargetRef.current = buildingId;
+    cadInputRef.current?.click();
+  };
+
+  const onCadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && cadTargetRef.current) {
+      handleCadUpload(file, cadTargetRef.current);
+    }
+    e.target.value = "";
   };
 
 
@@ -254,7 +357,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     const dayIds = dayRows.map((d) => d.id);
     const { data: rpb } = await supabase
       .from("route_plan_buildings")
-      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes, property_manager_name, property_manager_phone, property_manager_email, requires_advance_notice, requires_escort, latitude, longitude)")
+      .select("route_plan_day_id, stop_order, buildings(id, property_name, address, city, state, zip_code, inspection_status, inspector_notes, is_priority, square_footage, roof_access_type, access_location, lock_gate_codes, special_equipment, special_notes, property_manager_name, property_manager_phone, property_manager_email, requires_advance_notice, requires_escort, latitude, longitude, photo_url)")
       .in("route_plan_day_id", dayIds)
       .order("stop_order");
 
@@ -289,6 +392,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
           requires_escort: r.buildings.requires_escort,
           latitude: r.buildings.latitude,
           longitude: r.buildings.longitude,
+          photo_url: r.buildings.photo_url,
         })),
     }));
 
@@ -299,9 +403,12 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
   };
 
   const handleStatusChange = (buildingId: string, newStatus: string) => {
+    const confirmPref = localStorage.getItem("roofroute_confirm_status") === "true";
     if (newStatus === "skipped" || newStatus === "needs_revisit") {
       setNoteDialog({ id: buildingId, status: newStatus });
       setNoteText("");
+    } else if (confirmPref) {
+      setConfirmAction({ id: buildingId, status: newStatus });
     } else {
       updateStatus(buildingId, newStatus);
     }
@@ -510,6 +617,14 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
 
   return (
     <>
+      {/* Hidden CAD file input */}
+      <input
+        ref={cadInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg"
+        className="hidden"
+        onChange={onCadFileChange}
+      />
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-lg">Saved Routes</CardTitle>
@@ -550,9 +665,15 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                           <Progress value={allBuildings.length > 0 ? (totalComplete / allBuildings.length) * 100 : 0} className="h-2 flex-1" />
                           <span className="text-sm font-medium text-muted-foreground">{totalComplete}/{allBuildings.length} complete</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch id={`hide-complete-${expandedPlan}`} checked={hideComplete} onCheckedChange={setHideComplete} />
-                          <Label htmlFor={`hide-complete-${expandedPlan}`} className="text-xs cursor-pointer">Hide completed</Label>
+                        <div className="flex items-center gap-4 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <Switch id={`hide-complete-${expandedPlan}`} checked={hideComplete} onCheckedChange={setHideComplete} />
+                            <Label htmlFor={`hide-complete-${expandedPlan}`} className="text-xs cursor-pointer">Hide completed</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch id={`needs-cad-${expandedPlan}`} checked={needsCadFilter} onCheckedChange={setNeedsCadFilter} />
+                            <Label htmlFor={`needs-cad-${expandedPlan}`} className="text-xs cursor-pointer">Needs CAD</Label>
+                          </div>
                         </div>
 
                         {/* Location sort controls */}
@@ -597,7 +718,11 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                           /* Proximity-sorted view */
                           <div className="space-y-1">
                             {sortedByDistance
-                              .filter((b) => (hideComplete ? b.inspection_status !== "complete" : true))
+                              .filter((b) => {
+                                if (hideComplete && b.inspection_status === "complete") return false;
+                                if (needsCadFilter && !(b.inspection_status === "complete" && !b.photo_url)) return false;
+                                return true;
+                              })
                               .map((b) => {
                                 const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
                                 const isBuildingExpanded = expandedBuilding === b.id;
@@ -615,6 +740,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0 ml-2">
                                           <Badge className={`${cfg.badge} border-0 text-[10px]`}>{cfg.label}</Badge>
+                                          {b.photo_url && <Badge className="bg-primary/20 text-primary border-0 text-[10px] px-1">CAD</Badge>}
                                           {b.distanceMiles != null ? (
                                             <span className="text-xs font-medium text-primary">
                                               {b.distanceMiles < 1
@@ -719,6 +845,31 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                         >
                                           <ArrowRightLeft className="h-4 w-4 mr-2" /> Move to Another Day
                                         </Button>
+                                        {/* CAD Upload */}
+                                        <div className="flex gap-2">
+                                          <Button
+                                            variant="outline"
+                                            className="flex-1"
+                                            disabled={cadUploading === b.id}
+                                            onClick={(e) => { e.stopPropagation(); triggerCadUpload(b.id); }}
+                                          >
+                                            {cadUploading === b.id ? (
+                                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            ) : (
+                                              <Camera className="h-4 w-4 mr-2" />
+                                            )}
+                                            Upload CAD
+                                          </Button>
+                                          {b.photo_url && (
+                                            <Button
+                                              variant="outline"
+                                              size="icon"
+                                              onClick={(e) => { e.stopPropagation(); setCadPreview(b.photo_url); }}
+                                            >
+                                              <ImageIcon className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                        </div>
                                         <div className="grid grid-cols-3 gap-2 pt-1">
                                           <Button
                                             className={`h-12 flex-col gap-1 border ${
@@ -805,7 +956,11 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                           const advanceNoticeCount = dayBuildings.filter(b => b.requires_advance_notice).length;
                           const escortCount = dayBuildings.filter(b => b.requires_escort).length;
                           const equipmentCount = dayBuildings.filter(b => b.special_equipment && b.special_equipment.length > 0).length;
-                          const visibleBuildings = hideComplete ? dayBuildings.filter(b => b.inspection_status !== "complete") : dayBuildings;
+                          const visibleBuildings = dayBuildings.filter(b => {
+                            if (hideComplete && b.inspection_status === "complete") return false;
+                            if (needsCadFilter && !(b.inspection_status === "complete" && !b.photo_url)) return false;
+                            return true;
+                          });
                           return (
                             <div className="space-y-2">
                               <div className="p-3 rounded-lg bg-muted/30 border border-border space-y-1">
@@ -864,6 +1019,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                           </div>
                                           <div className="flex items-center gap-2 shrink-0 ml-2">
                                             <Badge className={`${cfg.badge} border-0 text-[10px]`}>{cfg.label}</Badge>
+                                            {b.photo_url && <Badge className="bg-primary/20 text-primary border-0 text-[10px] px-1">CAD</Badge>}
                                             {isBuildingExpanded ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
                                           </div>
                                         </div>
@@ -991,6 +1147,32 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                           >
                                             <ArrowRightLeft className="h-4 w-4 mr-2" /> Move to Another Day
                                           </Button>
+
+                                          {/* CAD Upload */}
+                                          <div className="flex gap-2">
+                                            <Button
+                                              variant="outline"
+                                              className="flex-1"
+                                              disabled={cadUploading === b.id}
+                                              onClick={(e) => { e.stopPropagation(); triggerCadUpload(b.id); }}
+                                            >
+                                              {cadUploading === b.id ? (
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                              ) : (
+                                                <Camera className="h-4 w-4 mr-2" />
+                                              )}
+                                              Upload CAD
+                                            </Button>
+                                            {b.photo_url && (
+                                              <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={(e) => { e.stopPropagation(); setCadPreview(b.photo_url); }}
+                                              >
+                                                <ImageIcon className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                          </div>
 
                                           {/* Status tap buttons */}
                                           <div className="grid grid-cols-3 gap-2 pt-1">
@@ -1130,6 +1312,37 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CAD Preview dialog */}
+      <Dialog open={!!cadPreview} onOpenChange={(o) => !o && setCadPreview(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>CAD Drawing</DialogTitle>
+            <DialogDescription>Uploaded CAD screenshot</DialogDescription>
+          </DialogHeader>
+          {cadPreview && (
+            <img src={cadPreview} alt="CAD Drawing" className="w-full rounded-lg" />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm status change dialog */}
+      <AlertDialog open={!!confirmAction} onOpenChange={(o) => !o && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Status Change</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mark this building as {confirmAction ? STATUS_CONFIG[confirmAction.status]?.label : ""}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (confirmAction) { updateStatus(confirmAction.id, confirmAction.status); setConfirmAction(null); } }}>
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
