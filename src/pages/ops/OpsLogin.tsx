@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,23 @@ export default function OpsLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Bootstrap state
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [setupName, setSetupName] = useState("");
+  const [setupEmail, setSetupEmail] = useState("");
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
+
+  useEffect(() => {
+    supabase.functions
+      .invoke("manage-users", { body: { action: "check-setup" } })
+      .then(({ data }) => {
+        if (data?.needsSetup) setNeedsSetup(true);
+      });
+  }, []);
 
   if (isLoading) {
     return (
@@ -37,62 +55,185 @@ export default function OpsLogin() {
     setSubmitting(false);
   };
 
+  const handleBootstrap = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSetupError(null);
+    setSetupSubmitting(true);
+
+    const { data, error: fnError } = await supabase.functions.invoke(
+      "manage-users",
+      {
+        body: {
+          action: "bootstrap",
+          email: setupEmail,
+          password: setupPassword,
+          full_name: setupName,
+        },
+      },
+    );
+
+    if (fnError || data?.error) {
+      setSetupError(data?.error || fnError?.message || "Setup failed");
+      setSetupSubmitting(false);
+      return;
+    }
+
+    // Auto-login
+    const { error: signInError } = await signIn(setupEmail, setupPassword);
+    if (signInError) {
+      setSetupError(signInError);
+    }
+    setSetupSubmitting(false);
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
       {/* Header bar */}
-      <div className="flex h-14 items-center gap-2 px-6" style={{ backgroundColor: "#1B4F72" }}>
+      <div
+        className="flex h-14 items-center gap-2 px-6"
+        style={{ backgroundColor: "#1B4F72" }}
+      >
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white/20">
           <Kanban className="h-4 w-4 text-white" />
         </div>
         <span className="text-sm font-bold text-white">RoofOps</span>
       </div>
 
-      {/* Login form */}
+      {/* Login / Setup form */}
       <div className="flex flex-1 items-center justify-center p-4">
-        <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight">Sign In</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Enter your credentials to access RoofOps
-            </p>
-          </div>
-
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
+        {showSetup ? (
+          <form
+            onSubmit={handleBootstrap}
+            className="w-full max-w-sm space-y-6"
+          >
+            <div className="text-center">
+              <h1 className="text-2xl font-bold tracking-tight">
+                First-Time Setup
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Create the initial admin account
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-          </div>
 
-          <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign In"}
-          </Button>
-        </form>
+            {setupError && (
+              <Alert variant="destructive">
+                <AlertDescription>{setupError}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="setup-name">Full Name</Label>
+                <Input
+                  id="setup-name"
+                  value={setupName}
+                  onChange={(e) => setSetupName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-email">Email</Label>
+                <Input
+                  id="setup-email"
+                  type="email"
+                  value={setupEmail}
+                  onChange={(e) => setSetupEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-password">Password</Label>
+                <Input
+                  id="setup-password"
+                  type="password"
+                  value={setupPassword}
+                  onChange={(e) => setSetupPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={setupSubmitting}
+            >
+              {setupSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Create Admin & Sign In"
+              )}
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => setShowSetup(false)}
+              className="w-full text-center text-sm text-muted-foreground hover:underline"
+            >
+              Back to sign in
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold tracking-tight">Sign In</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Enter your credentials to access RoofOps
+              </p>
+            </div>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+
+            {needsSetup && (
+              <button
+                type="button"
+                onClick={() => setShowSetup(true)}
+                className="w-full text-center text-sm text-muted-foreground hover:underline"
+              >
+                Set up first admin account
+              </button>
+            )}
+          </form>
+        )}
       </div>
     </div>
   );
