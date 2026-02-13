@@ -230,10 +230,11 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
 
     for (const file of Array.from(files)) {
       try {
-        const { extractedSF, rawText } = await ocrImage(file);
+        const { extractedSF, rawText, titleBlockFields } = await ocrImage(file);
         const { building, confidence } = matchBuilding(
           rawText,
-          allBuildings.map((b) => ({ id: b.id, property_name: b.property_name, address: b.address }))
+          allBuildings.map((b) => ({ id: b.id, property_name: b.property_name, address: b.address })),
+          titleBlockFields
         );
         matches.push({
           file,
