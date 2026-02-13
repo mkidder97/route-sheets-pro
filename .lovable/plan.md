@@ -1,107 +1,95 @@
 
 
-# Settings Revamp + CAD Screenshot Upload with Square Footage Parsing
+# Revised OCR Strategy for CAD Title Block Extraction
 
-## Overview
+## What We Learned
 
-Three changes: (1) rebuild the Settings page with field-relevant preferences (no light mode, no PDF), (2) add a CAD screenshot upload feature on each building card that marks the inspection as fully complete and stores the image, and (3) use Tesseract.js to OCR the uploaded CAD screenshot and extract square footage to cross-check against the building's stored value.
+The CAD drawings follow a consistent format from Southern Roof Consultants:
+- **Title block in the bottom-right corner** contains all the key data
+- **Project field**: "Parc 114 - Bldg 4" with the address below ("6631 N. Belt Line Road, Irving, TX 75063")
+- **Customer field**: "Link Logistics"
+- **Square footage**: Displayed as "ROOF SQ. FT. = 76,559" just above the legend area
+- The rest of the drawing is architectural lines, symbols, and legend -- irrelevant to matching
+
+## Current Problem
+
+The OCR scans the entire image, picking up legend text ("HVAC unit curb", "Vent stack", "Gutter", etc.), dimension labels ("435'", "175'"), and random symbol noise. This pollutes the text and causes wrong matches.
+
+## Revised Plan
+
+### 1. Crop to the Bottom-Right Quadrant Before OCR
+
+Instead of scanning the full image, crop to the bottom-right ~40% width and ~40% height using an off-screen Canvas. This isolates the title block where the project name, address, customer, and square footage live.
+
+### 2. Also Scan the Bottom Strip for Square Footage
+
+The "ROOF SQ. FT. = 76,559" text sits just above the legend, slightly outside the title block. Crop a horizontal strip across the bottom ~25% of the image as a second OCR region to catch the SF value.
+
+### 3. Update the SF Regex
+
+Add support for the "ROOF SQ. FT. = 76,559" format:
+- Current: `/(\d[\d,]*)\s*(?:sf|sq\.?\s*ft|square\s*feet|sqft)/i`
+- New: `/(?:ROOF\s*)?SQ\.?\s*FT\.?\s*[=:]\s*(\d[\d,]*)|(\d[\d,]*)\s*(?:sf|sq\.?\s*ft|square\s*feet|sqft)/i`
+
+### 4. Extract Structured Fields from Title Block Text
+
+After OCR on the title block crop, parse for labeled fields:
+- `Project:` line for building name and address
+- `Customer:` line for property owner/name
+- These structured extractions feed into `matchBuilding()` as stronger signals than raw full-text scanning
+
+### 5. Preprocess the Cropped Region
+
+Before OCR, apply canvas preprocessing to the cropped region:
+- Grayscale conversion
+- Contrast boost (1.5x)
+- Upscale if the crop is small (< 800px wide)
 
 ---
 
-## Part 1: Settings Page Revamp
+## Technical Details
 
-Remove the Inspector Profile card (already on My Routes) and the entire PDF Export card. Keep Route Defaults, add Field Preferences.
+### File: `src/lib/cad-ocr.ts`
 
-### New Layout
+**New function: `cropRegion(file, x%, y%, w%, h%): Promise<Blob>`**
+- Loads image into off-screen canvas
+- Crops to the specified percentage region
+- Applies grayscale + contrast boost
+- Returns processed Blob
 
-**Card 1: Route Defaults** (keep as-is)
-- Default buildings per day slider
-- Home base / starting location
+**Updated `ocrImage()`**
+1. Crop bottom-right 40% x 45% of image (title block region)
+2. Crop bottom 25% full-width strip (for SF value)
+3. Run Tesseract on both crops (can run in parallel)
+4. Merge the two text results
+5. Parse SF using updated regex
+6. Return combined rawText and extractedSF
 
-**Card 2: Field Preferences** (new)
-- **Preferred navigation app**: Dropdown with Auto (current iOS/Android detection), Google Maps, Apple Maps, Waze. Stored as `roofroute_nav_app` in localStorage.
-- **Auto-hide completed buildings**: Toggle (default off). Stored as `roofroute_auto_hide_complete`. Pre-sets the hide filter when opening a route.
-- **Confirm before status change**: Toggle (default off). Stored as `roofroute_confirm_status`. When enabled, tapping Done/Skip/Revisit shows a quick confirm before saving.
+**New function: `extractTitleBlockFields(rawText): { project, address, customer }`**
+- Regex for `Project:\s*(.+)` to grab project/building name
+- Regex for address pattern (number + street + city/state/zip) in lines near "Project:"
+- Regex for `Customer:\s*(.+)` to grab customer/property name
 
-### File: `src/pages/Settings.tsx`
-- Remove inspector state, PDF state, and their UI cards
-- Add nav app, auto-hide, and confirm-status state and controls
+**Updated `matchBuilding()`**
+- First try matching structured fields (project name, address from title block) -- these are high-confidence signals
+- If structured fields match a building's property_name or address, score +10 immediately
+- Fall back to current word-matching logic for unstructured text
+- Customer name also checked against property_name (+5 if match)
 
-### File: `src/components/SavedRoutes.tsx`
-- Update `openNavigation()` to read `roofroute_nav_app` from localStorage and build the correct URL (Google Maps, Apple Maps, or Waze deep link)
-- Initialize `hideComplete` from `roofroute_auto_hide_complete` localStorage value
-- Read `roofroute_confirm_status` and wrap status change actions in a confirm dialog when enabled
+### Updated Scoring
 
----
-
-## Part 2: CAD Screenshot Upload + Auto-Complete
-
-Add a CAD upload button to each building card's expanded view. Uploading a CAD screenshot stores the file, marks the building as "complete," and runs OCR to validate square footage.
-
-### User Flow
-
-1. Inspector expands a building card in SavedRoutes
-2. Sees a prominent **"Upload CAD"** button (camera icon) alongside the status buttons
-3. Taps it, selects/takes a screenshot of the CAD drawing
-4. App uploads the image to storage, saves the URL to `buildings.photo_url`
-5. Runs Tesseract.js on the image to extract text, searches for square footage numbers
-6. If a square footage value is found:
-   - Compares it to the building's stored `square_footage`
-   - If they match (within 10% tolerance): shows a success toast ("CAD uploaded -- 12,500 SF confirmed")
-   - If they differ: shows a warning toast ("CAD shows 14,200 SF but building has 12,500 SF -- please verify") and does NOT auto-update the DB value (leaves it for manual review)
-   - If no SF found in the image: uploads silently with a neutral toast
-7. Auto-sets `inspection_status` to "complete"
-8. Building card now shows a small CAD icon/badge indicating the drawing is attached
-9. Tapping the badge opens the image in a preview dialog
-
-### "Needs CAD" Filter
-
-In the route plan header area (next to the existing hide-complete toggle), add a **"Needs CAD"** filter toggle. When enabled, only shows buildings that are marked complete but have no `photo_url` -- these are buildings the inspector finished in the field but hasn't uploaded the CAD for yet. This replaces the batch email workflow.
-
-### Technical Details
-
-**New dependency**: `tesseract.js` for client-side OCR
-
-**Storage bucket** (database migration):
-```sql
-INSERT INTO storage.buckets (id, name, public) VALUES ('cad-drawings', 'cad-drawings', true);
-CREATE POLICY "Public upload cad drawings" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'cad-drawings');
-CREATE POLICY "Public read cad drawings" ON storage.objects FOR SELECT USING (bucket_id = 'cad-drawings');
+```text
+Signal                                         Points
+----------------------------------------------+------
+Structured "Project:" matches property_name    | 12
+Structured address matches building address    | 10
+Customer name matches property_name            | 5
+Word-level matches (existing fallback)         | 1-3 each
 ```
 
-**Square footage parsing logic** (in SavedRoutes.tsx):
-- After Tesseract extracts text from the CAD screenshot, search for patterns like:
-  - `12,500 SF`, `12500 sq ft`, `12,500 square feet`, `12500 sqft`
-  - Regex: `/(\d[\d,]*)\s*(?:sf|sq\.?\s*ft|square\s*feet|sqft)/i`
-- Parse the first match, strip commas, compare to `building.square_footage`
-- Tolerance: within 10% counts as a match
+High confidence threshold stays at 8 (easily hit with structured matches).
 
-**File changes in `src/components/SavedRoutes.tsx`**:
-- Add hidden file input for image capture (`.png, .jpg, .jpeg`)
-- New state: `cadUploading` (building ID or null), `cadPreview` (URL or null for preview dialog)
-- Upload handler: uploads to `cad-drawings/{buildingId}/{timestamp}.jpg`, updates `buildings.photo_url`, sets status to complete, runs OCR check
-- Add CAD badge on building cards when `photo_url` exists (fetch it alongside other building data)
-- Add "Needs CAD" toggle in the route header
-- Add CAD preview dialog
+### No changes to other files
 
-**Data fetch update**: The existing query in `toggleExpand` already selects from `buildings(...)`. Add `photo_url` to the select list and to the `SavedDayBuilding` interface.
-
----
-
-## Summary of All Changes
-
-| File | Change |
-|------|--------|
-| `src/pages/Settings.tsx` | Rewrite: remove inspector/PDF cards. Add nav app, auto-hide, confirm status settings |
-| `src/components/SavedRoutes.tsx` | (1) Add `photo_url` to interface and data fetch. (2) Upload CAD button on building cards. (3) Tesseract OCR for SF validation. (4) CAD badge + preview dialog. (5) "Needs CAD" filter toggle. (6) Nav app preference in openNavigation(). (7) Auto-hide from localStorage. (8) Confirm-before-status-change. |
-
-### Database migration
-- Create `cad-drawings` storage bucket with public read/insert policies
-
-### New dependency
-- `tesseract.js` for client-side OCR (no server/AI calls)
-
-### No schema changes to tables
-- Uses existing `buildings.photo_url` column for CAD URL
-- Uses existing `inspection_status` column
+The `SavedRoutes.tsx` batch upload flow stays the same -- it already calls `ocrImage()` and `matchBuilding()`. The improvements are entirely within the OCR extraction layer.
 
