@@ -1,151 +1,101 @@
 
 
-# Job Types Management Tab in OpsSettings
+# Ops Dashboard — Full Build
 
 ## Overview
 
-Add a "Job Types" tab to the Settings page, visible only to admins. It lists all `cm_job_types` with inline `is_active` toggle, and opens an edit dialog with drag-and-drop status reordering, color editing, owner_role assignment, and the ability to add/remove statuses.
+Replace the stub `OpsDashboard.tsx` with a data-rich dashboard featuring 4 summary cards, active campaign progress rings, a CM pipeline stacked bar chart, and a live activity feed. All data fetched via React Query with 30-second stale time.
 
 ---
 
-## Changes
-
-**File:** `src/pages/ops/OpsSettings.tsx` (all changes in this single file)
+## File: `src/pages/ops/OpsDashboard.tsx` (complete rewrite)
 
 ---
 
-## 1. New Tab in OpsSettings Component
+## Section 1: Summary Cards (Top Row)
 
-Add a "Job Types" tab trigger and content, visible only when `role === "admin"`:
+Responsive grid: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4`
 
-```
-{role === "admin" && <TabsTrigger value="jobtypes">Job Types</TabsTrigger>}
-```
+Each card is a `Card` with a left border accent (`border-l-4` with `#1B4F72`), a large number, subtitle text, and click handler via `useNavigate`.
 
-Default tab logic: if admin, default to `"users"`; the new tab is just an additional option.
+| Card | Query | Subtitle | Click |
+|------|-------|----------|-------|
+| Active Campaigns | `inspection_campaigns` where `status = 'active'` | Sum of `total_buildings` | `/ops/jobs` |
+| CM Jobs In Flight | `cm_jobs` where `status != 'complete'` | Priority breakdown (e.g. "3 urgent, 12 normal") | `/ops/jobs` |
+| Completed This Week | `campaign_buildings` where `completion_date` between current week's Monday and Sunday (via `startOfWeek`/`endOfWeek` from date-fns, `weekStartsOn: 1`) | "this week" label | `/ops/jobs` |
+| Needs Attention | Join: get active campaign IDs, then `campaign_buildings` not complete/skipped, then check `buildings` for `requires_advance_notice = true` | "require advance notice" | `/ops/jobs` |
 
----
-
-## 2. JobTypeManagement Component
-
-A new function component rendered inside the "jobtypes" `TabsContent`.
-
-**State:**
-- `jobTypes: JobType[]` -- fetched from `cm_job_types` ordered by `name`
-- `loading: boolean`
-- `editType: JobType | null` -- opens the edit dialog
-- `addOpen: boolean` -- opens the add dialog
-
-**List rendering (Table):**
-
-| Column | Content |
-|--------|---------|
-| Name | `jobType.name` (bold) |
-| Description | truncated to ~60 chars |
-| Statuses | count badge, e.g. "11 stages" |
-| Active | `Switch` toggle -- on change, update `cm_job_types.is_active` directly |
-
-Click a row to open the edit dialog (`setEditType(jobType)`).
-
-"Add Job Type" button at top-right.
+All queries use `useQuery` with `staleTime: 30_000`.
 
 ---
 
-## 3. Add Job Type Dialog
+## Section 2: Market Overview (Second Row)
 
-Simple dialog with:
-- Name (required)
-- Description (optional textarea)
+Grid: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`
 
-On submit: insert into `cm_job_types` with `statuses: '[]'::jsonb`, `is_active: true`. Refresh list, close dialog.
+Query active campaigns. For each, also fetch first `campaign_buildings` inspector via a separate query.
 
----
+Each card shows:
+- Campaign name (bold)
+- SVG circular progress ring (two `<circle>` elements -- background track + colored arc using `stroke-dashoffset`)
+- Percentage text centered in the ring
+- Inspector name below
 
-## 4. Edit Job Type Dialog (the main feature)
-
-A larger dialog (`DialogContent className="max-w-2xl"`) with:
-
-### Top section
-- Name input
-- Description textarea
-- is_active switch
-
-### Statuses section -- drag-and-drop reorderable list
-
-Uses `@dnd-kit/core` and `@dnd-kit/sortable` (already installed) to allow reordering statuses.
-
-Each status row shows:
-- Drag handle (GripVertical icon)
-- **Label** (text input)
-- **Key** (read-only, auto-generated from label on creation using `label.toLowerCase().replace(/\s+/g, "_")`)
-- **Color** -- a small color swatch button that opens a preset color picker (a popover with ~12 preset colors like the ones used in the board: `#3498DB`, `#E67E22`, `#27AE60`, `#E74C3C`, `#9B59B6`, `#1ABC9C`, `#F1C40F`, `#34495E`, `#95A5A6`, `#2ECC71`, `#E84393`, `#0984E3`)
-- **Owner Role** -- Select dropdown with the 4 ROLE_OPTIONS
-- **Delete button** (Trash icon) -- on click, check if any `cm_jobs` have `status = this.key AND job_type_id = this.id`. If yes, show toast error "Cannot remove: X jobs use this status". If no, remove from the local array.
-
-"Add Status" button at bottom of the list -- appends a new entry with default values `{ key: "new_status", label: "New Status", color: "#95A5A6", owner_role: "office_manager", order: nextOrder }`.
-
-### Save button
-On save:
-1. Recalculate `order` fields (0, 1, 2...) based on current array position
-2. Update `cm_job_types` row: `name`, `description`, `is_active`, `statuses` (the full JSONB array)
-3. Toast success, close dialog, refresh list
+Click navigates to `/ops/jobs/campaign/${id}`.
 
 ---
 
-## 5. Imports to Add
+## Section 3: CM Pipeline (Third Row)
 
-- `@dnd-kit/core`: `DndContext`, `closestCenter`, `PointerSensor`, `useSensor`, `useSensors`
-- `@dnd-kit/sortable`: `SortableContext`, `useSortable`, `verticalListSortingStrategy`, `arrayMove`
-- `lucide-react`: `GripVertical`, `Trash2` (add to existing import)
-- `Textarea` from `@/components/ui/textarea`
-- `Popover`, `PopoverTrigger`, `PopoverContent` from `@/components/ui/popover`
+Two queries:
+1. `cm_job_types` -- get the first active job type and its `statuses` array for colors/labels
+2. `cm_jobs` for that job type -- group by status client-side to get counts
 
----
+Additionally query `cm_job_status_history` to detect "stuck" jobs (latest status change > 7 days ago).
 
-## 6. Types
-
-Reuse the same `StatusDef` shape from CMJobsBoard (defined locally since it's a different file):
-```ts
-interface StatusDef {
-  key: string;
-  label: string;
-  color: string;
-  owner_role: string;
-  order: number;
-}
-
-interface JobType {
-  id: string;
-  name: string;
-  description: string | null;
-  statuses: StatusDef[];
-  is_active: boolean;
-}
-```
+Render using recharts `BarChart` with `layout="vertical"`, a single data row, and one `Bar` per status with `fill` from status color. Each segment labeled with name + count. Stuck count shown as a warning badge next to the chart title.
 
 ---
 
-## 7. Delete Status Safety Check
+## Section 4: Recent Activity (Fourth Row)
 
-Before removing a status from the local array, run:
-```ts
-const { count } = await supabase
-  .from("cm_jobs")
-  .select("id", { count: "exact", head: true })
-  .eq("job_type_id", jobType.id)
-  .eq("status", statusKey);
-```
-If `count > 0`, block removal with a toast error.
+Query `activity_log` (20 rows, ordered by `created_at desc`). Separately fetch `user_profiles` for the unique `user_id` values, merge client-side.
+
+Display as a scrollable list inside a `Card` with `ScrollArea` (max-h-80): each row shows "[full_name] [action] [entity_type] -- [relative time]" using `formatDistanceToNow`.
+
+Uses `refetchInterval: 30_000` for auto-refresh.
 
 ---
 
-## Technical Details
+## Imports
+
+- `useQuery` from `@tanstack/react-query`
+- `useNavigate` from `react-router-dom`
+- `supabase` from `@/integrations/supabase/client`
+- `Card, CardContent, CardHeader, CardTitle` from `@/components/ui/card`
+- `Badge` from `@/components/ui/badge`
+- `ScrollArea` from `@/components/ui/scroll-area`
+- `Skeleton` from `@/components/ui/skeleton`
+- `BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell` from `recharts`
+- `startOfWeek, endOfWeek, format, formatDistanceToNow` from `date-fns`
+- `Activity, Building2, ClipboardList, AlertTriangle, TrendingUp` from `lucide-react`
+
+---
+
+## Loading States
+
+Each section shows `Skeleton` placeholders while its query is pending -- 4 skeleton cards for top row, skeleton rectangles for other sections.
+
+---
+
+## Technical Notes
 
 | Item | Detail |
 |------|--------|
-| RLS | `cm_job_types` already has admin/office_manager ALL policy -- no migration needed |
-| DnD | `@dnd-kit/sortable` with `verticalListSortingStrategy`, same packages already in project |
-| Color picker | Popover with preset swatches grid (no native color input -- keeps it consistent) |
-| Key generation | For new statuses only; existing keys are immutable to avoid breaking `cm_jobs.status` references |
-| No new files | Everything in OpsSettings.tsx following the existing pattern of function components in one file |
+| No migrations needed | All tables already exist with appropriate RLS |
+| React Query | All queries: `staleTime: 30_000`; activity feed adds `refetchInterval: 30_000` |
+| Progress ring | Pure SVG, no extra library |
+| Pipeline chart | recharts `BarChart` (already installed) |
+| Stuck detection | Query `cm_job_status_history`, find max `created_at` per `cm_job_id`, compare to `now - 7 days` |
+| Single file | Everything in `OpsDashboard.tsx` |
 
