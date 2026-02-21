@@ -1,10 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim());
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  };
+}
 
 const VALID_ROLES = [
   "admin",
@@ -15,10 +23,10 @@ const VALID_ROLES = [
   "construction_manager",
 ];
 
-function json(body: unknown, status = 200) {
+function json(req: Request, body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
   });
 }
 
@@ -40,7 +48,7 @@ async function logAudit(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: getCorsHeaders(req) });
   }
 
   try {
@@ -55,7 +63,7 @@ Deno.serve(async (req) => {
       const { count } = await supabaseAdmin
         .from("user_roles")
         .select("*", { count: "exact", head: true });
-      return json({ needsSetup: (count ?? 0) === 0 });
+      return json(req, { needsSetup: (count ?? 0) === 0 });
     }
 
     // --- bootstrap: create first admin (only when 0 users exist) ---
@@ -64,12 +72,12 @@ Deno.serve(async (req) => {
         .from("user_roles")
         .select("*", { count: "exact", head: true });
       if ((count ?? 0) > 0) {
-        return json({ error: "System already has users. Bootstrap is disabled." }, 403);
+        return json(req, { error: "System already has users. Bootstrap is disabled." }, 403);
       }
 
       const { email, password, full_name } = payload;
       if (!email || !password || !full_name) {
-        return json({ error: "email, password, and full_name are required." }, 400);
+        return json(req, { error: "email, password, and full_name are required." }, 400);
       }
 
       const { data: newUser, error: createErr } =
@@ -79,18 +87,18 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: { full_name },
         });
-      if (createErr) return json({ error: createErr.message }, 400);
+      if (createErr) return json(req, { error: createErr.message }, 400);
 
       await supabaseAdmin
         .from("user_roles")
         .insert({ user_id: newUser.user.id, role: "admin" });
 
-      return json({ success: true, user_id: newUser.user.id });
+      return json(req, { success: true, user_id: newUser.user.id });
     }
 
     // --- Auth required for all other actions ---
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "Not authenticated" }, 401);
+    if (!authHeader) return json(req, { error: "Not authenticated" }, 401);
 
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -99,7 +107,7 @@ Deno.serve(async (req) => {
     const {
       data: { user },
     } = await userClient.auth.getUser();
-    if (!user) return json({ error: "Not authenticated" }, 401);
+    if (!user) return json(req, { error: "Not authenticated" }, 401);
 
     const { data: roleRow } = await supabaseAdmin
       .from("user_roles")
@@ -114,7 +122,7 @@ Deno.serve(async (req) => {
     // --- list: admin or office_manager ---
     if (action === "list") {
       if (!isAdmin && !isOfficeManager) {
-        return json({ error: "Admin or office manager access required" }, 403);
+        return json(req, { error: "Admin or office manager access required" }, 403);
       }
 
       const { data: profiles } = await supabaseAdmin
@@ -132,20 +140,20 @@ Deno.serve(async (req) => {
         role: roleMap[p.id] || "unknown",
       }));
 
-      return json({ users });
+      return json(req, { users });
     }
 
     // --- All remaining actions: admin only ---
-    if (!isAdmin) return json({ error: "Admin access required" }, 403);
+    if (!isAdmin) return json(req, { error: "Admin access required" }, 403);
 
     // --- create ---
     if (action === "create") {
       const { email, password, full_name, role, inspector_id, phone } = payload;
       if (!email || !password || !full_name || !role) {
-        return json({ error: "email, password, full_name, and role are required." }, 400);
+        return json(req, { error: "email, password, full_name, and role are required." }, 400);
       }
       if (!VALID_ROLES.includes(role)) {
-        return json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` }, 400);
+        return json(req, { error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` }, 400);
       }
 
       const { data: newUser, error: createErr } =
@@ -155,7 +163,7 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: { full_name },
         });
-      if (createErr) return json({ error: createErr.message }, 400);
+      if (createErr) return json(req, { error: createErr.message }, 400);
 
       await supabaseAdmin
         .from("user_roles")
@@ -175,13 +183,13 @@ Deno.serve(async (req) => {
         email, role, full_name,
       });
 
-      return json({ success: true, user_id: newUser.user.id });
+      return json(req, { success: true, user_id: newUser.user.id });
     }
 
     // --- update ---
     if (action === "update") {
       const { user_id, full_name, phone, role, inspector_id } = payload;
-      if (!user_id) return json({ error: "user_id is required." }, 400);
+      if (!user_id) return json(req, { error: "user_id is required." }, 400);
 
       const profileUpdates: Record<string, unknown> = {};
       if (full_name !== undefined) profileUpdates.full_name = full_name;
@@ -206,13 +214,13 @@ Deno.serve(async (req) => {
         ...(role ? { role } : {}),
       });
 
-      return json({ success: true });
+      return json(req, { success: true });
     }
 
     // --- activate ---
     if (action === "activate") {
       const { user_id } = payload;
-      if (!user_id) return json({ error: "user_id is required." }, 400);
+      if (!user_id) return json(req, { error: "user_id is required." }, 400);
 
       await supabaseAdmin
         .from("user_profiles")
@@ -221,13 +229,13 @@ Deno.serve(async (req) => {
 
       await logAudit(supabaseAdmin, user.id, "activate_user", user_id, {});
 
-      return json({ success: true });
+      return json(req, { success: true });
     }
 
     // --- deactivate ---
     if (action === "deactivate") {
       const { user_id } = payload;
-      if (!user_id) return json({ error: "user_id is required." }, 400);
+      if (!user_id) return json(req, { error: "user_id is required." }, 400);
 
       await supabaseAdmin
         .from("user_profiles")
@@ -236,11 +244,11 @@ Deno.serve(async (req) => {
 
       await logAudit(supabaseAdmin, user.id, "deactivate_user", user_id, {});
 
-      return json({ success: true });
+      return json(req, { success: true });
     }
 
-    return json({ error: `Unknown action: ${action}` }, 400);
+    return json(req, { error: `Unknown action: ${action}` }, 400);
   } catch (err) {
-    return json({ error: err.message }, 500);
+    return json(req, { error: err.message }, 500);
   }
 });
