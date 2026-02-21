@@ -1,64 +1,60 @@
 
 
-# Schedule Upload — Updated Plan Notes
+# FieldTodayView — Refinements Before Implementation
 
-This is an addendum to the previously approved plan, addressing three edge cases.
+## Overview
+Three refinements to the previously approved FieldTodayView plan, incorporating the user's feedback. No new files or schema changes — just amendments to the implementation approach.
 
-## 1. Date parsing: Use date-fns (already installed)
+## 1. Campaign Discovery: Single Query (replaces N+1 loop)
 
-`date-fns` v3.6.0 is already a project dependency. The `parseScheduledWeek` function in `src/lib/schedule-parser.ts` will use:
-
-```ts
-import { startOfWeek, parse } from "date-fns";
-
-const monday = startOfWeek(parsedDate, { weekStartsOn: 1 });
-```
-
-No new dependencies needed.
-
-## 2. Duplicate campaign_buildings: Not an issue
-
-A unique constraint already exists on `(campaign_id, building_id)`:
-```
-campaign_buildings_campaign_id_building_id_key UNIQUE (campaign_id, building_id)
-```
-
-The match query will always return at most one `campaign_buildings` row per building per campaign. No special handling needed.
-
-## 3. Inspector matching: Add last-name fallback
-
-Enhance the inspector matching logic with a two-pass approach:
-
-1. **Exact match** (case-insensitive, trimmed) -- e.g. "Michael Kidder" === "Michael Kidder"
-2. **Last-name fallback** -- extract the last token from the uploaded name and match against the last token of each inspector name. If exactly one inspector matches by last name, use it. If multiple match, leave unmatched.
-3. **Unmatched inspectors** get flagged in the preview with an amber badge ("Inspector not matched") and a dropdown to manually select from the inspectors list -- same pattern as the manual building fix.
+Replace the loop-based campaign discovery with a single query:
 
 ```ts
-function matchInspector(uploadedName: string, inspectors: { id: string; name: string }[]) {
-  const norm = (s: string) => s.toLowerCase().trim();
-  // Pass 1: exact
-  const exact = inspectors.find(i => norm(i.name) === norm(uploadedName));
-  if (exact) return exact;
-  // Pass 2: last-name
-  const uploadedLast = norm(uploadedName).split(/[\s,]+/).pop() || "";
-  const lastNameMatches = inspectors.filter(i => {
-    const inspLast = norm(i.name).split(/\s+/).pop() || "";
-    return inspLast === uploadedLast && uploadedLast.length > 1;
-  });
-  return lastNameMatches.length === 1 ? lastNameMatches[0] : null;
-}
+const { data } = await supabase
+  .from("campaign_buildings")
+  .select("campaign_id, inspection_campaigns!inner(id, name, status)")
+  .eq("inspection_campaigns.status", "active")
+  .eq("inspector_id", inspectorId)
+  .limit(1);
 ```
 
-This handles "Kidder, Michael", "M. Kidder", and "Kidder" variations while avoiding false positives when multiple inspectors share a last name.
+If localStorage has a cached `roofroute_active_campaign`, try that first. If it returns no rows (campaign closed or inspector reassigned), fall back to the single-query discovery above.
 
-## Everything else remains unchanged from the approved plan
+## 2. Dual-Write: Sync buildings table on every status change
 
-- 4-step wizard structure
-- File parsing with XLSX
-- Column mapping with fuzzy match
-- Building matching (building_code primary, address fallback)
-- Color-coded preview table
-- Manual fix dropdowns for unmatched rows
-- One-at-a-time campaign_buildings updates
-- Integration into OpsScheduling page header
+After every `campaign_buildings` status update, also update the corresponding `buildings` row to keep SavedRoutes and other office views in sync.
+
+Every status change handler will include both writes:
+
+```ts
+// 1. Update campaign_buildings (source of truth for campaign work)
+await supabase.from("campaign_buildings").update({
+  inspection_status: status,
+  completion_date: status === "complete" ? new Date().toISOString() : null,
+  inspector_notes: notes || undefined,
+}).eq("id", campaignBuildingId);
+
+// 2. Sync buildings table (keeps SavedRoutes consistent)
+await supabase.from("buildings").update({
+  inspection_status: status,
+  completion_date: status === "complete" ? new Date().toISOString() : null,
+}).eq("id", buildingId);
+```
+
+This applies to all three actions (Done, Skip, Revisit) and to bulk mode. The `buildingId` is available from the joined `buildings(*)` data already loaded in memory.
+
+## 3. No inspector filter on initial load (acknowledged)
+
+The initial load query fetches ALL campaign_buildings for the campaign (no inspector_id filter). This is intentional for now -- it means the field view shows the full campaign. A future prompt can add inspector filtering if needed. Between deployment of this feature and any future filtering update, all buildings in the campaign will be visible, which is acceptable for the current single-active-user scenario.
+
+## Everything else unchanged from the approved plan
+
+- FieldTodayView component structure (5 priority tiers, GPS sorting, progress bars)
+- Building card layout (codes prominent, quick actions, expandable details)
+- Bulk mode with sticky bottom bar
+- Navigation helper (iOS/Android detection)
+- Session persistence via localStorage
+- MyRoutes.tsx swaps SavedRoutes for FieldTodayView
+- SavedRoutes.tsx remains untouched
+- No database changes needed
 
