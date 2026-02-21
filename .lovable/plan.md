@@ -1,57 +1,78 @@
 
 
-# Auto-Sync on View + Export Button
+# Field Ops Enhancements: Navigate, Tappable Contact, Column Header
 
 ## Overview
 
-Add two features to the Campaign Detail page:
-1. Silently sync campaign totals when buildings finish loading, with auto-complete detection
-2. Export button to download all buildings as an Excel file
+Four changes to improve the field_ops experience on the Campaign Detail page, without altering any existing edit/bulk action gating.
 
 ---
 
-## 1. Auto-Sync on View
+## 1. Add "Nav" Column with MapPin Button
 
-### Implementation
-- Add a `useRef` (`syncedRef`) to track whether sync has already run for the current campaign
-- Add a `useEffect` that fires when `buildings` array is populated and `campaign` is loaded
-- Reset `syncedRef` when `campaign.id` changes
+### Table Header (line 709)
+- After the "Flags" `TableHead`, add: `<TableHead className="w-10">Nav</TableHead>`
 
-### Sync logic
-1. `total = buildings.length`
-2. `completed = buildings.filter(b => b.inspection_status === 'complete').length`
-3. If `total !== campaign.total_buildings` or `completed !== campaign.completed_buildings`:
-   - Update `inspection_campaigns` row with both counts
-   - Update local `campaign` state
-4. **Auto-complete**: If `completed === total && total > 0 && campaign.status !== 'on_hold' && campaign.status !== 'complete'`:
-   - Also set campaign `status = 'complete'`
-   - Show toast: "Campaign marked complete!"
-5. All other corrections are silent (no toast)
+### Table Row (after Flags cell, ~line 762)
+- Add a new `TableCell` with a ghost button containing a `MapPin` icon
+- On click, constructs the address and opens Google Maps directions in a new tab
+- Icon styled with `text-primary` for visibility on mobile
+- `onClick` uses `e.stopPropagation()` to prevent row expansion
 
----
+```
+<TableCell onClick={(e) => e.stopPropagation()}>
+  <Button variant="ghost" size="sm" onClick={() => {
+    const addr = encodeURIComponent(`${b.building.address}, ${b.building.city}, ${b.building.state} ${b.building.zip_code}`);
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, "_blank");
+  }}>
+    <MapPin className="h-4 w-4 text-primary" />
+  </Button>
+</TableCell>
+```
 
-## 2. Export Button
+### ColSpan Update (line 767)
+- Update the expanded detail `td colSpan` from `canEdit ? 10 : 9` to `canEdit ? 11 : 10` to account for the new column
 
-### Placement
-- In the header area, inside the `flex items-center gap-2` div (line 527), after the type badge and before/next to the status control
-- `Button variant="outline" size="sm"` with `Download` icon from lucide-react
-
-### Excel generation
-- Import `* as XLSX from "xlsx"` at top
-- On click, map the full `buildings` array (not filtered) to rows with 26 columns:
-  - Stop #, Property Name, Address, City, State, Zip, Status, Inspector, Scheduled Week, Building Code, Roof Group, Sq Footage, Access Type, Access Description, Access Location, Lock/Gate Codes, Property Manager, PM Phone, PM Email, Priority, 24H Notice, Escort Required, Special Equipment, Special Notes, Inspector Notes, Completion Date
-- Create workbook via `XLSX.utils.json_to_sheet` + `book_new` + `book_append_sheet` + `writeFile`
-- Filename: `${campaign.name} - Export - ${format(new Date(), "yyyy-MM-dd")}.xlsx`
+### Import
+- Add `MapPin` to the lucide-react import line
 
 ---
 
-## Changes to `src/pages/ops/OpsCampaignDetail.tsx`
+## 2. Tappable Phone and Email in BuildingDetail
 
-1. **New imports**: `useRef` (from React), `Download` (from lucide-react), `* as XLSX from "xlsx"`
-2. **New ref**: `const syncedRef = useRef(false)` -- reset to false when `campaign?.id` changes
-3. **New useEffect**: auto-sync logic (fires when `buildings.length > 0 && campaign`)
-4. **New function**: `handleExport()` -- builds XLSX and triggers download
-5. **New button**: Export button in header area
+### Property Manager Phone (line 905)
+Replace:
+```
+<p>{b.property_manager_phone ?? "..."}</p>
+```
+With:
+```
+<p>{b.property_manager_phone ? (
+  <a href={`tel:${b.property_manager_phone}`} className="text-primary underline">
+    {b.property_manager_phone}
+  </a>
+) : "..."}</p>
+```
+
+### Property Manager Email (line 906)
+Replace:
+```
+<p>{b.property_manager_email ?? "..."}</p>
+```
+With:
+```
+<p>{b.property_manager_email ? (
+  <a href={`mailto:${b.property_manager_email}`} className="text-primary underline">
+    {b.property_manager_email}
+  </a>
+) : "..."}</p>
+```
+
+---
+
+## 3. Comments Section
+
+No changes needed. The comments section (lines 779-819) is already visible to all authenticated users and field_ops can post. Confirmed working as-is.
 
 ---
 
@@ -59,15 +80,16 @@ Add two features to the Campaign Detail page:
 
 | File | Action |
 |------|--------|
-| `src/pages/ops/OpsCampaignDetail.tsx` | Add useRef, auto-sync useEffect, export function, export button |
+| `src/pages/ops/OpsCampaignDetail.tsx` | Add MapPin import, Nav column header + cell, update colSpan, tappable phone/email links |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| Sync guard | `useRef` boolean prevents re-running on every render |
-| Auto-complete condition | completed === total, total > 0, status not on_hold or complete |
-| Export source | Full `buildings` array, not the filtered subset |
-| XLSX library | Already installed (v0.18.5), already used in `src/lib/excel-generator.ts` |
-| No database migration needed | All tables already exist |
+| New import | `MapPin` from lucide-react |
+| Navigate button | All users see it (not gated by canEdit) |
+| Icon color | `text-primary` for mobile prominence |
+| ColSpan | Incremented by 1 for both canEdit and non-canEdit paths |
+| Phone/email links | Standard `tel:` and `mailto:` href patterns |
+| No gating changes | Existing canEdit checks remain untouched |
 
