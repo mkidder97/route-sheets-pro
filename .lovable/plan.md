@@ -1,93 +1,92 @@
 
 
-# Handoff Notifications and "Your Turn" Visual Indicator
+# CM Jobs: Board / List View Toggle
 
 ## Overview
 
-Enhance the shared `changeJobStatus` function to detect role handoffs between pipeline stages and send targeted notifications. Add a "Your Turn" visual indicator on job cards when the current user's role matches the status column's `owner_role`.
+Add a "Board" / "List" toggle to the CM Jobs section header. The List view provides a sortable, paginated data table as an alternative to the Kanban board, ideal for 30-75+ active jobs. Both views share the same filters, detail panel (Sheet), and data.
 
 ---
 
-## 1. Enhanced `changeJobStatus` Function
+## Changes (single file)
 
-### Current behavior (lines 452-495)
-The function updates the status, inserts history, logs activity, and shows a toast. No notifications are sent.
-
-### New behavior
-After the DB update succeeds, before the toast:
-
-1. Look up old and new `StatusDef` from `sortedStatuses` to get their `owner_role`
-2. Find the job in the local `jobs` array to get `created_by` and `assigned_to`
-3. Build a notification promises array:
-
-**Handoff detection:**
-- If `oldStatusDef.owner_role !== newStatusDef.owner_role`, query `user_roles` table for all users with `role = newStatusDef.owner_role`
-- For each matching user (excluding the current user who made the change), call `createNotification(userId, "Job Ready: [new status label]", "[job title] at [address] needs your attention", "handoff", "cm_job", jobId)`
-
-**Creator/Assignee notifications (always):**
-- If `job.created_by` exists and is not the current user (and wasn't already notified in handoff), notify them: `createNotification(createdBy, "Status Update: [title]", "Moved to [new status label]", "status_change", "cm_job", jobId)`
-- If `job.assigned_to` exists and is not the current user (and wasn't already notified), notify them similarly
-
-All notification calls are fire-and-forget via `Promise.all`, so they don't block the UI.
-
-### Implementation detail
-- The `user_roles` query: `supabase.from("user_roles").select("user_id").eq("role", newOwnerRole)` -- this table is readable by admins, but we need all authenticated users to query it for handoff detection
-- Since `user_roles` RLS only allows admins and self-read, we need to add a SELECT policy: "Authenticated users can read user_roles" so the handoff query works for field_ops and engineers too
+**File:** `src/components/ops/CMJobsBoard.tsx`
 
 ---
 
-## 2. Database Migration: user_roles SELECT Policy
+## 1. View Toggle State with localStorage Persistence
 
-Add a new RLS policy on `user_roles` to allow any authenticated user to read all roles. This is needed so that when a field_ops user completes a status change, the client can query `user_roles` to find engineers for handoff notifications.
+Add a new state variable `viewMode` initialized from `localStorage.getItem("roofroute_cm_view")` or defaulting to `"board"`. On toggle, save to localStorage with the same key (matches the existing `roofroute_` prefix convention).
 
-```sql
-CREATE POLICY "Authenticated read user_roles"
-  ON public.user_roles
-  FOR SELECT
-  TO authenticated
-  USING (true);
-```
-
-This is safe because role information is not sensitive -- users already see each other's names and assignments.
+Add a toggle control in the header bar (after the priority filter, before the "New Job" button) using two small buttons or a segmented control styled with the existing `Button` component:
+- "Board" (grid icon from lucide: `LayoutGrid`)  
+- "List" (list icon from lucide: `List`)
 
 ---
 
-## 3. "Your Turn" Visual Indicator on Job Cards
+## 2. Search Bar (List view only)
 
-### Changes to `DraggableJobCard` component (lines 130-184)
-
-Add two new props:
-- `isYourTurn: boolean` -- whether the current user's role matches the column's `owner_role`
-
-Visual treatment when `isYourTurn` is true:
-- Add a left border accent: `border-l-2 border-l-primary`
-- Show a small "Your Turn" badge at the top-right of the card: `<Badge variant="default" className="text-[9px] px-1 py-0">Your Turn</Badge>`
-
-### Changes to `KanbanColumn` component (lines 186-220)
-
-Add a new prop `userRole: string | null` and pass it through. Each card's `isYourTurn` is computed by comparing `userRole` to `statusDef.owner_role`.
-
-### Changes to the board render (where KanbanColumn is used)
-
-Pass `role` (from `useAuth`) to each `KanbanColumn`, which then computes `isYourTurn` per card based on `statusDef.owner_role === userRole`.
+Add a search `Input` that appears when `viewMode === "list"`, positioned in the filter bar. The search filters `filteredJobs` further by matching `title` or `address` (case-insensitive substring match) client-side via `useMemo`.
 
 ---
 
-## Files
+## 3. List View Table
 
-| File | Action |
-|------|--------|
-| Migration SQL | Add authenticated SELECT policy on `user_roles` |
-| `src/components/ops/CMJobsBoard.tsx` | Enhance `changeJobStatus`, update `DraggableJobCard` and `KanbanColumn` props |
+When `viewMode === "list"`, render a data table instead of the Kanban board (the DndContext block). Use the existing shadcn `Table`, `TableHeader`, `TableRow`, `TableHead`, `TableCell`, `TableBody` components already in the project.
+
+### Columns
+
+| Column | Data | Rendering |
+|--------|------|-----------|
+| Title | `job.title` | Plain text, bold |
+| Client | `job.clients?.name` | Plain text |
+| Status | `job.status` | `Badge` with `backgroundColor` from `getStatusColor(status)` and white text, label from `getStatusLabel(status)` |
+| Assigned To | `job.assigned_user?.full_name` | Plain text or "—" |
+| Priority | `job.priority` | `Badge` with existing `PRIORITY_COLORS` mapping |
+| Scheduled | `job.scheduled_date` | Formatted date or "—" |
+| Due Date | `job.due_date` | Formatted date or "—" |
+| Last Updated | `job.updated_at` | Relative time via `formatDistanceToNow` (requires adding `updated_at` to the CMJob type and fetch query) |
+
+### Sorting
+
+Add state: `sortColumn` (string, default "title") and `sortDir` ("asc" | "desc", default "asc"). Clicking a column header toggles sort direction if same column, or sets new column ascending. Apply sorting in a `useMemo` over the filtered+searched jobs.
+
+Column headers render with a click handler and a small arrow indicator (ChevronUp/ChevronDown from lucide) for the active sort column.
+
+### Pagination
+
+Add state: `page` (number, default 0). Display 20 rows per page. Slice the sorted array by `page * 20` to `(page + 1) * 20`. Show simple "Previous / Page X of Y / Next" controls below the table using `Button` components. Reset `page` to 0 when filters, search, or sort change.
+
+### Row Click
+
+Each `TableRow` has `onClick={() => setDetailJobId(job.id)}` with `cursor-pointer` class, opening the same Sheet detail panel used by the Kanban cards.
+
+---
+
+## 4. CMJob Type and Fetch Update
+
+Add `updated_at: string` to the `CMJob` type (line ~67). The `fetchJobs` query already does `select("*", ...)` so `updated_at` is already returned -- we just need the type definition to use it.
+
+---
+
+## 5. Imports
+
+Add to the existing lucide import line: `LayoutGrid`, `List`, `ChevronUp`, `ChevronDown`.
+
+Import `Table, TableHeader, TableBody, TableRow, TableHead, TableCell` from `@/components/ui/table`.
+
+---
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| Handoff query | `supabase.from("user_roles").select("user_id").eq("role", ownerRole)` |
-| Deduplication | Use a `Set` of already-notified user IDs to avoid duplicate notifications (e.g., if creator also has the handoff role) |
-| Current user exclusion | Always exclude `user.id` from all notification recipients |
-| Notification type | "handoff" for role changes, "status_change" for creator/assignee FYI |
-| "Your Turn" styling | `border-l-2 border-l-primary` + small Badge -- subtle but visible |
-| No drag logic changes | `changeJobStatus` is the single shared function for both drag and dropdown, so both paths get the new behavior automatically |
+| localStorage key | `roofroute_cm_view` (matches existing prefix convention) |
+| Default view | `"board"` |
+| Search scope | Client-side filter on `title` and `address` fields |
+| Pagination size | 20 rows per page |
+| Sort implementation | `useMemo` with `Array.sort` comparator based on `sortColumn` and `sortDir` |
+| No new dependencies | Uses existing shadcn Table, lucide icons, date-fns |
+| No new files | Everything stays in CMJobsBoard.tsx |
+| DndContext | Only rendered when `viewMode === "board"` -- no performance cost in list mode |
 
