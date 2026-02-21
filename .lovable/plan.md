@@ -1,88 +1,57 @@
 
 
-# Campaign Detail: Status Updates, Bulk Actions, and Comments
+# Auto-Sync on View + Export Button
 
 ## Overview
 
-Add three capabilities to the Campaign Detail page:
-1. Inline status dropdown per building row (admin/office_manager only)
-2. Bulk actions via checkboxes and a floating action bar
-3. A comments section backed by a new `comments` table
-
-**Note on master buildings sync**: Status updates will sync to the master `buildings` table as a "last known status" convenience. The `campaign_buildings` snapshot remains the source of truth per-campaign. This is acceptable for now since overlapping campaigns on the same buildings are not yet common.
+Add two features to the Campaign Detail page:
+1. Silently sync campaign totals when buildings finish loading, with auto-complete detection
+2. Export button to download all buildings as an Excel file
 
 ---
 
-## 1. Database Migration
+## 1. Auto-Sync on View
 
-### Create `comments` table
+### Implementation
+- Add a `useRef` (`syncedRef`) to track whether sync has already run for the current campaign
+- Add a `useEffect` that fires when `buildings` array is populated and `campaign` is loaded
+- Reset `syncedRef` when `campaign.id` changes
 
-| Column | Type | Details |
-|--------|------|---------|
-| id | uuid | PK, gen_random_uuid() |
-| user_id | uuid | NOT NULL, FK to auth.users(id) ON DELETE CASCADE |
-| entity_type | text | NOT NULL |
-| entity_id | uuid | NOT NULL |
-| content | text | NOT NULL |
-| created_at | timestamptz | DEFAULT now() |
-
-- Index on (entity_type, entity_id) for efficient lookups
-- RLS: SELECT for authenticated users, INSERT with check `auth.uid() = user_id`
-
-### Add validation trigger on `campaign_buildings`
-
-Replace the existing CHECK constraint on `inspection_status` with a validation trigger (consistent with the existing `validate_inspection_status` function pattern), to avoid immutability issues.
+### Sync logic
+1. `total = buildings.length`
+2. `completed = buildings.filter(b => b.inspection_status === 'complete').length`
+3. If `total !== campaign.total_buildings` or `completed !== campaign.completed_buildings`:
+   - Update `inspection_campaigns` row with both counts
+   - Update local `campaign` state
+4. **Auto-complete**: If `completed === total && total > 0 && campaign.status !== 'on_hold' && campaign.status !== 'complete'`:
+   - Also set campaign `status = 'complete'`
+   - Show toast: "Campaign marked complete!"
+5. All other corrections are silent (no toast)
 
 ---
 
-## 2. Update `src/pages/ops/OpsCampaignDetail.tsx`
+## 2. Export Button
 
-### A) Inline Status Dropdown (admin/office_manager only)
+### Placement
+- In the header area, inside the `flex items-center gap-2` div (line 527), after the type badge and before/next to the status control
+- `Button variant="outline" size="sm"` with `Download` icon from lucide-react
 
-- In the Status column, replace the read-only Badge with a Select dropdown when `canEdit` is true
-- Use `e.stopPropagation()` on the Select to prevent row expansion
-- On status change, call `updateBuildingStatus()` which:
-  1. Updates `campaign_buildings.inspection_status` (and sets `completion_date` to today if status is `complete`, clears it otherwise)
-  2. Syncs the master `buildings.inspection_status` as a convenience write
-  3. Recalculates `completed_buildings` count on the campaign by counting `campaign_buildings` where status is `complete`
-  4. Inserts into `activity_log` with action `status_change`, entity_type `building`, entity_id the building UUID, and details containing old/new status and campaign_id
-  5. Updates local state optimistically and shows a success toast
-- Read-only Badge remains for non-edit roles
-
-### B) Bulk Actions
-
-**Selection state:**
-- New `selectedIds` state as `Set<string>` tracking campaign_building IDs
-- Checkbox column added as the first column (before the expand chevron)
-- Header checkbox toggles select-all for currently filtered rows
-- Individual row checkboxes toggle selection; `e.stopPropagation()` prevents row expand
-
-**Floating action bar:**
-- Renders as a fixed-position bar at the bottom when `selectedIds.size > 0`
-- Shows count label ("X selected")
-- "Update Status" button with a Select dropdown (5 status options) -- on selection, loops through all selected rows and applies the same logic as inline status update, with a single campaign count recalculation at the end
-- "Reassign Inspector" button with a Select dropdown populated from the inspectors list -- updates `inspector_id` on selected `campaign_buildings` rows and logs activity for each
-- "Clear" button to deselect all
-- After bulk action: clear selection, re-fetch buildings, show success toast
-
-### C) Comments Section
-
-- New section below the buildings table with "Comments" heading
-- Fetches from `comments` where `entity_type = 'campaign'` and `entity_id = campaign.id`
-- Joins `user_profiles` on `user_id` for `full_name`
-- Each comment displays: author name (bold), relative time via `formatDistanceToNow` from date-fns, and content
-- Text input + "Post" button at the bottom
-- On submit: inserts with `user_id` from `useAuth().user.id`, refreshes list
-- Empty state message when no comments exist
+### Excel generation
+- Import `* as XLSX from "xlsx"` at top
+- On click, map the full `buildings` array (not filtered) to rows with 26 columns:
+  - Stop #, Property Name, Address, City, State, Zip, Status, Inspector, Scheduled Week, Building Code, Roof Group, Sq Footage, Access Type, Access Description, Access Location, Lock/Gate Codes, Property Manager, PM Phone, PM Email, Priority, 24H Notice, Escort Required, Special Equipment, Special Notes, Inspector Notes, Completion Date
+- Create workbook via `XLSX.utils.json_to_sheet` + `book_new` + `book_append_sheet` + `writeFile`
+- Filename: `${campaign.name} - Export - ${format(new Date(), "yyyy-MM-dd")}.xlsx`
 
 ---
 
-## New imports needed
+## Changes to `src/pages/ops/OpsCampaignDetail.tsx`
 
-- `Checkbox` from `@/components/ui/checkbox`
-- `Textarea` from `@/components/ui/textarea`
-- `formatDistanceToNow` from `date-fns`
-- `MessageSquare` from `lucide-react` (for comments heading icon)
+1. **New imports**: `useRef` (from React), `Download` (from lucide-react), `* as XLSX from "xlsx"`
+2. **New ref**: `const syncedRef = useRef(false)` -- reset to false when `campaign?.id` changes
+3. **New useEffect**: auto-sync logic (fires when `buildings.length > 0 && campaign`)
+4. **New function**: `handleExport()` -- builds XLSX and triggers download
+5. **New button**: Export button in header area
 
 ---
 
@@ -90,18 +59,15 @@ Replace the existing CHECK constraint on `inspection_status` with a validation t
 
 | File | Action |
 |------|--------|
-| New migration SQL | Create `comments` table with indexes and RLS |
-| `src/pages/ops/OpsCampaignDetail.tsx` | Add inline status dropdown, bulk actions with floating bar, comments section |
+| `src/pages/ops/OpsCampaignDetail.tsx` | Add useRef, auto-sync useEffect, export function, export button |
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
-| New table | `comments` with authenticated read/insert RLS |
-| Status update flow | campaign_buildings then buildings then recount then activity_log then toast |
-| Bulk updates | Per-row loop for activity logging, single recount at end |
-| Comments join | `user_profiles` for `full_name` display |
-| Role gating | `canEdit` (admin/office_manager) controls status dropdown, checkboxes, and bulk bar |
-| Event propagation | `stopPropagation` on Select and Checkbox clicks to prevent row expand |
-| Master sync caveat | Documented as "last known status" -- campaign_buildings is source of truth |
+| Sync guard | `useRef` boolean prevents re-running on every render |
+| Auto-complete condition | completed === total, total > 0, status not on_hold or complete |
+| Export source | Full `buildings` array, not the filtered subset |
+| XLSX library | Already installed (v0.18.5), already used in `src/lib/excel-generator.ts` |
+| No database migration needed | All tables already exist |
 
