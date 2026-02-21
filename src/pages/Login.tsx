@@ -32,7 +32,6 @@ export default function Login() {
   const [setupName, setSetupName] = useState("");
   const [setupEmail, setSetupEmail] = useState("");
   const [setupPassword, setSetupPassword] = useState("");
-  const [setupToken, setSetupToken] = useState("");
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSubmitting, setSetupSubmitting] = useState(false);
 
@@ -88,7 +87,6 @@ export default function Login() {
           email: setupEmail,
           password: setupPassword,
           full_name: setupName,
-          setup_token: setupToken,
         },
       },
     );
@@ -168,16 +166,6 @@ export default function Login() {
                   onChange={(e) => setSetupPassword(e.target.value)}
                   required
                   minLength={6}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="setup-token">Setup Token</Label>
-                <Input
-                  id="setup-token"
-                  type="password"
-                  placeholder="Provided by your administrator"
-                  value={setupToken}
-                  onChange={(e) => setSetupToken(e.target.value)}
                 />
               </div>
             </div>
