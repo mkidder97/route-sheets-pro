@@ -316,7 +316,6 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
       setActivePlanId(planId);
       await loadBuildings(planId);
       if (!cancelled) setLoading(false);
-      requestGPS();
     };
     init();
     return () => { cancelled = true; };
