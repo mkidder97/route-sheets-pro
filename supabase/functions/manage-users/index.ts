@@ -46,6 +46,37 @@ async function logAudit(
   });
 }
 
+// --- Input validation helpers ---
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PHONE_RE = /^[\d\s\-()+]+$/;
+
+function validateEmail(v: unknown): string | null {
+  if (typeof v !== "string" || !EMAIL_RE.test(v)) return "Invalid email format.";
+  if (v.length > 255) return "Email must be under 255 characters.";
+  return null;
+}
+function validatePassword(v: unknown): string | null {
+  if (typeof v !== "string" || v.length < 12) return "Password must be at least 12 characters.";
+  if (v.length > 128) return "Password must be under 128 characters.";
+  return null;
+}
+function validateFullName(v: unknown): string | null {
+  if (typeof v !== "string" || v.trim().length === 0) return "Full name is required.";
+  if (v.length > 200) return "Full name must be under 200 characters.";
+  return null;
+}
+function validatePhone(v: unknown): string | null {
+  if (typeof v !== "string") return "Phone must be a string.";
+  if (v.length > 30) return "Phone must be under 30 characters.";
+  if (!PHONE_RE.test(v)) return "Phone contains invalid characters.";
+  return null;
+}
+function validateUuid(v: unknown): string | null {
+  if (typeof v !== "string" || !UUID_RE.test(v)) return "Invalid user_id format (expected UUID).";
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: getCorsHeaders(req) });
@@ -76,9 +107,8 @@ Deno.serve(async (req) => {
       }
 
       const { email, password, full_name } = payload;
-      if (!email || !password || !full_name) {
-        return json(req, { error: "email, password, and full_name are required." }, 400);
-      }
+      const bErr = validateEmail(email) || validatePassword(password) || validateFullName(full_name);
+      if (bErr) return json(req, { error: bErr }, 400);
 
       const { data: newUser, error: createErr } =
         await supabaseAdmin.auth.admin.createUser({
@@ -149,11 +179,14 @@ Deno.serve(async (req) => {
     // --- create ---
     if (action === "create") {
       const { email, password, full_name, role, inspector_id, phone } = payload;
-      if (!email || !password || !full_name || !role) {
-        return json(req, { error: "email, password, full_name, and role are required." }, 400);
-      }
-      if (!VALID_ROLES.includes(role)) {
+      const cErr = validateEmail(email) || validatePassword(password) || validateFullName(full_name);
+      if (cErr) return json(req, { error: cErr }, 400);
+      if (!role || !VALID_ROLES.includes(role)) {
         return json(req, { error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` }, 400);
+      }
+      if (phone !== undefined && phone !== null) {
+        const pErr = validatePhone(phone);
+        if (pErr) return json(req, { error: pErr }, 400);
       }
 
       const { data: newUser, error: createErr } =
@@ -189,7 +222,19 @@ Deno.serve(async (req) => {
     // --- update ---
     if (action === "update") {
       const { user_id, full_name, phone, role, inspector_id } = payload;
-      if (!user_id) return json(req, { error: "user_id is required." }, 400);
+      const uIdErr = validateUuid(user_id);
+      if (uIdErr) return json(req, { error: uIdErr }, 400);
+      if (full_name !== undefined) {
+        const fnErr = validateFullName(full_name);
+        if (fnErr) return json(req, { error: fnErr }, 400);
+      }
+      if (phone !== undefined && phone !== null) {
+        const phErr = validatePhone(phone);
+        if (phErr) return json(req, { error: phErr }, 400);
+      }
+      if (role !== undefined && !VALID_ROLES.includes(role)) {
+        return json(req, { error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` }, 400);
+      }
 
       const profileUpdates: Record<string, unknown> = {};
       if (full_name !== undefined) profileUpdates.full_name = full_name;
@@ -220,7 +265,8 @@ Deno.serve(async (req) => {
     // --- activate ---
     if (action === "activate") {
       const { user_id } = payload;
-      if (!user_id) return json(req, { error: "user_id is required." }, 400);
+      const aErr = validateUuid(user_id);
+      if (aErr) return json(req, { error: aErr }, 400);
 
       await supabaseAdmin
         .from("user_profiles")
@@ -235,7 +281,8 @@ Deno.serve(async (req) => {
     // --- deactivate ---
     if (action === "deactivate") {
       const { user_id } = payload;
-      if (!user_id) return json(req, { error: "user_id is required." }, 400);
+      const dErr = validateUuid(user_id);
+      if (dErr) return json(req, { error: dErr }, 400);
 
       await supabaseAdmin
         .from("user_profiles")
