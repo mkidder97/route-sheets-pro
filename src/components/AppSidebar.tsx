@@ -1,6 +1,7 @@
-import { Building2, Database, Route, Settings as SettingsIcon, ArrowRight } from "lucide-react";
+import { Building2, Database, Route, Settings as SettingsIcon, ArrowRight, LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +25,7 @@ const mainNav = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const { signOut, profile } = useAuth();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -68,6 +70,11 @@ export function AppSidebar() {
       </SidebarContent>
 
       <div className="mt-auto border-t border-sidebar-border p-2 space-y-1">
+        {!collapsed && profile && (
+          <div className="px-3 py-1.5 text-xs text-sidebar-foreground truncate">
+            {profile.full_name}
+          </div>
+        )}
         {!collapsed && (
           <Link
             to="/ops"
@@ -76,6 +83,15 @@ export function AppSidebar() {
             Switch to RoofOps
             <ArrowRight className="h-3 w-3" />
           </Link>
+        )}
+        {!collapsed && (
+          <button
+            onClick={() => signOut()}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-sidebar-foreground hover:text-sidebar-accent-foreground transition-colors"
+          >
+            <LogOut className="h-3 w-3" />
+            Sign Out
+          </button>
         )}
         <SidebarTrigger className="w-full justify-center text-sidebar-foreground hover:text-sidebar-accent-foreground" />
       </div>

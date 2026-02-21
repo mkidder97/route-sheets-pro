@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import MyRoutes from "./pages/MyRoutes";
 import RouteBuilder from "./pages/RouteBuilder";
@@ -10,7 +10,7 @@ import DataManager from "./pages/DataManager";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "@/hooks/useAuth";
-import OpsLogin from "./pages/ops/OpsLogin";
+import Login from "./pages/Login";
 import ProtectedRoute from "./components/ops/ProtectedRoute";
 import OpsLayout from "./components/ops/OpsLayout";
 import OpsDashboard from "./pages/ops/OpsDashboard";
@@ -30,8 +30,14 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            {/* RoofRoute routes — wrapped in AppLayout */}
-            <Route element={<AppLayout><Outlet /></AppLayout>}>
+            {/* Shared login */}
+            <Route path="/login" element={<Login />} />
+
+            {/* Legacy redirect */}
+            <Route path="/ops/login" element={<Navigate to="/login" replace />} />
+
+            {/* RoofRoute routes — protected */}
+            <Route element={<ProtectedRoute><AppLayout><Outlet /></AppLayout></ProtectedRoute>}>
               <Route path="/" element={<MyRoutes />} />
               <Route path="/my-routes" element={<MyRoutes />} />
               <Route path="/route-builder" element={<RouteBuilder />} />
@@ -39,8 +45,7 @@ const App = () => (
               <Route path="/settings" element={<Settings />} />
             </Route>
 
-            {/* RoofOps routes — no AppLayout */}
-            <Route path="/ops/login" element={<OpsLogin />} />
+            {/* RoofOps routes — already protected */}
             <Route path="/ops" element={<ProtectedRoute><OpsLayout /></ProtectedRoute>}>
               <Route index element={<OpsDashboard />} />
               <Route path="jobs" element={<OpsJobBoard />} />
