@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Kanban, Loader2 } from "lucide-react";
+import { Building2, Loader2 } from "lucide-react";
 
-export default function OpsLogin() {
+export default function Login() {
   const { user, isLoading, signIn } = useAuth();
+  const location = useLocation();
+  const from = (location.state as any)?.from?.pathname || "/";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +44,7 @@ export default function OpsLogin() {
   }
 
   if (user) {
-    return <Navigate to="/ops" replace />;
+    return <Navigate to={from} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,7 +81,6 @@ export default function OpsLogin() {
       return;
     }
 
-    // Auto-login
     const { error: signInError } = await signIn(setupEmail, setupPassword);
     if (signInError) {
       setSetupError(signInError);
@@ -88,18 +90,16 @@ export default function OpsLogin() {
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
-      {/* Header bar */}
       <div
         className="flex h-14 items-center gap-2 px-6"
         style={{ backgroundColor: "#1B4F72" }}
       >
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white/20">
-          <Kanban className="h-4 w-4 text-white" />
+          <Building2 className="h-4 w-4 text-white" />
         </div>
-        <span className="text-sm font-bold text-white">RoofOps</span>
+        <span className="text-sm font-bold text-white">Roof Group</span>
       </div>
 
-      {/* Login / Setup form */}
       <div className="flex flex-1 items-center justify-center p-4">
         {showSetup ? (
           <form
@@ -179,7 +179,7 @@ export default function OpsLogin() {
             <div className="text-center">
               <h1 className="text-2xl font-bold tracking-tight">Sign In</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Enter your credentials to access RoofOps
+                Sign in to continue
               </p>
             </div>
 
