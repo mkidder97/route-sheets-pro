@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format, formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Star, Bell, UserRound, ChevronDown, ChevronRight, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, Star, Bell, UserRound, ChevronDown, ChevronRight, MessageSquare, X, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -175,6 +176,54 @@ export default function OpsCampaignDetail() {
   // Sort
   const [sortKey, setSortKey] = useState<SortKey>("stop_number");
   const [sortAsc, setSortAsc] = useState(true);
+
+  // Auto-sync guard
+  const syncedRef = useRef(false);
+
+  // Reset sync guard when campaign changes
+  useEffect(() => {
+    syncedRef.current = false;
+  }, [campaign?.id]);
+
+  // Auto-sync campaign totals when buildings load
+  useEffect(() => {
+    if (!campaign || buildings.length === 0 || syncedRef.current) return;
+    syncedRef.current = true;
+
+    const total = buildings.length;
+    const completed = buildings.filter((b) => b.inspection_status === "complete").length;
+
+    const needsCountUpdate =
+      total !== campaign.total_buildings || completed !== campaign.completed_buildings;
+    const shouldAutoComplete =
+      completed === total && total > 0 && campaign.status !== "on_hold" && campaign.status !== "complete";
+
+    if (!needsCountUpdate && !shouldAutoComplete) return;
+
+    (async () => {
+      const updatePayload: Record<string, any> = {
+        total_buildings: total,
+        completed_buildings: completed,
+      };
+      if (shouldAutoComplete) {
+        updatePayload.status = "complete";
+      }
+
+      const { error } = await supabase
+        .from("inspection_campaigns")
+        .update(updatePayload)
+        .eq("id", campaign.id);
+
+      if (!error) {
+        setCampaign((prev) =>
+          prev ? { ...prev, ...updatePayload } : prev
+        );
+        if (shouldAutoComplete) {
+          toast.success("Campaign marked complete!");
+        }
+      }
+    })();
+  }, [buildings, campaign]);
 
   useEffect(() => {
     if (id) {
@@ -457,6 +506,42 @@ export default function OpsCampaignDetail() {
     }
   }
 
+  function handleExport() {
+    if (!campaign || buildings.length === 0) return;
+    const rows = buildings.map((b) => ({
+      "Stop #": b.building.stop_number ?? "",
+      "Property Name": b.building.property_name,
+      "Address": b.building.address,
+      "City": b.building.city,
+      "State": b.building.state,
+      "Zip": b.building.zip_code,
+      "Status": b.inspection_status,
+      "Inspector": b.inspector?.name ?? "",
+      "Scheduled Week": b.scheduled_week ?? "",
+      "Building Code": b.building.building_code ?? "",
+      "Roof Group": b.building.roof_group ?? "",
+      "Sq Footage": b.building.square_footage ?? "",
+      "Access Type": b.building.roof_access_type ?? "",
+      "Access Description": b.building.roof_access_description ?? "",
+      "Access Location": b.building.access_location ?? "",
+      "Lock/Gate Codes": b.building.lock_gate_codes ?? "",
+      "Property Manager": b.building.property_manager_name ?? "",
+      "PM Phone": b.building.property_manager_phone ?? "",
+      "PM Email": b.building.property_manager_email ?? "",
+      "Priority": b.is_priority ? "Yes" : "No",
+      "24H Notice": b.building.requires_advance_notice ? "Yes" : "No",
+      "Escort Required": b.building.requires_escort ? "Yes" : "No",
+      "Special Equipment": b.building.special_equipment?.join(", ") ?? "",
+      "Special Notes": b.building.special_notes ?? "",
+      "Inspector Notes": b.inspector_notes ?? "",
+      "Completion Date": b.completion_date ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Buildings");
+    XLSX.writeFile(wb, `${campaign.name} - Export - ${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+  }
+
   function handleSort(key: SortKey) {
     if (sortKey === key) {
       setSortAsc(!sortAsc);
@@ -528,6 +613,9 @@ export default function OpsCampaignDetail() {
             <Badge variant="outline" className={TYPE_BADGE_COLORS[campaign.inspection_type] ?? ""}>
               {INSPECTION_TYPE_LABELS[campaign.inspection_type] ?? campaign.inspection_type}
             </Badge>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={buildings.length === 0}>
+              <Download className="h-4 w-4 mr-1" /> Export
+            </Button>
             {canEdit ? (
               <Select value={campaign.status} onValueChange={updateCampaignStatus}>
                 <SelectTrigger className="w-[140px]">
