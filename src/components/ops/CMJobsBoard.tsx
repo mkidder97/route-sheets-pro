@@ -130,10 +130,12 @@ const PRIORITY_COLORS: Record<string, string> = {
 function DraggableJobCard({
   job,
   canDrag,
+  isYourTurn,
   onClick,
 }: {
   job: CMJob;
   canDrag: boolean;
+  isYourTurn: boolean;
   onClick: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -144,10 +146,9 @@ function DraggableJobCard({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg border bg-card p-3 space-y-1.5 shadow-sm transition-opacity ${isDragging ? "opacity-50" : ""} ${canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+      className={`rounded-lg border bg-card p-3 space-y-1.5 shadow-sm transition-opacity ${isDragging ? "opacity-50" : ""} ${canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isYourTurn ? "border-l-2 border-l-primary" : ""}`}
       {...(canDrag ? { ...listeners, ...attributes } : {})}
       onClick={(e) => {
-        // Only open detail if not dragging
         if (!isDragging) {
           e.stopPropagation();
           onClick();
@@ -156,7 +157,12 @@ function DraggableJobCard({
     >
       <div className="flex items-start justify-between gap-1">
         <p className="font-medium text-sm leading-tight">{job.title}</p>
-        {canDrag && <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        <div className="flex items-center gap-1 shrink-0">
+          {isYourTurn && (
+            <Badge variant="default" className="text-[9px] px-1 py-0">Your Turn</Badge>
+          )}
+          {canDrag && <GripVertical className="h-4 w-4 text-muted-foreground" />}
+        </div>
       </div>
       {(job.address || job.city) && (
         <p className="text-xs text-muted-foreground truncate">
@@ -188,14 +194,17 @@ function KanbanColumn({
   statusDef,
   jobs,
   canDrag,
+  userRole,
   onCardClick,
 }: {
   statusDef: StatusDef;
   jobs: CMJob[];
   canDrag: (job: CMJob) => boolean;
+  userRole: string | null;
   onCardClick: (jobId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: statusDef.key });
+  const isYourTurnColumn = !!userRole && statusDef.owner_role === userRole;
 
   return (
     <div
@@ -209,7 +218,7 @@ function KanbanColumn({
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {jobs.map((j) => (
-          <DraggableJobCard key={j.id} job={j} canDrag={canDrag(j)} onClick={() => onCardClick(j.id)} />
+          <DraggableJobCard key={j.id} job={j} canDrag={canDrag(j)} isYourTurn={isYourTurnColumn} onClick={() => onCardClick(j.id)} />
         ))}
         {jobs.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-4">No jobs</p>
@@ -449,7 +458,7 @@ export default function CMJobsBoard() {
     await changeJobStatus(jobId, job.status, newStatus);
   }
 
-  // ---------- Shared Status Change Logic ----------
+  // ---------- Shared Status Change Logic (with handoff notifications) ----------
   async function changeJobStatus(jobId: string, oldStatus: string, newStatus: string) {
     if (!user) return;
 
@@ -467,7 +476,7 @@ export default function CMJobsBoard() {
       return;
     }
 
-    // History + activity log (fire and forget)
+    // History + activity log
     await Promise.all([
       supabase.from("cm_job_status_history" as any).insert({
         cm_job_id: jobId,
@@ -484,8 +493,78 @@ export default function CMJobsBoard() {
       }),
     ]);
 
-    const statusLabel = sortedStatuses.find((s) => s.key === newStatus)?.label ?? newStatus;
-    toast.success(`Moved to ${statusLabel}`);
+    // --- Handoff & status change notifications (fire-and-forget) ---
+    const job = jobs.find((j) => j.id === jobId);
+    const oldStatusDef = sortedStatuses.find((s) => s.key === oldStatus);
+    const newStatusDef = sortedStatuses.find((s) => s.key === newStatus);
+    const newLabel = newStatusDef?.label ?? newStatus;
+    const jobTitle = job?.title ?? "Job";
+    const jobAddress = job?.address ?? "";
+
+    const notified = new Set<string>();
+    notified.add(user.id); // never notify the person who made the change
+    const notificationPromises: Promise<any>[] = [];
+
+    // Handoff: owner_role changed → notify all users with the new role
+    if (oldStatusDef && newStatusDef && oldStatusDef.owner_role !== newStatusDef.owner_role) {
+      const { data: roleUsers } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", newStatusDef.owner_role as any);
+
+      if (roleUsers) {
+        for (const ru of roleUsers) {
+          if (!notified.has(ru.user_id)) {
+            notified.add(ru.user_id);
+            notificationPromises.push(
+              createNotification(
+                ru.user_id,
+                `Job Ready: ${newLabel}`,
+                `${jobTitle} at ${jobAddress || "N/A"} needs your attention`,
+                "handoff",
+                "cm_job",
+                jobId
+              )
+            );
+          }
+        }
+      }
+    }
+
+    // Always notify creator & assignee (if not already notified)
+    if (job?.created_by && !notified.has(job.created_by)) {
+      notified.add(job.created_by);
+      notificationPromises.push(
+        createNotification(
+          job.created_by,
+          `Status Update: ${jobTitle}`,
+          `Moved to ${newLabel}`,
+          "status_change",
+          "cm_job",
+          jobId
+        )
+      );
+    }
+    if (job?.assigned_to && !notified.has(job.assigned_to)) {
+      notified.add(job.assigned_to);
+      notificationPromises.push(
+        createNotification(
+          job.assigned_to,
+          `Status Update: ${jobTitle}`,
+          `Moved to ${newLabel}`,
+          "status_change",
+          "cm_job",
+          jobId
+        )
+      );
+    }
+
+    // Fire all notifications without blocking UI
+    if (notificationPromises.length > 0) {
+      Promise.all(notificationPromises).catch(console.error);
+    }
+
+    toast.success(`Moved to ${newLabel}`);
 
     // Refresh detail if open
     if (detailJobId === jobId) {
@@ -776,6 +855,7 @@ export default function CMJobsBoard() {
                   statusDef={s}
                   jobs={filteredJobs.filter((j) => j.status === s.key)}
                   canDrag={canDrag}
+                  userRole={role}
                   onCardClick={setDetailJobId}
                 />
               ))}
