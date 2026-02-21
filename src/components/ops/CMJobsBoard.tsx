@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { createNotification } from "@/lib/notifications";
 import { format, formatDistanceToNow } from "date-fns";
-import { Plus, GripVertical, X, Send, Check } from "lucide-react";
+import { Plus, GripVertical, X, Send, Check, LayoutGrid, List, ChevronUp, ChevronDown, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 
 // ---------- Types ----------
 type StatusDef = {
@@ -85,6 +86,7 @@ type CMJob = {
   property_manager_email: string | null;
   metadata: Record<string, unknown>;
   created_by: string | null;
+  updated_at: string;
   clients?: { name: string } | null;
   assigned_user?: { full_name: string } | null;
 };
@@ -285,6 +287,19 @@ export default function CMJobsBoard() {
   const [activeJob, setActiveJob] = useState<CMJob | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // View toggle
+  const [viewMode, setViewMode] = useState<"board" | "list">(() => {
+    const saved = localStorage.getItem("roofroute_cm_view");
+    return saved === "list" ? "list" : "board";
+  });
+
+  // List view state
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortColumn, setSortColumn] = useState<string>("title");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(0);
+  const ROWS_PER_PAGE = 20;
+
   const selectedType = useMemo(
     () => jobTypes.find((t) => t.id === selectedTypeId),
     [jobTypes, selectedTypeId]
@@ -302,6 +317,68 @@ export default function CMJobsBoard() {
     if (filterPriority !== "all") list = list.filter((j) => j.priority === filterPriority);
     return list;
   }, [jobs, filterClient, filterAssigned, filterPriority]);
+
+  // List view: search → sort → paginate
+  const searchedJobs = useMemo(() => {
+    if (!searchTerm) return filteredJobs;
+    const term = searchTerm.toLowerCase();
+    return filteredJobs.filter(
+      (j) =>
+        j.title.toLowerCase().includes(term) ||
+        (j.address ?? "").toLowerCase().includes(term)
+    );
+  }, [filteredJobs, searchTerm]);
+
+  const sortedJobs = useMemo(() => {
+    const sorted = [...searchedJobs].sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortColumn) {
+        case "title": aVal = a.title; bVal = b.title; break;
+        case "client": aVal = a.clients?.name ?? ""; bVal = b.clients?.name ?? ""; break;
+        case "status": aVal = getStatusLabel(a.status); bVal = getStatusLabel(b.status); break;
+        case "assigned": aVal = a.assigned_user?.full_name ?? ""; bVal = b.assigned_user?.full_name ?? ""; break;
+        case "priority": {
+          const order = { urgent: 0, high: 1, normal: 2, low: 3 };
+          aVal = order[a.priority as keyof typeof order] ?? 4;
+          bVal = order[b.priority as keyof typeof order] ?? 4;
+          break;
+        }
+        case "scheduled": aVal = a.scheduled_date ?? ""; bVal = b.scheduled_date ?? ""; break;
+        case "due": aVal = a.due_date ?? ""; bVal = b.due_date ?? ""; break;
+        case "updated": aVal = a.updated_at ?? ""; bVal = b.updated_at ?? ""; break;
+      }
+      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [searchedJobs, sortColumn, sortDir, sortedStatuses]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedJobs.length / ROWS_PER_PAGE));
+  const paginatedJobs = useMemo(() => sortedJobs.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE), [sortedJobs, page]);
+
+  // Reset page when filters/search/sort change
+  useEffect(() => { setPage(0); }, [filterClient, filterAssigned, filterPriority, searchTerm, sortColumn, sortDir]);
+
+  function handleToggleView(mode: "board" | "list") {
+    setViewMode(mode);
+    localStorage.setItem("roofroute_cm_view", mode);
+  }
+
+  function handleSortClick(col: string) {
+    if (sortColumn === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(col);
+      setSortDir("asc");
+    }
+  }
+
+  function SortIndicator({ col }: { col: string }) {
+    if (sortColumn !== col) return null;
+    return sortDir === "asc" ? <ChevronUp className="h-3 w-3 inline ml-0.5" /> : <ChevronDown className="h-3 w-3 inline ml-0.5" />;
+  }
 
   const dialogRegions = useMemo(
     () => (form.client_id ? regions.filter((r) => r.client_id === form.client_id) : []),
@@ -833,6 +910,38 @@ export default function CMJobsBoard() {
           </SelectContent>
         </Select>
 
+        {/* View Toggle */}
+        <div className="flex items-center border rounded-md">
+          <Button
+            variant={viewMode === "board" ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-2 rounded-r-none"
+            onClick={() => handleToggleView("board")}
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-2 rounded-l-none"
+            onClick={() => handleToggleView("list")}
+          >
+            <List className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {viewMode === "list" && (
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search title or address…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 w-[200px] h-9"
+            />
+          </div>
+        )}
+
         {canWrite && (
           <Button size="sm" onClick={openNewJobDialog} className="ml-auto">
             <Plus className="h-4 w-4 mr-1" /> New Job
@@ -840,12 +949,12 @@ export default function CMJobsBoard() {
         )}
       </div>
 
-      {/* Kanban Board (PRESERVED drag-and-drop logic) */}
+      {/* Board or List */}
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : sortedStatuses.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-12">No job types configured.</p>
-      ) : (
+      ) : viewMode === "board" ? (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="overflow-x-auto pb-4">
             <div className="flex gap-3" style={{ minWidth: sortedStatuses.length * 276 }}>
@@ -869,6 +978,67 @@ export default function CMJobsBoard() {
             ) : null}
           </DragOverlay>
         </DndContext>
+      ) : (
+        /* List View */
+        <div className="space-y-3">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("title")}>Title <SortIndicator col="title" /></TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("client")}>Client <SortIndicator col="client" /></TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("status")}>Status <SortIndicator col="status" /></TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("assigned")}>Assigned To <SortIndicator col="assigned" /></TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("priority")}>Priority <SortIndicator col="priority" /></TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("scheduled")}>Scheduled <SortIndicator col="scheduled" /></TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("due")}>Due Date <SortIndicator col="due" /></TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSortClick("updated")}>Updated <SortIndicator col="updated" /></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedJobs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No jobs found</TableCell>
+                </TableRow>
+              ) : paginatedJobs.map((job) => (
+                <TableRow key={job.id} className="cursor-pointer" onClick={() => setDetailJobId(job.id)}>
+                  <TableCell className="font-medium">{job.title}</TableCell>
+                  <TableCell>{job.clients?.name ?? "—"}</TableCell>
+                  <TableCell>
+                    <Badge className="text-[10px] text-white border-0" style={{ backgroundColor: getStatusColor(job.status) }}>
+                      {getStatusLabel(job.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{job.assigned_user?.full_name ?? "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className={`text-[10px] ${PRIORITY_COLORS[job.priority] ?? ""}`}>
+                      {job.priority}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{job.scheduled_date ? format(new Date(job.scheduled_date), "MMM d, yyyy") : "—"}</TableCell>
+                  <TableCell>{job.due_date ? format(new Date(job.due_date), "MMM d, yyyy") : "—"}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs">
+                    {job.updated_at ? formatDistanceToNow(new Date(job.updated_at), { addSuffix: true }) : "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {page + 1} of {totalPages}
+              </span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ==================== New Job Dialog ==================== */}
