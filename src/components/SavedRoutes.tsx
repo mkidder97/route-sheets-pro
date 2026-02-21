@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet, Crosshair, ArrowRightLeft, Camera, Image as ImageIcon } from "lucide-react";
+import { Loader2, MapPin, ChevronDown, ChevronUp, Trash2, Check, Navigation, SkipForward, AlertTriangle, FileText, FileSpreadsheet, Crosshair, ArrowRightLeft, Camera, Image as ImageIcon, Undo2 } from "lucide-react";
 import { haversineDistance } from "@/lib/geo-utils";
 import { generateInspectorPDF, type DayData, type BuildingData, type DocumentMetadata } from "@/lib/pdf-generator";
 import { generateInspectorExcel } from "@/lib/excel-generator";
@@ -912,9 +912,15 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                           <Check className="h-4 w-4 mr-1.5" /> Done
                                         </Button>
                                       ) : (
-                                        <Badge className="bg-success/20 text-success border-0 h-9 px-3 flex items-center text-xs">
-                                          <Check className="h-3.5 w-3.5 mr-1" /> Complete
-                                        </Badge>
+                                        <Button size="sm" variant="outline"
+                                          className="h-9 px-3 border-success/30 text-success hover:bg-success/10"
+                                          disabled={saving}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleStatusChange(b.id, "pending");
+                                          }}>
+                                          <Undo2 className="h-3.5 w-3.5 mr-1" /> Undo
+                                        </Button>
                                       )}
                                     </div>
                                     {isBuildingExpanded && (
@@ -1255,9 +1261,15 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                               <Check className="h-4 w-4 mr-1.5" /> Done
                                             </Button>
                                           ) : (
-                                            <Badge className="bg-success/20 text-success border-0 h-9 px-3 flex items-center text-xs">
-                                              <Check className="h-3.5 w-3.5 mr-1" /> Complete
-                                            </Badge>
+                                            <Button size="sm" variant="outline"
+                                              className="h-9 px-3 border-success/30 text-success hover:bg-success/10"
+                                              disabled={saving}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleStatusChange(b.id, "pending");
+                                              }}>
+                                              <Undo2 className="h-3.5 w-3.5 mr-1" /> Undo
+                                            </Button>
                                           )}
                                         </div>
                                       )}
