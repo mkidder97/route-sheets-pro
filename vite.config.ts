@@ -18,4 +18,19 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-pdf': ['jspdf', 'jspdf-autotable'],
+          'vendor-xlsx': ['xlsx'],
+          'vendor-zip': ['jszip'],
+          'vendor-charts': ['recharts'],
+          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable'],
+          'vendor-ocr': ['tesseract.js'],
+        },
+      },
+    },
+  },
 }));
