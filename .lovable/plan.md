@@ -1,79 +1,141 @@
 
 
-# CM Jobs: Board / List View Toggle
+# Job Types Management Tab in OpsSettings
 
 ## Overview
 
-Add a "Board" / "List" toggle to the CM Jobs section header. The List view provides a sortable, paginated data table as an alternative to the Kanban board, ideal for 30-75+ active jobs. Both views share the same filters, detail panel (Sheet), and data.
+Add a "Job Types" tab to the Settings page, visible only to admins. It lists all `cm_job_types` with inline `is_active` toggle, and opens an edit dialog with drag-and-drop status reordering, color editing, owner_role assignment, and the ability to add/remove statuses.
 
 ---
 
-## Changes (single file)
+## Changes
 
-**File:** `src/components/ops/CMJobsBoard.tsx`
-
----
-
-## 1. View Toggle State with localStorage Persistence
-
-Add a new state variable `viewMode` initialized from `localStorage.getItem("roofroute_cm_view")` or defaulting to `"board"`. On toggle, save to localStorage with the same key (matches the existing `roofroute_` prefix convention).
-
-Add a toggle control in the header bar (after the priority filter, before the "New Job" button) using two small buttons or a segmented control styled with the existing `Button` component:
-- "Board" (grid icon from lucide: `LayoutGrid`)  
-- "List" (list icon from lucide: `List`)
+**File:** `src/pages/ops/OpsSettings.tsx` (all changes in this single file)
 
 ---
 
-## 2. Search Bar (List view only)
+## 1. New Tab in OpsSettings Component
 
-Add a search `Input` that appears when `viewMode === "list"`, positioned in the filter bar. The search filters `filteredJobs` further by matching `title` or `address` (case-insensitive substring match) client-side via `useMemo`.
+Add a "Job Types" tab trigger and content, visible only when `role === "admin"`:
 
----
+```
+{role === "admin" && <TabsTrigger value="jobtypes">Job Types</TabsTrigger>}
+```
 
-## 3. List View Table
-
-When `viewMode === "list"`, render a data table instead of the Kanban board (the DndContext block). Use the existing shadcn `Table`, `TableHeader`, `TableRow`, `TableHead`, `TableCell`, `TableBody` components already in the project.
-
-### Columns
-
-| Column | Data | Rendering |
-|--------|------|-----------|
-| Title | `job.title` | Plain text, bold |
-| Client | `job.clients?.name` | Plain text |
-| Status | `job.status` | `Badge` with `backgroundColor` from `getStatusColor(status)` and white text, label from `getStatusLabel(status)` |
-| Assigned To | `job.assigned_user?.full_name` | Plain text or "—" |
-| Priority | `job.priority` | `Badge` with existing `PRIORITY_COLORS` mapping |
-| Scheduled | `job.scheduled_date` | Formatted date or "—" |
-| Due Date | `job.due_date` | Formatted date or "—" |
-| Last Updated | `job.updated_at` | Relative time via `formatDistanceToNow` (requires adding `updated_at` to the CMJob type and fetch query) |
-
-### Sorting
-
-Add state: `sortColumn` (string, default "title") and `sortDir` ("asc" | "desc", default "asc"). Clicking a column header toggles sort direction if same column, or sets new column ascending. Apply sorting in a `useMemo` over the filtered+searched jobs.
-
-Column headers render with a click handler and a small arrow indicator (ChevronUp/ChevronDown from lucide) for the active sort column.
-
-### Pagination
-
-Add state: `page` (number, default 0). Display 20 rows per page. Slice the sorted array by `page * 20` to `(page + 1) * 20`. Show simple "Previous / Page X of Y / Next" controls below the table using `Button` components. Reset `page` to 0 when filters, search, or sort change.
-
-### Row Click
-
-Each `TableRow` has `onClick={() => setDetailJobId(job.id)}` with `cursor-pointer` class, opening the same Sheet detail panel used by the Kanban cards.
+Default tab logic: if admin, default to `"users"`; the new tab is just an additional option.
 
 ---
 
-## 4. CMJob Type and Fetch Update
+## 2. JobTypeManagement Component
 
-Add `updated_at: string` to the `CMJob` type (line ~67). The `fetchJobs` query already does `select("*", ...)` so `updated_at` is already returned -- we just need the type definition to use it.
+A new function component rendered inside the "jobtypes" `TabsContent`.
+
+**State:**
+- `jobTypes: JobType[]` -- fetched from `cm_job_types` ordered by `name`
+- `loading: boolean`
+- `editType: JobType | null` -- opens the edit dialog
+- `addOpen: boolean` -- opens the add dialog
+
+**List rendering (Table):**
+
+| Column | Content |
+|--------|---------|
+| Name | `jobType.name` (bold) |
+| Description | truncated to ~60 chars |
+| Statuses | count badge, e.g. "11 stages" |
+| Active | `Switch` toggle -- on change, update `cm_job_types.is_active` directly |
+
+Click a row to open the edit dialog (`setEditType(jobType)`).
+
+"Add Job Type" button at top-right.
 
 ---
 
-## 5. Imports
+## 3. Add Job Type Dialog
 
-Add to the existing lucide import line: `LayoutGrid`, `List`, `ChevronUp`, `ChevronDown`.
+Simple dialog with:
+- Name (required)
+- Description (optional textarea)
 
-Import `Table, TableHeader, TableBody, TableRow, TableHead, TableCell` from `@/components/ui/table`.
+On submit: insert into `cm_job_types` with `statuses: '[]'::jsonb`, `is_active: true`. Refresh list, close dialog.
+
+---
+
+## 4. Edit Job Type Dialog (the main feature)
+
+A larger dialog (`DialogContent className="max-w-2xl"`) with:
+
+### Top section
+- Name input
+- Description textarea
+- is_active switch
+
+### Statuses section -- drag-and-drop reorderable list
+
+Uses `@dnd-kit/core` and `@dnd-kit/sortable` (already installed) to allow reordering statuses.
+
+Each status row shows:
+- Drag handle (GripVertical icon)
+- **Label** (text input)
+- **Key** (read-only, auto-generated from label on creation using `label.toLowerCase().replace(/\s+/g, "_")`)
+- **Color** -- a small color swatch button that opens a preset color picker (a popover with ~12 preset colors like the ones used in the board: `#3498DB`, `#E67E22`, `#27AE60`, `#E74C3C`, `#9B59B6`, `#1ABC9C`, `#F1C40F`, `#34495E`, `#95A5A6`, `#2ECC71`, `#E84393`, `#0984E3`)
+- **Owner Role** -- Select dropdown with the 4 ROLE_OPTIONS
+- **Delete button** (Trash icon) -- on click, check if any `cm_jobs` have `status = this.key AND job_type_id = this.id`. If yes, show toast error "Cannot remove: X jobs use this status". If no, remove from the local array.
+
+"Add Status" button at bottom of the list -- appends a new entry with default values `{ key: "new_status", label: "New Status", color: "#95A5A6", owner_role: "office_manager", order: nextOrder }`.
+
+### Save button
+On save:
+1. Recalculate `order` fields (0, 1, 2...) based on current array position
+2. Update `cm_job_types` row: `name`, `description`, `is_active`, `statuses` (the full JSONB array)
+3. Toast success, close dialog, refresh list
+
+---
+
+## 5. Imports to Add
+
+- `@dnd-kit/core`: `DndContext`, `closestCenter`, `PointerSensor`, `useSensor`, `useSensors`
+- `@dnd-kit/sortable`: `SortableContext`, `useSortable`, `verticalListSortingStrategy`, `arrayMove`
+- `lucide-react`: `GripVertical`, `Trash2` (add to existing import)
+- `Textarea` from `@/components/ui/textarea`
+- `Popover`, `PopoverTrigger`, `PopoverContent` from `@/components/ui/popover`
+
+---
+
+## 6. Types
+
+Reuse the same `StatusDef` shape from CMJobsBoard (defined locally since it's a different file):
+```ts
+interface StatusDef {
+  key: string;
+  label: string;
+  color: string;
+  owner_role: string;
+  order: number;
+}
+
+interface JobType {
+  id: string;
+  name: string;
+  description: string | null;
+  statuses: StatusDef[];
+  is_active: boolean;
+}
+```
+
+---
+
+## 7. Delete Status Safety Check
+
+Before removing a status from the local array, run:
+```ts
+const { count } = await supabase
+  .from("cm_jobs")
+  .select("id", { count: "exact", head: true })
+  .eq("job_type_id", jobType.id)
+  .eq("status", statusKey);
+```
+If `count > 0`, block removal with a toast error.
 
 ---
 
@@ -81,12 +143,9 @@ Import `Table, TableHeader, TableBody, TableRow, TableHead, TableCell` from `@/c
 
 | Item | Detail |
 |------|--------|
-| localStorage key | `roofroute_cm_view` (matches existing prefix convention) |
-| Default view | `"board"` |
-| Search scope | Client-side filter on `title` and `address` fields |
-| Pagination size | 20 rows per page |
-| Sort implementation | `useMemo` with `Array.sort` comparator based on `sortColumn` and `sortDir` |
-| No new dependencies | Uses existing shadcn Table, lucide icons, date-fns |
-| No new files | Everything stays in CMJobsBoard.tsx |
-| DndContext | Only rendered when `viewMode === "board"` -- no performance cost in list mode |
+| RLS | `cm_job_types` already has admin/office_manager ALL policy -- no migration needed |
+| DnD | `@dnd-kit/sortable` with `verticalListSortingStrategy`, same packages already in project |
+| Color picker | Popover with preset swatches grid (no native color input -- keeps it consistent) |
+| Key generation | For new statuses only; existing keys are immutable to avoid breaking `cm_jobs.status` references |
+| No new files | Everything in OpsSettings.tsx following the existing pattern of function components in one file |
 
