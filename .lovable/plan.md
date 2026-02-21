@@ -1,70 +1,94 @@
 
-# Role-Based RLS Migration
 
-## Overview
-Replace the blanket "Authenticated insert/update/delete" policies on 9 core tables with role-based policies using the existing `has_ops_role()` security definer function. SELECT policies stay unchanged.
+# Audit Log Table and Edge Function Logging
 
-## Current State
-All 9 tables have simple `true` policies for authenticated users on INSERT, UPDATE, and DELETE (where applicable). No role checking is performed.
+## 1. Database Migration
 
-## Migration Details
+Create a new migration with the following SQL:
 
-A single SQL migration that, for each table:
-1. **Keeps** the existing "Authenticated read" SELECT policy (no change)
-2. **Drops** "Authenticated insert" and creates "Role insert [table]" -- admin + office_manager only
-3. **Drops** "Authenticated update" and creates "Role update [table]" -- admin + office_manager + field_ops
-4. **Drops** "Authenticated delete" (if exists) and creates "Admin delete [table]" -- admin only
-5. For tables without an existing delete policy (clients, regions, inspectors, uploads), adds the new admin-only delete policy
-
-### Exception: route_plans, route_plan_days, route_plan_buildings
-These three tables also allow `field_ops` to INSERT (inspectors create route plans), so their INSERT policy includes three roles instead of two.
-
-### Tables and their changes:
-
-| Table | INSERT | UPDATE | DELETE |
-|-------|--------|--------|--------|
-| clients | admin, office_manager | admin, office_manager, field_ops | admin (new) |
-| regions | admin, office_manager | admin, office_manager, field_ops | admin (new) |
-| inspectors | admin, office_manager | admin, office_manager, field_ops | admin (new) |
-| buildings | admin, office_manager | admin, office_manager, field_ops | admin (replace) |
-| uploads | admin, office_manager | admin, office_manager, field_ops | admin (new) |
-| generated_documents | admin, office_manager | admin, office_manager, field_ops | admin (replace) |
-| route_plans | admin, office_manager, field_ops | admin, office_manager, field_ops | admin (replace) |
-| route_plan_days | admin, office_manager, field_ops | admin, office_manager, field_ops | admin (replace) |
-| route_plan_buildings | admin, office_manager, field_ops | admin, office_manager, field_ops | admin (replace) |
-
-### SQL Pattern (example for `clients`):
 ```sql
--- INSERT: admin + office_manager
-DROP POLICY IF EXISTS "Authenticated insert clients" ON public.clients;
-CREATE POLICY "Role insert clients" ON public.clients
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    public.has_ops_role(auth.uid(), 'admin'::ops_role)
-    OR public.has_ops_role(auth.uid(), 'office_manager'::ops_role)
-  );
+CREATE TABLE public.audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id),
+  action TEXT NOT NULL,
+  target_table TEXT,
+  target_id TEXT,
+  details JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
--- UPDATE: admin + office_manager + field_ops
-DROP POLICY IF EXISTS "Authenticated update clients" ON public.clients;
-CREATE POLICY "Role update clients" ON public.clients
-  FOR UPDATE TO authenticated
-  USING (
-    public.has_ops_role(auth.uid(), 'admin'::ops_role)
-    OR public.has_ops_role(auth.uid(), 'office_manager'::ops_role)
-    OR public.has_ops_role(auth.uid(), 'field_ops'::ops_role)
-  );
+ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 
--- DELETE: admin only
-CREATE POLICY "Admin delete clients" ON public.clients
-  FOR DELETE TO authenticated
+CREATE POLICY "Admins read audit_log" ON public.audit_log
+  FOR SELECT TO authenticated
   USING (public.has_ops_role(auth.uid(), 'admin'::ops_role));
+
+CREATE POLICY "Authenticated insert audit_log" ON public.audit_log
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+CREATE INDEX idx_audit_log_created ON public.audit_log(created_at DESC);
+CREATE INDEX idx_audit_log_user ON public.audit_log(user_id);
+CREATE INDEX idx_audit_log_action ON public.audit_log(action);
 ```
 
-### No code changes required
-This is a database-only change. The frontend code does not reference policy names and will continue to work -- users without the required role will simply get permission errors from the database when attempting restricted operations.
+- Only admins can read the audit log
+- Any authenticated user can insert (the edge function uses `supabaseAdmin` which bypasses RLS, but this policy covers future use from client-side if needed)
+- No UPDATE or DELETE allowed -- audit log is append-only
 
-## Security Notes
-- The `has_ops_role` function is `SECURITY DEFINER`, so it bypasses RLS on `user_roles` and avoids infinite recursion
-- SELECT remains open to all authenticated users (read access is universal)
-- Only admins can delete from any table
-- field_ops can update all tables (needed for inspection workflow) but can only insert into route plan tables
+## 2. Edge Function Changes (`supabase/functions/manage-users/index.ts`)
+
+Add audit log inserts after each successful action. No other logic changes.
+
+### Helper function (add near the top, after the `json` function):
+
+```ts
+async function logAudit(
+  supabaseAdmin: any,
+  userId: string,
+  action: string,
+  targetId: string,
+  details: Record<string, unknown> = {}
+) {
+  await supabaseAdmin.from("audit_log").insert({
+    user_id: userId,
+    action,
+    target_table: "user_profiles",
+    target_id: targetId,
+    details,
+  });
+}
+```
+
+### Insert audit calls at 4 locations:
+
+**After successful `create` (line ~157, before the return):**
+```ts
+await logAudit(supabaseAdmin, user.id, "create_user", newUser.user.id, {
+  email, role, full_name,
+});
+```
+
+**After successful `update` (line ~183, before the return):**
+```ts
+await logAudit(supabaseAdmin, user.id, "update_user", user_id, {
+  ...profileUpdates,
+  ...(role ? { role } : {}),
+});
+```
+
+**After successful `activate` (line ~196, before the return):**
+```ts
+await logAudit(supabaseAdmin, user.id, "activate_user", user_id, {});
+```
+
+**After successful `deactivate` (line ~209, before the return):**
+```ts
+await logAudit(supabaseAdmin, user.id, "deactivate_user", user_id, {});
+```
+
+### Summary of edge function changes:
+- Add `logAudit` helper function
+- 4 new `await logAudit(...)` calls, one per admin action
+- No other logic changes
+
