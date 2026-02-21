@@ -23,8 +23,9 @@ import {
   addDays,
 } from "date-fns";
 import {
-  ChevronLeft, ChevronRight, Plus, Filter, Trash2, AlertTriangle,
+  ChevronLeft, ChevronRight, Plus, Filter, Trash2, AlertTriangle, Upload,
 } from "lucide-react";
+import { ScheduleUpload } from "@/components/ScheduleUpload";
 import {
   DndContext, DragEndEvent, PointerSensor, useSensor, useSensors,
 } from "@dnd-kit/core";
@@ -937,6 +938,7 @@ export default function OpsScheduling() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [defaultDate, setDefaultDate] = useState<string | undefined>();
+  const [scheduleUploadOpen, setScheduleUploadOpen] = useState(false);
   const [selectedInspectors, setSelectedInspectors] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
 
@@ -1110,17 +1112,27 @@ export default function OpsScheduling() {
           />
 
           {isManager && (
-            <Button
-              size="sm"
-              className="gap-1"
-              onClick={() => {
-                setSelectedEvent(null);
-                setDefaultDate(format(new Date(), "yyyy-MM-dd"));
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" /> Add Event
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => setScheduleUploadOpen(true)}
+              >
+                <Upload className="h-4 w-4" /> Upload Schedule
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1"
+                onClick={() => {
+                  setSelectedEvent(null);
+                  setDefaultDate(format(new Date(), "yyyy-MM-dd"));
+                  setDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Add Event
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -1172,6 +1184,10 @@ export default function OpsScheduling() {
         inspectors={inspectors}
         allEvents={allEventsUnfiltered}
         isManager={isManager}
+      />
+      <ScheduleUpload
+        open={scheduleUploadOpen}
+        onClose={() => setScheduleUploadOpen(false)}
       />
     </div>
   );
