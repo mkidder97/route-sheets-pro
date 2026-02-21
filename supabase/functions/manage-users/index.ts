@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     const { action, ...payload } = await req.json();
+    const BOOTSTRAP_TOKEN = Deno.env.get("BOOTSTRAP_TOKEN") || "";
 
     // --- check-setup: anyone can call ---
     if (action === "check-setup") {
@@ -68,6 +69,9 @@ Deno.serve(async (req) => {
 
     // --- bootstrap: create first admin (only when 0 users exist) ---
     if (action === "bootstrap") {
+      if (BOOTSTRAP_TOKEN && payload.setup_token !== BOOTSTRAP_TOKEN) {
+        return json(req, { error: "Invalid setup token" }, 403);
+      }
       const { count } = await supabaseAdmin
         .from("user_roles")
         .select("*", { count: "exact", head: true });
