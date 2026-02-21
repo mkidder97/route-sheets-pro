@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format, formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Star, Bell, UserRound, ChevronDown, ChevronRight, MessageSquare, X, Download } from "lucide-react";
+import { ArrowLeft, Star, Bell, UserRound, ChevronDown, ChevronRight, MessageSquare, X, Download, MapPin } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
@@ -707,6 +707,7 @@ export default function OpsCampaignDetail() {
               <TableHead>Inspector</TableHead>
               <SortableHead label="Week" sortKey="scheduled_week" current={sortKey} asc={sortAsc} onSort={handleSort} />
               <TableHead>Flags</TableHead>
+              <TableHead className="w-10">Nav</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -760,11 +761,19 @@ export default function OpsCampaignDetail() {
                           {b.building.requires_escort && <UserRound className="h-4 w-4 text-muted-foreground" />}
                         </div>
                       </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          const addr = encodeURIComponent(`${b.building.address}, ${b.building.city}, ${b.building.state} ${b.building.zip_code}`);
+                          window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, "_blank");
+                        }}>
+                          <MapPin className="h-4 w-4 text-primary" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   </CollapsibleTrigger>
                   <CollapsibleContent asChild>
                     <tr>
-                      <td colSpan={canEdit ? 10 : 9} className="bg-muted/30 p-4">
+                      <td colSpan={canEdit ? 11 : 10} className="bg-muted/30 p-4">
                         <BuildingDetail row={b} />
                       </td>
                     </tr>
@@ -902,8 +911,12 @@ function BuildingDetail({ row }: { row: CampaignBuilding }) {
       <div className="space-y-1">
         <p className="font-medium">Property Manager</p>
         <p>{b.property_manager_name ?? "—"}</p>
-        <p>{b.property_manager_phone ?? "—"}</p>
-        <p>{b.property_manager_email ?? "—"}</p>
+        <p>{b.property_manager_phone ? (
+          <a href={`tel:${b.property_manager_phone}`} className="text-primary underline">{b.property_manager_phone}</a>
+        ) : "—"}</p>
+        <p>{b.property_manager_email ? (
+          <a href={`mailto:${b.property_manager_email}`} className="text-primary underline">{b.property_manager_email}</a>
+        ) : "—"}</p>
       </div>
       <div className="space-y-1">
         <p className="font-medium">Notes & Equipment</p>
