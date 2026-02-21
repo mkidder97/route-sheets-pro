@@ -1,96 +1,76 @@
 
 
-# Security Lockdown and Site-Wide Login
+# Surface Quick Actions on Collapsed Cards — Final Plan
 
 ## Overview
+Add "Navigate" and "Done" buttons on every collapsed building card (both Day View and Proximity View) so inspectors can act with one tap. Dim completed buildings visually.
 
-This change closes the open-access security gap on all RoofRoute tables and consolidates login into a single `/login` page used by both RoofRoute and RoofOps sides of the app.
+## Changes (single file: `src/components/SavedRoutes.tsx`)
 
----
-
-## 1. Database Migration -- Lock Down 8 Tables
-
-A single migration will drop all "Public *" RLS policies on these tables and replace them with "Authenticated *" policies (requiring a valid session):
-
-| Table | Policies Replaced |
-|---|---|
-| clients | read, insert, update |
-| regions | read, insert, update |
-| inspectors | read, insert, update |
-| uploads | read, insert, update |
-| buildings | read, insert, update, delete |
-| route_plans | read, insert, update, delete |
-| route_plan_days | read, insert, update, delete |
-| route_plan_buildings | read, insert, update, delete |
-
-Also drops remaining "Public delete" policies on clients, regions, inspectors (if they exist) to be thorough. No RoofOps tables are touched.
-
----
-
-## 2. New File: `src/pages/Login.tsx`
-
-A copy of `OpsLogin.tsx` with these changes:
-
-- **Icon**: `Building2` instead of `Kanban`
-- **Header text**: "Roof Group" instead of "RoofOps"
-- **Subtitle**: "Sign in to continue"
-- **Redirect after login**: Uses `useLocation` to read `location.state?.from?.pathname`, defaulting to `"/"`. This sends users back to the page they were trying to reach.
-- **Bootstrap flow**: Kept as-is (first-time admin setup)
-
----
-
-## 3. Modified: `src/components/ops/ProtectedRoute.tsx`
-
-- Import `useLocation` from react-router-dom
-- Change redirect from `/ops/login` to `/login`
-- Pass `state={{ from: location }}` so the Login page knows where to redirect back
-
----
-
-## 4. Modified: `src/App.tsx`
-
-- Import `Login` from `./pages/Login` and `Navigate` from react-router-dom
-- Remove `OpsLogin` import
-- Add `/login` route (public)
-- Add `/ops/login` legacy redirect to `/login`
-- Wrap RoofRoute routes in `ProtectedRoute`
-
-```text
-/login              --> Login (public)
-/ops/login          --> redirect to /login
-/                   --> ProtectedRoute > AppLayout > MyRoutes
-/my-routes          --> ProtectedRoute > AppLayout > MyRoutes
-/route-builder      --> ProtectedRoute > AppLayout > RouteBuilder
-/buildings          --> ProtectedRoute > AppLayout > DataManager
-/settings           --> ProtectedRoute > AppLayout > Settings
-/ops/*              --> ProtectedRoute > OpsLayout (unchanged)
+### 1. Day View — Dim completed cards (line 1133)
+Add conditional `opacity-50` to card container. Opacity is **cosmetic only** — the card and all its buttons remain fully interactive.
+```
+className={`rounded-md bg-background border overflow-hidden ${
+  b.inspection_status === "complete" ? "opacity-50" : ""
+} ${bulkMode && isSelected ? "border-primary" : "border-border"}`}
 ```
 
----
+### 2. Day View — Quick Actions Row (between line 1211 and 1212)
+Insert a new `<div>` after `</button>` (line 1211) and before the expanded section (line 1212). Placed **outside** the `<button>` element for clean semantics. **Hidden when `bulkMode` is true** — the bulk action bar replaces individual card actions.
 
-## 5. Modified: `src/components/AppSidebar.tsx`
+```tsx
+{!bulkMode && (
+  <div className="flex items-center gap-2 px-3 pb-3 pt-2 border-t border-border/50">
+    <Button size="sm" variant="outline" className="h-9 px-3 flex-1"
+      onClick={(e) => {
+        e.stopPropagation();
+        openNavigation(b.address, b.city, b.state, b.zip_code);
+      }}>
+      <Navigation className="h-4 w-4 mr-1.5" /> Navigate
+    </Button>
+    {b.inspection_status !== "complete" ? (
+      <Button size="sm"
+        className="h-9 px-4 bg-success text-success-foreground hover:bg-success/90"
+        disabled={saving}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleStatusChange(b.id, "complete");
+        }}>
+        <Check className="h-4 w-4 mr-1.5" /> Done
+      </Button>
+    ) : (
+      <Badge className="bg-success/20 text-success border-0 h-9 px-3 flex items-center text-xs">
+        <Check className="h-3.5 w-3.5 mr-1" /> Complete
+      </Badge>
+    )}
+  </div>
+)}
+```
 
-Add to the bottom section:
-- Import `useAuth` and `LogOut` icon
-- Show `profile?.full_name` when sidebar is expanded
-- Add "Sign Out" button that calls `signOut()`
+### 3. Proximity View — Dim completed cards (line 841)
+Same opacity treatment:
+```
+className={`rounded-md bg-background border border-border overflow-hidden ${
+  b.inspection_status === "complete" ? "opacity-50" : ""
+}`}
+```
 
----
+### 4. Proximity View — Quick Actions Row (between line 894 and 895)
+Same quick actions row inserted after `</button>` and before expanded section. No `bulkMode` guard needed here since bulk mode only applies to the day view.
 
-## 6. Delete: `src/pages/ops/OpsLogin.tsx`
+### 5. Expanded view — No changes
+Skip/Revisit with notes and full details remain untouched.
 
-Replaced by `src/pages/Login.tsx`. The `/ops/login` route redirects to `/login`.
+## Key Behavioral Rules
 
----
+- **Bulk mode hides quick actions**: When `bulkMode` is true in the day view, Row 5 is hidden entirely. Checkboxes and the sticky bulk bar handle all actions.
+- **Opacity is cosmetic, not disabled**: Completed cards at `opacity-50` still have fully functional Navigate buttons. Inspectors may need to navigate back to a completed building. The Done button swaps to a static "Complete" badge, but Navigate remains clickable.
+- All action buttons use `e.stopPropagation()` so they never trigger card expand/collapse.
 
-## Files Changed Summary
-
-| File | Action |
-|---|---|
-| `supabase/migrations/...` | New -- drop public policies, create authenticated policies |
-| `src/pages/Login.tsx` | New -- site-wide login page |
-| `src/components/ops/ProtectedRoute.tsx` | Edit -- redirect to /login with location state |
-| `src/App.tsx` | Edit -- protect RoofRoute routes, add /login, remove OpsLogin |
-| `src/components/AppSidebar.tsx` | Edit -- add user name + sign out |
-| `src/pages/ops/OpsLogin.tsx` | Delete |
+## Technical Notes
+- `Navigation`, `Check` icons already imported
+- `openNavigation` helper exists at line 208
+- `handleStatusChange` exists and handles the complete status update
+- `saving` state available for disabling buttons
+- No new state, no new files, no database changes
 
