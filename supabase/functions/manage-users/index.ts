@@ -22,6 +22,22 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function logAudit(
+  supabaseAdmin: any,
+  userId: string,
+  action: string,
+  targetId: string,
+  details: Record<string, unknown> = {}
+) {
+  await supabaseAdmin.from("audit_log").insert({
+    user_id: userId,
+    action,
+    target_table: "user_profiles",
+    target_id: targetId,
+    details,
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -155,6 +171,10 @@ Deno.serve(async (req) => {
           .eq("id", newUser.user.id);
       }
 
+      await logAudit(supabaseAdmin, user.id, "create_user", newUser.user.id, {
+        email, role, full_name,
+      });
+
       return json({ success: true, user_id: newUser.user.id });
     }
 
@@ -181,6 +201,11 @@ Deno.serve(async (req) => {
           .upsert({ user_id, role }, { onConflict: "user_id" });
       }
 
+      await logAudit(supabaseAdmin, user.id, "update_user", user_id, {
+        ...profileUpdates,
+        ...(role ? { role } : {}),
+      });
+
       return json({ success: true });
     }
 
@@ -194,6 +219,8 @@ Deno.serve(async (req) => {
         .update({ is_active: true })
         .eq("id", user_id);
 
+      await logAudit(supabaseAdmin, user.id, "activate_user", user_id, {});
+
       return json({ success: true });
     }
 
@@ -206,6 +233,8 @@ Deno.serve(async (req) => {
         .from("user_profiles")
         .update({ is_active: false })
         .eq("id", user_id);
+
+      await logAudit(supabaseAdmin, user.id, "deactivate_user", user_id, {});
 
       return json({ success: true });
     }
