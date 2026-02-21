@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Building2, Loader2 } from "lucide-react";
 
 export default function Login() {
@@ -13,7 +14,14 @@ export default function Login() {
   const location = useLocation();
   const from = (location.state as any)?.from?.pathname || "/";
 
-  const [email, setEmail] = useState("");
+  const [rememberMe, setRememberMe] = useState(
+    () => localStorage.getItem("roofroute_remember_me") === "true"
+  );
+  const [email, setEmail] = useState(
+    () => (localStorage.getItem("roofroute_remember_me") === "true"
+      ? localStorage.getItem("roofroute_saved_email") ?? ""
+      : "")
+  );
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -54,6 +62,14 @@ export default function Login() {
     const { error: signInError } = await signIn(email, password);
     if (signInError) {
       setError(signInError);
+    } else {
+      if (rememberMe) {
+        localStorage.setItem("roofroute_remember_me", "true");
+        localStorage.setItem("roofroute_saved_email", email);
+      } else {
+        localStorage.removeItem("roofroute_remember_me");
+        localStorage.removeItem("roofroute_saved_email");
+      }
     }
     setSubmitting(false);
   };
@@ -213,6 +229,17 @@ export default function Login() {
                   autoComplete="current-password"
                 />
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="remember-me"
+                checked={rememberMe}
+                onCheckedChange={(checked) => setRememberMe(checked === true)}
+              />
+              <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                Remember me
+              </Label>
             </div>
 
             <Button type="submit" className="w-full" disabled={submitting}>
