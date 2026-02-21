@@ -11,6 +11,8 @@ const VALID_ROLES = [
   "office_manager",
   "field_ops",
   "engineer",
+  "inspector",
+  "construction_manager",
 ];
 
 function json(body: unknown, status = 200) {

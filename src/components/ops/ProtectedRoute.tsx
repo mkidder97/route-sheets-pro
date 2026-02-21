@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-type OpsRole = "admin" | "office_manager" | "field_ops" | "engineer";
+type OpsRole = "admin" | "office_manager" | "field_ops" | "engineer" | "inspector" | "construction_manager";
 
 interface ProtectedRouteProps {
   children: ReactNode;

@@ -28,6 +28,8 @@ const roleLabels: Record<string, string> = {
   office_manager: "Office Manager",
   field_ops: "Field Ops",
   engineer: "Engineer",
+  inspector: "Inspector",
+  construction_manager: "Construction Manager",
 };
 
 export function OpsSidebar() {
