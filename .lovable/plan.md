@@ -1,76 +1,37 @@
 
 
-# Surface Quick Actions on Collapsed Cards — Final Plan
+# Add "Remember Me" to Login
 
 ## Overview
-Add "Navigate" and "Done" buttons on every collapsed building card (both Day View and Proximity View) so inspectors can act with one tap. Dim completed buildings visually.
+Add a "Remember me" checkbox to the login form that saves the user's email in localStorage. On return visits, the email field is pre-populated. This works alongside the browser's native credential autofill (already enabled via `autoComplete` attributes).
 
-## Changes (single file: `src/components/SavedRoutes.tsx`)
+## Why This Approach
+- Browser autofill (via `autoComplete="email"` and `autoComplete="current-password"`) is already the most secure way to suggest credentials -- it's built into Chrome, Safari, Firefox, and password managers.
+- A "Remember me" checkbox adds a visible convenience layer by pre-filling the email field on return visits.
+- Passwords are **never** stored in localStorage -- only the email, and only when the user opts in.
 
-### 1. Day View — Dim completed cards (line 1133)
-Add conditional `opacity-50` to card container. Opacity is **cosmetic only** — the card and all its buttons remain fully interactive.
+## Changes (single file: `src/pages/Login.tsx`)
+
+### 1. Add "rememberMe" state and load saved email on mount
+- Add `rememberMe` boolean state, initialized from `localStorage.getItem("roofroute_remember_me") === "true"`
+- On mount, if remembered, pre-fill the email field from `localStorage.getItem("roofroute_saved_email")`
+
+### 2. Save or clear email on successful sign-in
+- In `handleSubmit`, after a successful sign-in (no error), save or remove the email and preference in localStorage based on the checkbox state.
+
+### 3. Add checkbox UI between the password field and the Sign In button
 ```
-className={`rounded-md bg-background border overflow-hidden ${
-  b.inspection_status === "complete" ? "opacity-50" : ""
-} ${bulkMode && isSelected ? "border-primary" : "border-border"}`}
+[x] Remember me
 ```
+Uses the existing Checkbox component from the UI library, styled inline with the form.
 
-### 2. Day View — Quick Actions Row (between line 1211 and 1212)
-Insert a new `<div>` after `</button>` (line 1211) and before the expanded section (line 1212). Placed **outside** the `<button>` element for clean semantics. **Hidden when `bulkMode` is true** — the bulk action bar replaces individual card actions.
+### 4. Ensure autocomplete attributes are optimal
+- Add `autoComplete="username"` as a secondary hint on the email field (some password managers prefer this)
+- Existing `autoComplete="current-password"` on password is already correct
 
-```tsx
-{!bulkMode && (
-  <div className="flex items-center gap-2 px-3 pb-3 pt-2 border-t border-border/50">
-    <Button size="sm" variant="outline" className="h-9 px-3 flex-1"
-      onClick={(e) => {
-        e.stopPropagation();
-        openNavigation(b.address, b.city, b.state, b.zip_code);
-      }}>
-      <Navigation className="h-4 w-4 mr-1.5" /> Navigate
-    </Button>
-    {b.inspection_status !== "complete" ? (
-      <Button size="sm"
-        className="h-9 px-4 bg-success text-success-foreground hover:bg-success/90"
-        disabled={saving}
-        onClick={(e) => {
-          e.stopPropagation();
-          handleStatusChange(b.id, "complete");
-        }}>
-        <Check className="h-4 w-4 mr-1.5" /> Done
-      </Button>
-    ) : (
-      <Badge className="bg-success/20 text-success border-0 h-9 px-3 flex items-center text-xs">
-        <Check className="h-3.5 w-3.5 mr-1" /> Complete
-      </Badge>
-    )}
-  </div>
-)}
-```
-
-### 3. Proximity View — Dim completed cards (line 841)
-Same opacity treatment:
-```
-className={`rounded-md bg-background border border-border overflow-hidden ${
-  b.inspection_status === "complete" ? "opacity-50" : ""
-}`}
-```
-
-### 4. Proximity View — Quick Actions Row (between line 894 and 895)
-Same quick actions row inserted after `</button>` and before expanded section. No `bulkMode` guard needed here since bulk mode only applies to the day view.
-
-### 5. Expanded view — No changes
-Skip/Revisit with notes and full details remain untouched.
-
-## Key Behavioral Rules
-
-- **Bulk mode hides quick actions**: When `bulkMode` is true in the day view, Row 5 is hidden entirely. Checkboxes and the sticky bulk bar handle all actions.
-- **Opacity is cosmetic, not disabled**: Completed cards at `opacity-50` still have fully functional Navigate buttons. Inspectors may need to navigate back to a completed building. The Done button swaps to a static "Complete" badge, but Navigate remains clickable.
-- All action buttons use `e.stopPropagation()` so they never trigger card expand/collapse.
-
-## Technical Notes
-- `Navigation`, `Check` icons already imported
-- `openNavigation` helper exists at line 208
-- `handleStatusChange` exists and handles the complete status update
-- `saving` state available for disabling buttons
-- No new state, no new files, no database changes
+## Security Notes
+- Only the email address is stored in localStorage, never the password
+- The `roofroute_` prefix follows the existing local storage convention
+- Browser-native credential managers handle password autofill securely
+- Users can uncheck "Remember me" to clear the stored email
 
