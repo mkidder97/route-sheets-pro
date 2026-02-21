@@ -1,34 +1,56 @@
 
 
-# Automated Security Linting via GitHub Actions
+# Lazy Load All Routes in App.tsx
 
 ## Overview
-Add `eslint-plugin-security` as a dev dependency, configure security rules as warnings in the ESLint config, and create a GitHub Actions workflow that fails on any warnings.
+Convert all 11 page component imports to `React.lazy()` and wrap the route tree in `<Suspense>` with a spinner fallback. No route paths, layouts, or protection logic change.
 
-## Files to Create/Modify
+## Changes (single file: `src/App.tsx`)
 
-### 1. `package.json` -- add dev dependency
-- Add `eslint-plugin-security` as a devDependency
+### 1. Update React import
+Add `lazy` and `Suspense` to the React import:
+```ts
+import { lazy, Suspense } from "react";
+```
 
-### 2. `eslint.config.js` -- add security plugin and rules
-- Import `eslint-plugin-security`
-- Register it in the `plugins` object as `"security"`
-- Add these rules (all as `"warn"`):
-  - `security/detect-object-injection`
-  - `security/detect-non-literal-regexp`
-  - `security/detect-unsafe-regex`
-  - `security/detect-buffer-noassert`
-  - `security/detect-eval-with-expression`
-  - `security/detect-no-csrf-before-method-override`
-  - `security/detect-possible-timing-attacks`
+### 2. Replace all 11 page imports with lazy equivalents
+Convert these static imports:
+```ts
+import MyRoutes from "./pages/MyRoutes";
+import RouteBuilder from "./pages/RouteBuilder";
+// ... etc
+```
+To:
+```ts
+const MyRoutes = lazy(() => import("./pages/MyRoutes"));
+const RouteBuilder = lazy(() => import("./pages/RouteBuilder"));
+const DataManager = lazy(() => import("./pages/DataManager"));
+const Settings = lazy(() => import("./pages/Settings"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Login = lazy(() => import("./pages/Login"));
+const OpsDashboard = lazy(() => import("./pages/ops/OpsDashboard"));
+const OpsJobBoard = lazy(() => import("./pages/ops/OpsJobBoard"));
+const OpsCampaignDetail = lazy(() => import("./pages/ops/OpsCampaignDetail"));
+const OpsScheduling = lazy(() => import("./pages/ops/OpsScheduling"));
+const OpsTimeMileage = lazy(() => import("./pages/ops/OpsTimeMileage"));
+const OpsSettings = lazy(() => import("./pages/ops/OpsSettings"));
+```
 
-### 3. `.github/workflows/security-lint.yml` -- new file
-- Triggers: `push` to `main`, `pull_request` to `main`
-- Steps:
-  1. `actions/checkout@v4`
-  2. `actions/setup-node@v4` with `node-version: 20`
-  3. `npm install`
-  4. `npx eslint . --max-warnings 0`
+### 3. Wrap `<Routes>` in `<Suspense>`
+```tsx
+<Suspense fallback={
+  <div className="flex items-center justify-center h-screen">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+  </div>
+}>
+  <Routes>
+    {/* all existing routes unchanged */}
+  </Routes>
+</Suspense>
+```
 
-This ensures any security warning fails the CI build. No application code is changed.
+### What stays the same
+- All route paths, nesting, and `element` props
+- `ProtectedRoute`, `AppLayout`, `OpsLayout` remain static imports (they are layout/wrapper components, not pages)
+- All other imports (react-router-dom, tanstack, etc.) unchanged
 
