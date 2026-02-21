@@ -1,0 +1,1 @@
+ALTER TYPE public.ops_role ADD VALUE IF NOT EXISTS 'field_ops';
