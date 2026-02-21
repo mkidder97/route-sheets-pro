@@ -23,7 +23,7 @@ import {
   addDays,
 } from "date-fns";
 import {
-  ChevronLeft, ChevronRight, Plus, Filter, Trash2, AlertTriangle, Upload,
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Filter, Trash2, AlertTriangle, Upload,
 } from "lucide-react";
 import { ScheduleUpload } from "@/components/ScheduleUpload";
 import {
@@ -941,6 +941,8 @@ export default function OpsScheduling() {
   const [scheduleUploadOpen, setScheduleUploadOpen] = useState(false);
   const [selectedInspectors, setSelectedInspectors] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const [selectedHistoryPlanId, setSelectedHistoryPlanId] = useState<string>("");
+  const [expandedWeek, setExpandedWeek] = useState<string | null>(null);
 
   const rangeStart = format(
     startOfWeek(startOfMonth(view === "month" ? currentDate : currentDate), { weekStartsOn: 1 }),
@@ -961,6 +963,69 @@ export default function OpsScheduling() {
       setSelectedInspectors([profile.inspector_id]);
     }
   }, [role, profile?.inspector_id]);
+
+  // ---------- Schedule History ----------
+
+  const { data: historyPlans = [] } = useQuery({
+    queryKey: ["schedule-history-plans"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("route_plans")
+        .select("id, name, clients(name), regions(name)")
+        .order("created_at", { ascending: false });
+      return (data ?? []) as any[];
+    },
+  });
+
+  const { data: scheduleHistory = [] } = useQuery({
+    queryKey: ["schedule-history", selectedHistoryPlanId],
+    enabled: !!selectedHistoryPlanId,
+    queryFn: async () => {
+      const { data: days } = await supabase
+        .from("route_plan_days").select("id").eq("route_plan_id", selectedHistoryPlanId);
+      if (!days?.length) return [];
+      const { data: rpb } = await supabase
+        .from("route_plan_buildings").select("building_id").in("route_plan_day_id", days.map(d => d.id));
+      if (!rpb?.length) return [];
+      const buildingIds = [...new Set(rpb.map(r => r.building_id))];
+      const { data: buildings } = await supabase
+        .from("buildings")
+        .select("id, scheduled_week, inspection_status, is_priority")
+        .in("id", buildingIds)
+        .not("scheduled_week", "is", null);
+      const groups: Record<string, { total: number; completed: number; priorities: number }> = {};
+      for (const b of buildings ?? []) {
+        const week = b.scheduled_week!;
+        if (!groups[week]) groups[week] = { total: 0, completed: 0, priorities: 0 };
+        groups[week].total++;
+        if (b.inspection_status === "complete") groups[week].completed++;
+        if (b.is_priority) groups[week].priorities++;
+      }
+      return Object.entries(groups)
+        .map(([week, stats]) => ({ week, ...stats }))
+        .sort((a, b) => a.week.localeCompare(b.week));
+    },
+  });
+
+  const { data: expandedWeekBuildings = [] } = useQuery({
+    queryKey: ["schedule-history-week", selectedHistoryPlanId, expandedWeek],
+    enabled: !!selectedHistoryPlanId && !!expandedWeek,
+    queryFn: async () => {
+      const { data: days } = await supabase
+        .from("route_plan_days").select("id").eq("route_plan_id", selectedHistoryPlanId);
+      if (!days?.length) return [];
+      const { data: rpb } = await supabase
+        .from("route_plan_buildings").select("building_id").in("route_plan_day_id", days.map(d => d.id));
+      if (!rpb?.length) return [];
+      const buildingIds = [...new Set(rpb.map(r => r.building_id))];
+      const { data: buildings } = await supabase
+        .from("buildings")
+        .select("id, property_name, address, city, inspection_status, is_priority")
+        .in("id", buildingIds)
+        .eq("scheduled_week", expandedWeek!);
+      return (buildings ?? []) as any[];
+    },
+  });
 
   const allEvents = useMemo(() => {
     let merged = [...dbEvents, ...derived];
@@ -1170,6 +1235,79 @@ export default function OpsScheduling() {
             />
           )}
         </DndContext>
+      )}
+
+      {/* Schedule History */}
+      {isManager && (
+        <Card className="mt-6">
+          <CardContent className="pt-4 space-y-4">
+            <p className="text-sm font-semibold">Schedule History</p>
+            <Select value={selectedHistoryPlanId} onValueChange={(v) => { setSelectedHistoryPlanId(v); setExpandedWeek(null); }}>
+              <SelectTrigger className="bg-background">
+                <SelectValue placeholder="Select route plan…" />
+              </SelectTrigger>
+              <SelectContent>
+                {historyPlans.map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name} — {p.clients?.name} / {p.regions?.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selectedHistoryPlanId && scheduleHistory.length === 0 && (
+              <p className="text-xs text-muted-foreground">No scheduled weeks found for this plan.</p>
+            )}
+
+            {scheduleHistory.map((wk: any) => {
+              const pct = wk.total > 0 ? Math.round((wk.completed / wk.total) * 100) : 0;
+              const isExpanded = expandedWeek === wk.week;
+              return (
+                <div key={wk.week} className="border rounded-lg overflow-hidden">
+                  <button
+                    className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors text-left"
+                    onClick={() => setExpandedWeek(isExpanded ? null : wk.week)}
+                  >
+                    <div className="space-y-1 flex-1">
+                      <p className="text-sm font-medium">
+                        Week of {format(parseISO(wk.week), "MMM d, yyyy")}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {wk.total} buildings · {wk.completed} complete · {wk.priorities} priority
+                      </p>
+                      <div className="w-full bg-secondary rounded-full h-1.5 mt-1">
+                        <div
+                          className="bg-primary h-1.5 rounded-full transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                    {isExpanded ? <ChevronUp className="h-4 w-4 ml-2 shrink-0" /> : <ChevronDown className="h-4 w-4 ml-2 shrink-0" />}
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t px-3 py-2 space-y-1 bg-muted/20">
+                      {expandedWeekBuildings.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-2">Loading…</p>
+                      ) : (
+                        expandedWeekBuildings.map((b: any) => (
+                          <div key={b.id} className="flex items-center justify-between text-xs py-1">
+                            <span className="truncate flex-1">{b.property_name} — {b.address}, {b.city}</span>
+                            <span className={`ml-2 shrink-0 ${b.inspection_status === "complete" ? "text-green-600" : "text-muted-foreground"}`}>
+                              {b.inspection_status}
+                            </span>
+                            {b.is_priority && (
+                              <span className="ml-1 text-orange-500 text-[10px] font-medium">★</span>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       )}
 
       {/* Event Dialog */}

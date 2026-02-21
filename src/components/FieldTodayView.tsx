@@ -36,6 +36,8 @@ import {
   Undo2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   AlertTriangle,
   Phone,
   Mail,
@@ -44,7 +46,7 @@ import {
   Square,
 } from "lucide-react";
 import { haversineDistance } from "@/lib/geo-utils";
-import { startOfWeek, format } from "date-fns";
+import { startOfWeek, format, parseISO } from "date-fns";
 
 // ---------- Types ----------
 
@@ -73,6 +75,7 @@ interface RoutePlanBuilding {
   inspection_status: string;
   scheduled_week: string | null;
   is_priority: boolean | null;
+  inspector_id: string | null;
   inspector_notes: string | null;
   completion_date: string | null;
   // Route plan metadata
@@ -168,6 +171,7 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
   const [collapsedSections, setCollapsedSections] = useState<Set<Tier>>(new Set(["backlog"]));
 
   const currentWeekMonday = useMemo(() => getCurrentWeekMonday(), []);
+  const [selectedWeekMonday, setSelectedWeekMonday] = useState<string>(getCurrentWeekMonday());
 
   // ---------- Route Plan Discovery ----------
 
@@ -267,7 +271,11 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
         };
       });
 
-    setBuildings(flattened);
+    // Feature 3: Filter to buildings assigned to this inspector OR unassigned
+    const myBuildings = flattened.filter(b =>
+      !b.inspector_id || b.inspector_id === inspectorId
+    );
+    setBuildings(myBuildings);
   }, []);
 
   // ---------- Init ----------
@@ -325,6 +333,23 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     setGpsLoading(false);
   }, []);
 
+  // ---------- Week Navigation ----------
+
+  const availableWeeks = useMemo(() => {
+    const weeks = [...new Set(buildings.map(b => b.scheduled_week).filter(Boolean))] as string[];
+    return weeks.sort();
+  }, [buildings]);
+
+  const goToPrevWeek = useCallback(() => {
+    const idx = availableWeeks.indexOf(selectedWeekMonday);
+    if (idx > 0) setSelectedWeekMonday(availableWeeks[idx - 1]);
+  }, [availableWeeks, selectedWeekMonday]);
+
+  const goToNextWeek = useCallback(() => {
+    const idx = availableWeeks.indexOf(selectedWeekMonday);
+    if (idx < availableWeeks.length - 1) setSelectedWeekMonday(availableWeeks[idx + 1]);
+  }, [availableWeeks, selectedWeekMonday]);
+
   // ---------- Categorize & Sort ----------
 
   const tieredBuildings = useMemo(() => {
@@ -333,7 +358,7 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     };
 
     for (const b of buildings) {
-      const tier = categorizeBuilding(b, currentWeekMonday);
+      const tier = categorizeBuilding(b, selectedWeekMonday);
       let distance: number | null = null;
       if (userLocation && b.latitude != null && b.longitude != null) {
         distance = haversineDistance(userLocation.lat, userLocation.lng, b.latitude, b.longitude);
@@ -352,14 +377,14 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     }
 
     return tiers;
-  }, [buildings, userLocation, currentWeekMonday]);
+  }, [buildings, userLocation, selectedWeekMonday]);
 
   // ---------- Progress ----------
 
   const totalCount = buildings.length;
   const completeCount = buildings.filter(b => b.inspection_status === "complete").length;
-  const thisWeekTotal = buildings.filter(b => b.scheduled_week === currentWeekMonday).length;
-  const thisWeekDone = buildings.filter(b => b.scheduled_week === currentWeekMonday && b.inspection_status === "complete").length;
+  const thisWeekTotal = buildings.filter(b => b.scheduled_week === selectedWeekMonday).length;
+  const thisWeekDone = buildings.filter(b => b.scheduled_week === selectedWeekMonday && b.inspection_status === "complete").length;
   const progressPct = totalCount > 0 ? Math.round((completeCount / totalCount) * 100) : 0;
   const weekPct = thisWeekTotal > 0 ? Math.round((thisWeekDone / thisWeekTotal) * 100) : 0;
 
@@ -530,6 +555,22 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">This week: {thisWeekDone} of {thisWeekTotal} done</p>
               <Progress value={weekPct} className="h-1.5" />
+            </div>
+          )}
+          {/* Week Navigation */}
+          {availableWeeks.length > 0 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPrevWeek}
+                disabled={availableWeeks.indexOf(selectedWeekMonday) <= 0}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-xs font-medium">
+                Week of {format(parseISO(selectedWeekMonday), "MMM d, yyyy")}
+              </span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNextWeek}
+                disabled={availableWeeks.indexOf(selectedWeekMonday) >= availableWeeks.length - 1}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           )}
           {/* Bulk mode toggle */}
