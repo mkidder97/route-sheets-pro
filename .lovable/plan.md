@@ -1,37 +1,44 @@
 
 
-# Add "Remember Me" to Login
+# Fix Role Enum and Edge Function
 
-## Overview
-Add a "Remember me" checkbox to the login form that saves the user's email in localStorage. On return visits, the email field is pre-populated. This works alongside the browser's native credential autofill (already enabled via `autoComplete` attributes).
+## Current State
+- The `ops_role` enum already contains `field_ops` (along with `admin`, `office_manager`, `engineer`)
+- It is **missing** `inspector` and `construction_manager`
+- The edge function `VALID_ROLES` array has 4 entries and needs to be updated to 6
 
-## Why This Approach
-- Browser autofill (via `autoComplete="email"` and `autoComplete="current-password"`) is already the most secure way to suggest credentials -- it's built into Chrome, Safari, Firefox, and password managers.
-- A "Remember me" checkbox adds a visible convenience layer by pre-filling the email field on return visits.
-- Passwords are **never** stored in localStorage -- only the email, and only when the user opts in.
+## Changes
 
-## Changes (single file: `src/pages/Login.tsx`)
+### 1. Database Migration
+Add the two missing values to the `ops_role` enum:
 
-### 1. Add "rememberMe" state and load saved email on mount
-- Add `rememberMe` boolean state, initialized from `localStorage.getItem("roofroute_remember_me") === "true"`
-- On mount, if remembered, pre-fill the email field from `localStorage.getItem("roofroute_saved_email")`
-
-### 2. Save or clear email on successful sign-in
-- In `handleSubmit`, after a successful sign-in (no error), save or remove the email and preference in localStorage based on the checkbox state.
-
-### 3. Add checkbox UI between the password field and the Sign In button
+```sql
+ALTER TYPE public.ops_role ADD VALUE IF NOT EXISTS 'inspector';
+ALTER TYPE public.ops_role ADD VALUE IF NOT EXISTS 'construction_manager';
 ```
-[x] Remember me
+
+No need to add `field_ops` — it already exists.
+
+### 2. Edge Function Update (`supabase/functions/manage-users/index.ts`)
+Update lines 9-14 to expand `VALID_ROLES`:
+
+```ts
+const VALID_ROLES = [
+  "admin",
+  "office_manager",
+  "field_ops",
+  "engineer",
+  "inspector",
+  "construction_manager",
+];
 ```
-Uses the existing Checkbox component from the UI library, styled inline with the form.
 
-### 4. Ensure autocomplete attributes are optimal
-- Add `autoComplete="username"` as a secondary hint on the email field (some password managers prefer this)
-- Existing `autoComplete="current-password"` on password is already correct
+No other logic in the edge function changes.
 
-## Security Notes
-- Only the email address is stored in localStorage, never the password
-- The `roofroute_` prefix follows the existing local storage convention
-- Browser-native credential managers handle password autofill securely
-- Users can uncheck "Remember me" to clear the stored email
+### 3. Dependent Code
+The `has_ops_role` and `get_ops_role` database functions already work with the `ops_role` enum generically, so they will automatically support the new values. The `useAuth` hook's `OpsRole` type in `src/hooks/useAuth.tsx` should be updated to include the new roles:
+
+```ts
+type OpsRole = "admin" | "office_manager" | "field_ops" | "engineer" | "inspector" | "construction_manager";
+```
 
