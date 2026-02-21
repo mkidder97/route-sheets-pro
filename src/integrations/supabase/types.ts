@@ -880,6 +880,79 @@ export type Database = {
           },
         ]
       }
+      scheduling_events: {
+        Row: {
+          color: string | null
+          created_at: string
+          created_by: string | null
+          end_date: string | null
+          event_type: string
+          id: string
+          inspector_id: string | null
+          notes: string | null
+          reference_id: string | null
+          reference_type: string | null
+          start_date: string
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          end_date?: string | null
+          event_type?: string
+          id?: string
+          inspector_id?: string | null
+          notes?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          start_date: string
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          end_date?: string | null
+          event_type?: string
+          id?: string
+          inspector_id?: string | null
+          notes?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          start_date?: string
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "inspectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       uploads: {
         Row: {
           client_id: string | null
