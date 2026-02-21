@@ -1,81 +1,49 @@
 
 
-# Bootstrap Token Protection
+# Input Validation for manage-users Edge Function
 
 ## Overview
-Protect the `check-setup` and `bootstrap` actions in the `manage-users` edge function with an optional `BOOTSTRAP_TOKEN` secret, and add a corresponding token input to the Login page's setup form.
+Add server-side input validation to all actions in `supabase/functions/manage-users/index.ts` using simple regex checks. No new dependencies.
 
-## 1. Edge Function (`supabase/functions/manage-users/index.ts`)
+## Validation Helpers (add after `logAudit`, before `Deno.serve`)
 
-### Read token at top of handler (after parsing JSON, ~line 59)
+Three small helper functions:
+
 ```ts
-const BOOTSTRAP_TOKEN = Deno.env.get("BOOTSTRAP_TOKEN") || "";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PHONE_RE = /^[\d\s\-()+]+$/;
+
+function validateEmail(email: unknown): string | null { ... }
+function validatePassword(password: unknown): string | null { ... }
+function validateFullName(full_name: unknown): string | null { ... }
+function validatePhone(phone: unknown): string | null { ... }
+function validateUuid(user_id: unknown): string | null { ... }
 ```
 
-### Add token validation for `check-setup` (lines 61-67)
-Before the existing logic, check `payload.setup_token`:
-```ts
-if (action === "check-setup") {
-  if (BOOTSTRAP_TOKEN && payload.setup_token !== BOOTSTRAP_TOKEN) {
-    return json(req, { error: "Invalid setup token" }, 403);
-  }
-  // ... existing count check ...
-}
-```
+Each returns `null` if valid, or an error message string if invalid.
 
-### Add token validation for `bootstrap` (lines 69-76)
-Same pattern, before the existing "already has users" check:
-```ts
-if (action === "bootstrap") {
-  if (BOOTSTRAP_TOKEN && payload.setup_token !== BOOTSTRAP_TOKEN) {
-    return json(req, { error: "Invalid setup token" }, 403);
-  }
-  // ... existing logic ...
-}
-```
+## Per-Action Validation
 
-If `BOOTSTRAP_TOKEN` is empty/unset, the check is skipped (local dev friendly).
+### `bootstrap` (line 78-81)
+After destructuring `email, password, full_name`, replace the simple truthy check with calls to the validators. Return 400 with the first error found.
 
-## 2. Login Page (`src/pages/Login.tsx`)
+### `create` (line 151-157)
+After destructuring, validate `email`, `password`, `full_name` with the same helpers. Validate `phone` if provided. The existing `VALID_ROLES` check stays as-is.
 
-### Add state variable (~line 35)
-```ts
-const [setupToken, setSetupToken] = useState("");
-```
+### `update` (line 191-192)
+- Validate `user_id` is a valid UUID (replaces the simple `!user_id` check)
+- If `full_name` is provided, validate it (non-empty, under 200 chars)
+- If `phone` is provided, validate it
+- If `role` is provided, validate it is in `VALID_ROLES` -- currently the code silently ignores an invalid role; change to return 400
 
-### Include `setup_token` in both calls
+### `activate` (line 222-223)
+Validate `user_id` is a valid UUID.
 
-**check-setup call (~line 40):** Add `setup_token: setupToken` to the body. Since the token state starts empty and `check-setup` runs on mount, this means the check-setup call will only succeed without a token if `BOOTSTRAP_TOKEN` is unset. This is the intended behavior -- if a token is configured, the "Set up first admin account" link won't appear unless the user provides the token first. Alternatively, we can skip sending the token on check-setup and only gate bootstrap itself.
+### `deactivate` (line 237-238)
+Validate `user_id` is a valid UUID.
 
-Actually, a simpler UX: keep `check-setup` gated but always show the setup link if `needsSetup` would be true. Instead, gate only the `bootstrap` action. Let me reconsider...
-
-**Revised approach:** Only gate `bootstrap`, not `check-setup`. This way the "Set up first admin account" link appears normally, and the token is required only when submitting the bootstrap form.
-
-- `check-setup`: No token required (knowing whether setup is needed is not sensitive)
-- `bootstrap`: Token required if `BOOTSTRAP_TOKEN` env var is set
-
-### Add token input to bootstrap form (~after password field, line 168)
-```tsx
-<div className="space-y-2">
-  <Label htmlFor="setup-token">Setup Token</Label>
-  <Input
-    id="setup-token"
-    type="password"
-    placeholder="Provided by your administrator"
-    value={setupToken}
-    onChange={(e) => setSetupToken(e.target.value)}
-  />
-</div>
-```
-
-### Include token in bootstrap payload (~line 86)
-Add `setup_token: setupToken` to the body object sent to `manage-users`.
-
-## 3. Add `BOOTSTRAP_TOKEN` Secret
-Use the secrets tool to prompt you to set a `BOOTSTRAP_TOKEN` value. This is a one-time setup secret you choose.
-
-## Summary of changes
-- **Edge function**: Add `BOOTSTRAP_TOKEN` env read + validation guard on `bootstrap` action only
-- **Login page**: Add `setupToken` state, a password input in the setup form, and include it in the bootstrap request payload
-- **Secret**: Add `BOOTSTRAP_TOKEN` via secrets tool
-- No other logic changes
+## No Other Changes
+- No new dependencies
+- No changes to CORS, auth, audit logging, or any other logic
+- Only file modified: `supabase/functions/manage-users/index.ts`
