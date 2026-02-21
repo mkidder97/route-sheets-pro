@@ -1,32 +1,34 @@
 
 
-# Add Content-Security-Policy Header to vercel.json
+# Automated Security Linting via GitHub Actions
 
 ## Overview
-Add a `Content-Security-Policy` header to the existing headers array in `vercel.json`. No other headers are changed.
+Add `eslint-plugin-security` as a dev dependency, configure security rules as warnings in the ESLint config, and create a GitHub Actions workflow that fails on any warnings.
 
-## Change
+## Files to Create/Modify
 
-In `vercel.json`, append one new entry to the `headers` array inside the `"source": "/(.*)"` block:
+### 1. `package.json` -- add dev dependency
+- Add `eslint-plugin-security` as a devDependency
 
-```json
-{
-  "key": "Content-Security-Policy",
-  "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-}
-```
+### 2. `eslint.config.js` -- add security plugin and rules
+- Import `eslint-plugin-security`
+- Register it in the `plugins` object as `"security"`
+- Add these rules (all as `"warn"`):
+  - `security/detect-object-injection`
+  - `security/detect-non-literal-regexp`
+  - `security/detect-unsafe-regex`
+  - `security/detect-buffer-noassert`
+  - `security/detect-eval-with-expression`
+  - `security/detect-no-csrf-before-method-override`
+  - `security/detect-possible-timing-attacks`
 
-## What it does
-- **default-src 'self'**: Only allow resources from the same origin by default
-- **script-src 'self'**: Only allow scripts from the same origin
-- **style-src 'self' 'unsafe-inline'**: Allow styles from same origin plus inline styles (needed for Tailwind/runtime CSS)
-- **img-src 'self' data: https:**: Allow images from same origin, data URIs, and any HTTPS source
-- **font-src 'self' data:**: Allow fonts from same origin and data URIs
-- **connect-src 'self' https://*.supabase.co wss://*.supabase.co**: Allow API/WebSocket connections to same origin and backend
-- **frame-ancestors 'none'**: Prevent the app from being embedded in iframes (complements existing X-Frame-Options: DENY)
-- **base-uri 'self'**: Prevent base tag hijacking
-- **form-action 'self'**: Restrict form submissions to same origin
+### 3. `.github/workflows/security-lint.yml` -- new file
+- Triggers: `push` to `main`, `pull_request` to `main`
+- Steps:
+  1. `actions/checkout@v4`
+  2. `actions/setup-node@v4` with `node-version: 20`
+  3. `npm install`
+  4. `npx eslint . --max-warnings 0`
 
-## File modified
-- `vercel.json` (one new header entry appended)
+This ensures any security warning fails the CI build. No application code is changed.
 
