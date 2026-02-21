@@ -292,6 +292,199 @@ export type Database = {
         }
         Relationships: []
       }
+      cm_job_status_history: {
+        Row: {
+          changed_by: string | null
+          cm_job_id: string
+          created_at: string
+          from_status: string | null
+          id: string
+          notes: string | null
+          to_status: string
+        }
+        Insert: {
+          changed_by?: string | null
+          cm_job_id: string
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          to_status: string
+        }
+        Update: {
+          changed_by?: string | null
+          cm_job_id?: string
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cm_job_status_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_job_status_history_cm_job_id_fkey"
+            columns: ["cm_job_id"]
+            isOneToOne: false
+            referencedRelation: "cm_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cm_job_types: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          statuses: Json
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          statuses: Json
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          statuses?: Json
+        }
+        Relationships: []
+      }
+      cm_jobs: {
+        Row: {
+          address: string | null
+          assigned_to: string | null
+          building_id: string | null
+          city: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          job_type_id: string
+          metadata: Json
+          notes: string | null
+          priority: string
+          property_manager_email: string | null
+          property_manager_name: string | null
+          property_manager_phone: string | null
+          region_id: string | null
+          scheduled_date: string | null
+          state: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          assigned_to?: string | null
+          building_id?: string | null
+          city?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          job_type_id: string
+          metadata?: Json
+          notes?: string | null
+          priority?: string
+          property_manager_email?: string | null
+          property_manager_name?: string | null
+          property_manager_phone?: string | null
+          region_id?: string | null
+          scheduled_date?: string | null
+          state?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          assigned_to?: string | null
+          building_id?: string | null
+          city?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          job_type_id?: string
+          metadata?: Json
+          notes?: string | null
+          priority?: string
+          property_manager_email?: string | null
+          property_manager_name?: string | null
+          property_manager_phone?: string | null
+          region_id?: string | null
+          scheduled_date?: string | null
+          state?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cm_jobs_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_jobs_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_jobs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_jobs_job_type_id_fkey"
+            columns: ["job_type_id"]
+            isOneToOne: false
+            referencedRelation: "cm_job_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_jobs_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           content: string

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import CMJobsBoard from "@/components/ops/CMJobsBoard";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
@@ -407,10 +408,7 @@ export default function OpsJobBoard() {
         </TabsContent>
 
         <TabsContent value="cm">
-          <div className="text-center py-12 text-muted-foreground">
-            <p className="text-lg font-medium">Coming Soon — Phase 2</p>
-            <p className="text-sm mt-1">CM Jobs management will be available in a future update.</p>
-          </div>
+          <CMJobsBoard />
         </TabsContent>
       </Tabs>
 
