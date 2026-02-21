@@ -4,8 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-// Fix M-4: Aligned with database ops_role enum
-type OpsRole = "admin" | "office_manager" | "field_ops" | "engineer" | "inspector" | "construction_manager";
+type OpsRole = "admin" | "office_manager" | "field_ops" | "engineer";
 
 interface ProtectedRouteProps {
   children: ReactNode;

@@ -2,8 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-// Fix M-4: Aligned with database ops_role enum
-type OpsRole = "admin" | "office_manager" | "field_ops" | "engineer" | "inspector" | "construction_manager";
+type OpsRole = "admin" | "office_manager" | "field_ops" | "engineer";
 
 interface UserProfile {
   id: string;

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Building2, Loader2 } from "lucide-react";
 
 export default function Login() {
@@ -13,7 +14,14 @@ export default function Login() {
   const location = useLocation();
   const from = (location.state as any)?.from?.pathname || "/";
 
-  const [email, setEmail] = useState("");
+  const [rememberMe, setRememberMe] = useState(
+    () => localStorage.getItem("roofroute_remember_me") === "true"
+  );
+  const [email, setEmail] = useState(
+    () => (localStorage.getItem("roofroute_remember_me") === "true"
+      ? localStorage.getItem("roofroute_saved_email") ?? ""
+      : "")
+  );
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -24,27 +32,14 @@ export default function Login() {
   const [setupName, setSetupName] = useState("");
   const [setupEmail, setSetupEmail] = useState("");
   const [setupPassword, setSetupPassword] = useState("");
-  const [setupToken, setSetupToken] = useState("");
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSubmitting, setSetupSubmitting] = useState(false);
 
-  // Fix H-6: check-setup now requires token, so only show bootstrap if user
-  // explicitly opens it (we skip the automatic check since it needs the token)
-  // Users who know the setup token can click "Set up first admin account"
-  // and provide it there.
   useEffect(() => {
-    // Only probe if this is a fresh deployment and user might need setup
-    // We attempt without token — if backend requires token, it returns 403
-    // and we silently ignore (the setup link is still shown as a fallback)
     supabase.functions
       .invoke("manage-users", { body: { action: "check-setup" } })
       .then(({ data }) => {
         if (data?.needsSetup) setNeedsSetup(true);
-      })
-      .catch(() => {
-        // Token required or network error — show setup link anyway
-        // so the admin can provide the token manually
-        setNeedsSetup(true);
       });
   }, []);
 
@@ -67,6 +62,14 @@ export default function Login() {
     const { error: signInError } = await signIn(email, password);
     if (signInError) {
       setError(signInError);
+    } else {
+      if (rememberMe) {
+        localStorage.setItem("roofroute_remember_me", "true");
+        localStorage.setItem("roofroute_saved_email", email);
+      } else {
+        localStorage.removeItem("roofroute_remember_me");
+        localStorage.removeItem("roofroute_saved_email");
+      }
     }
     setSubmitting(false);
   };
@@ -84,7 +87,6 @@ export default function Login() {
           email: setupEmail,
           password: setupPassword,
           full_name: setupName,
-          setup_token: setupToken,
         },
       },
     );
@@ -137,17 +139,6 @@ export default function Login() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="setup-token">Setup Token</Label>
-                <Input
-                  id="setup-token"
-                  type="password"
-                  placeholder="Provided by system administrator"
-                  value={setupToken}
-                  onChange={(e) => setSetupToken(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="setup-name">Full Name</Label>
                 <Input
                   id="setup-name"
@@ -174,11 +165,8 @@ export default function Login() {
                   value={setupPassword}
                   onChange={(e) => setSetupPassword(e.target.value)}
                   required
-                  minLength={12}
+                  minLength={6}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Minimum 12 characters
-                </p>
               </div>
             </div>
 
@@ -241,6 +229,17 @@ export default function Login() {
                   autoComplete="current-password"
                 />
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="remember-me"
+                checked={rememberMe}
+                onCheckedChange={(checked) => setRememberMe(checked === true)}
+              />
+              <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                Remember me
+              </Label>
             </div>
 
             <Button type="submit" className="w-full" disabled={submitting}>
