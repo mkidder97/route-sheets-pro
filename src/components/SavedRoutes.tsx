@@ -838,7 +838,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                 const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
                                 const isBuildingExpanded = expandedBuilding === b.id;
                                 return (
-                                  <div key={b.id} className="rounded-md bg-background border border-border overflow-hidden">
+                                  <div key={b.id} className={`rounded-md bg-background border border-border overflow-hidden ${b.inspection_status === "complete" ? "opacity-50" : ""}`}>
                                     <button
                                       className="w-full text-left p-3"
                                       onClick={() => setExpandedBuilding(isBuildingExpanded ? null : b.id)}
@@ -892,6 +892,31 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                         </div>
                                       )}
                                     </button>
+                                    {/* Quick actions — always visible, no expand needed */}
+                                    <div className="flex items-center gap-2 px-3 pb-3 pt-2 border-t border-border/50">
+                                      <Button size="sm" variant="outline" className="h-9 px-3 flex-1"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openNavigation(b.address, b.city, b.state, b.zip_code);
+                                        }}>
+                                        <Navigation className="h-4 w-4 mr-1.5" /> Navigate
+                                      </Button>
+                                      {b.inspection_status !== "complete" ? (
+                                        <Button size="sm"
+                                          className="h-9 px-4 bg-success text-success-foreground hover:bg-success/90"
+                                          disabled={saving}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleStatusChange(b.id, "complete");
+                                          }}>
+                                          <Check className="h-4 w-4 mr-1.5" /> Done
+                                        </Button>
+                                      ) : (
+                                        <Badge className="bg-success/20 text-success border-0 h-9 px-3 flex items-center text-xs">
+                                          <Check className="h-3.5 w-3.5 mr-1" /> Complete
+                                        </Badge>
+                                      )}
+                                    </div>
                                     {isBuildingExpanded && (
                                       <div className="px-3 pb-3 border-t border-border pt-3 space-y-3 text-xs">
                                         <div className="text-sm text-muted-foreground">
@@ -1130,7 +1155,7 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                   const isBuildingExpanded = !bulkMode && expandedBuilding === b.id;
                                   const isSelected = selectedIds.has(b.id);
                                   return (
-                                    <div key={b.id} className={`rounded-md bg-background border overflow-hidden ${bulkMode && isSelected ? "border-primary" : "border-border"}`}>
+                                    <div key={b.id} className={`rounded-md bg-background border overflow-hidden ${b.inspection_status === "complete" ? "opacity-50" : ""} ${bulkMode && isSelected ? "border-primary" : "border-border"}`}>
                                       <button
                                         className="w-full text-left p-3"
                                         onClick={() => {
@@ -1209,6 +1234,33 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                           </div>
                                         )}
                                       </button>
+                                      {/* Quick actions — always visible, hidden in bulk mode */}
+                                      {!bulkMode && (
+                                        <div className="flex items-center gap-2 px-3 pb-3 pt-2 border-t border-border/50">
+                                          <Button size="sm" variant="outline" className="h-9 px-3 flex-1"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openNavigation(b.address, b.city, b.state, b.zip_code);
+                                            }}>
+                                            <Navigation className="h-4 w-4 mr-1.5" /> Navigate
+                                          </Button>
+                                          {b.inspection_status !== "complete" ? (
+                                            <Button size="sm"
+                                              className="h-9 px-4 bg-success text-success-foreground hover:bg-success/90"
+                                              disabled={saving}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleStatusChange(b.id, "complete");
+                                              }}>
+                                              <Check className="h-4 w-4 mr-1.5" /> Done
+                                            </Button>
+                                          ) : (
+                                            <Badge className="bg-success/20 text-success border-0 h-9 px-3 flex items-center text-xs">
+                                              <Check className="h-3.5 w-3.5 mr-1" /> Complete
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      )}
                                       {isBuildingExpanded && (
                                         <div className="px-3 pb-3 border-t border-border pt-3 space-y-3 text-xs">
                                           {/* Full address */}
