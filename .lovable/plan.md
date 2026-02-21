@@ -1,49 +1,45 @@
 
 
-# Input Validation for manage-users Edge Function
+# In-Memory Rate Limiting for manage-users Edge Function
 
 ## Overview
-Add server-side input validation to all actions in `supabase/functions/manage-users/index.ts` using simple regex checks. No new dependencies.
+Add simple per-IP rate limiting (30 requests/minute) to `supabase/functions/manage-users/index.ts` with automatic cleanup of expired entries.
 
-## Validation Helpers (add after `logAudit`, before `Deno.serve`)
+## Changes (single file: `supabase/functions/manage-users/index.ts`)
 
-Three small helper functions:
+### 1. Rate limit map (after imports, before ALLOWED_ORIGINS)
+- Add a `Map<string, { count: number; resetTime: number }>` at module level
+- Define constants: `RATE_LIMIT = 30`, `RATE_WINDOW = 60_000` (1 minute in ms)
 
-```ts
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PHONE_RE = /^[\d\s\-()+]+$/;
+### 2. Rate limit check function
+A helper that:
+- Extracts IP from `x-forwarded-for` (first entry) or `cf-connecting-ip` or `"unknown"`
+- Iterates the map and deletes entries where `Date.now() > resetTime` (cleanup)
+- Looks up or creates the entry for the current IP
+- If expired, resets count to 1 and resetTime to now + 60s
+- If count exceeds 30, returns a 429 response with `Retry-After: 60` header
+- Otherwise increments count and returns `null` (proceed)
 
-function validateEmail(email: unknown): string | null { ... }
-function validatePassword(password: unknown): string | null { ... }
-function validateFullName(full_name: unknown): string | null { ... }
-function validatePhone(phone: unknown): string | null { ... }
-function validateUuid(user_id: unknown): string | null { ... }
+### 3. Integration point (after OPTIONS check, before `req.json()`)
+Insert the rate limit check. If it returns a response, return it immediately. This is around line 85 in the current file, right after the OPTIONS handler block.
+
+### No other changes
+- No new dependencies
+- No changes to validation, CORS, auth, audit, or action logic
+
+## Technical Detail
+
+```text
+Location in file:
+
+  Deno.serve(async (req) => {
+    if (req.method === "OPTIONS") { ... }    // existing
+
+    // >>> INSERT rate limit check here <<<
+
+    try {
+      const supabaseUrl = ...                // existing
 ```
 
-Each returns `null` if valid, or an error message string if invalid.
+The 429 response will include CORS headers (using `getCorsHeaders`) so the browser can read the error, plus `Retry-After: 60`.
 
-## Per-Action Validation
-
-### `bootstrap` (line 78-81)
-After destructuring `email, password, full_name`, replace the simple truthy check with calls to the validators. Return 400 with the first error found.
-
-### `create` (line 151-157)
-After destructuring, validate `email`, `password`, `full_name` with the same helpers. Validate `phone` if provided. The existing `VALID_ROLES` check stays as-is.
-
-### `update` (line 191-192)
-- Validate `user_id` is a valid UUID (replaces the simple `!user_id` check)
-- If `full_name` is provided, validate it (non-empty, under 200 chars)
-- If `phone` is provided, validate it
-- If `role` is provided, validate it is in `VALID_ROLES` -- currently the code silently ignores an invalid role; change to return 400
-
-### `activate` (line 222-223)
-Validate `user_id` is a valid UUID.
-
-### `deactivate` (line 237-238)
-Validate `user_id` is a valid UUID.
-
-## No Other Changes
-- No new dependencies
-- No changes to CORS, auth, audit logging, or any other logic
-- Only file modified: `supabase/functions/manage-users/index.ts`
