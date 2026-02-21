@@ -1,60 +1,137 @@
 
 
-# FieldTodayView — Refinements Before Implementation
+# FieldTodayView: Switch from Campaign to Route Plan Data Source
 
 ## Overview
-Three refinements to the previously approved FieldTodayView plan, incorporating the user's feedback. No new files or schema changes — just amendments to the implementation approach.
+Replace all `campaign_buildings` and `inspection_campaigns` references in `FieldTodayView.tsx` with `route_plans` / `route_plan_days` / `route_plan_buildings` / `buildings` queries. The UI, categorization logic, and user experience remain identical -- only the data plumbing changes.
 
-## 1. Campaign Discovery: Single Query (replaces N+1 loop)
+## What Changes
 
-Replace the loop-based campaign discovery with a single query:
+### 1. Type Replacement
+
+Replace the `CampaignBuilding` interface with a `RoutePlanBuilding` interface that reflects the flattened shape from the new queries:
 
 ```ts
-const { data } = await supabase
-  .from("campaign_buildings")
-  .select("campaign_id, inspection_campaigns!inner(id, name, status)")
-  .eq("inspection_campaigns.status", "active")
-  .eq("inspector_id", inspectorId)
-  .limit(1);
+interface RoutePlanBuilding {
+  id: string;           // buildings.id (used for status writes)
+  property_name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  latitude: number | null;
+  longitude: number | null;
+  // ... all other building fields
+  inspection_status: string;
+  scheduled_week: string | null;
+  is_priority: boolean;
+  inspector_notes: string | null;
+  photo_url: string | null;
+  completion_date: string | null;
+  // Route plan metadata
+  dayId: string;
+  dayNumber: number;
+  dayDate: string;
+  stopOrder: number;
+}
 ```
 
-If localStorage has a cached `roofroute_active_campaign`, try that first. If it returns no rows (campaign closed or inspector reassigned), fall back to the single-query discovery above.
+### 2. Campaign Discovery --> Route Plan Discovery
 
-## 2. Dual-Write: Sync buildings table on every status change
+Replace `discoverCampaign` with `discoverRoutePlan`:
 
-After every `campaign_buildings` status update, also update the corresponding `buildings` row to keep SavedRoutes and other office views in sync.
+1. Check `localStorage("roofroute_active_plan")` for cached plan ID
+2. If cached, verify with `supabase.from("route_plans").select("id, name, clients(name), regions(name)").eq("id", cachedId).eq("inspector_id", inspectorId).single()`
+3. If no cache or cache invalid, query: `supabase.from("route_plans").select("id, name, clients(name), regions(name)").eq("inspector_id", inspectorId).order("created_at", { ascending: false }).limit(5)`
+4. If exactly one plan found, auto-select it
+5. If multiple plans found, store all and show a dropdown picker
+6. Persist selected plan ID to `localStorage("roofroute_active_plan")`
 
-Every status change handler will include both writes:
+### 3. Building Data Query
+
+Replace the single `campaign_buildings` query with two sequential queries:
 
 ```ts
-// 1. Update campaign_buildings (source of truth for campaign work)
-await supabase.from("campaign_buildings").update({
-  inspection_status: status,
-  completion_date: status === "complete" ? new Date().toISOString() : null,
-  inspector_notes: notes || undefined,
-}).eq("id", campaignBuildingId);
+// Step 1: Get all days for this route plan
+const { data: dayRows } = await supabase
+  .from("route_plan_days")
+  .select("id, day_number, day_date")
+  .eq("route_plan_id", activePlanId)
+  .order("day_number");
 
-// 2. Sync buildings table (keeps SavedRoutes consistent)
+// Step 2: Get all buildings through the junction table
+const dayIds = dayRows.map(d => d.id);
+const { data: rpb } = await supabase
+  .from("route_plan_buildings")
+  .select("route_plan_day_id, stop_order, buildings(*)")
+  .in("route_plan_day_id", dayIds)
+  .order("stop_order");
+
+// Step 3: Flatten into RoutePlanBuilding[]
+const buildings = rpb.map(r => ({
+  ...r.buildings,
+  dayId: r.route_plan_day_id,
+  dayNumber: dayRows.find(d => d.id === r.route_plan_day_id)?.day_number,
+  dayDate: dayRows.find(d => d.id === r.route_plan_day_id)?.day_date,
+  stopOrder: r.stop_order,
+}));
+```
+
+### 4. Categorization Logic
+
+The `categorizeBuildng` function stays the same -- it already reads `inspection_status`, `is_priority`, and `scheduled_week`, which are all fields on the `buildings` table.
+
+### 5. Status Updates: Write to `buildings` Only
+
+Remove all `campaign_buildings` writes. Single write to `buildings`:
+
+```ts
 await supabase.from("buildings").update({
   inspection_status: status,
   completion_date: status === "complete" ? new Date().toISOString() : null,
+  inspector_notes: notes || undefined,
 }).eq("id", buildingId);
 ```
 
-This applies to all three actions (Done, Skip, Revisit) and to bulk mode. The `buildingId` is available from the joined `buildings(*)` data already loaded in memory.
+This applies to: Done, Skip, Revisit, and Bulk Complete. No dual-write needed since there's only one source of truth now.
 
-## 3. No inspector filter on initial load (acknowledged)
+### 6. Bulk Complete
 
-The initial load query fetches ALL campaign_buildings for the campaign (no inspector_id filter). This is intentional for now -- it means the field view shows the full campaign. A future prompt can add inspector filtering if needed. Between deployment of this feature and any future filtering update, all buildings in the campaign will be visible, which is acceptable for the current single-active-user scenario.
+```ts
+await supabase.from("buildings").update({
+  inspection_status: "complete",
+  completion_date: new Date().toISOString(),
+}).in("id", Array.from(selectedIds));
+```
 
-## Everything else unchanged from the approved plan
+`selectedIds` now contains `buildings.id` values directly (not `campaign_buildings.id`).
 
-- FieldTodayView component structure (5 priority tiers, GPS sorting, progress bars)
-- Building card layout (codes prominent, quick actions, expandable details)
-- Bulk mode with sticky bottom bar
+### 7. UI Adjustments
+
+- Header label changes from `campaignName` to `planName` (the route plan's name)
+- Empty state message changes from "No active campaign found" to "No route plan found for this inspector"
+- If multiple route plans exist, render a `Select` dropdown at the top to pick one
+- All building card rendering stays identical (reads from the same building fields)
+- `inspector_notes` and `photo_url` now come directly from `buildings` (same field names)
+
+### 8. Session Persistence Key
+
+Change `roofroute_active_campaign` to `roofroute_active_plan` throughout.
+
+## What Does NOT Change
+
+- The 5-tier priority grouping (priority, this_week, retry, overdue, backlog)
+- GPS sorting via haversineDistance within each tier
+- Building card layout, expanded details, badges
+- Bulk mode UI pattern
 - Navigation helper (iOS/Android detection)
-- Session persistence via localStorage
-- MyRoutes.tsx swaps SavedRoutes for FieldTodayView
-- SavedRoutes.tsx remains untouched
-- No database changes needed
+- GPS refresh button
+- Note dialog for Skip/Revisit
+- `MyRoutes.tsx` (already renders `FieldTodayView`)
+- `SavedRoutes.tsx` (untouched)
+- No database schema changes needed
+
+## Files Modified
+
+- `src/components/FieldTodayView.tsx` -- rewrite data layer, keep all UI
 
