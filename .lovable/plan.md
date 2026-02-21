@@ -1,56 +1,64 @@
 
 
-# Lazy Load All Routes in App.tsx
+# Schedule Upload — Updated Plan Notes
 
-## Overview
-Convert all 11 page component imports to `React.lazy()` and wrap the route tree in `<Suspense>` with a spinner fallback. No route paths, layouts, or protection logic change.
+This is an addendum to the previously approved plan, addressing three edge cases.
 
-## Changes (single file: `src/App.tsx`)
+## 1. Date parsing: Use date-fns (already installed)
 
-### 1. Update React import
-Add `lazy` and `Suspense` to the React import:
+`date-fns` v3.6.0 is already a project dependency. The `parseScheduledWeek` function in `src/lib/schedule-parser.ts` will use:
+
 ```ts
-import { lazy, Suspense } from "react";
+import { startOfWeek, parse } from "date-fns";
+
+const monday = startOfWeek(parsedDate, { weekStartsOn: 1 });
 ```
 
-### 2. Replace all 11 page imports with lazy equivalents
-Convert these static imports:
+No new dependencies needed.
+
+## 2. Duplicate campaign_buildings: Not an issue
+
+A unique constraint already exists on `(campaign_id, building_id)`:
+```
+campaign_buildings_campaign_id_building_id_key UNIQUE (campaign_id, building_id)
+```
+
+The match query will always return at most one `campaign_buildings` row per building per campaign. No special handling needed.
+
+## 3. Inspector matching: Add last-name fallback
+
+Enhance the inspector matching logic with a two-pass approach:
+
+1. **Exact match** (case-insensitive, trimmed) -- e.g. "Michael Kidder" === "Michael Kidder"
+2. **Last-name fallback** -- extract the last token from the uploaded name and match against the last token of each inspector name. If exactly one inspector matches by last name, use it. If multiple match, leave unmatched.
+3. **Unmatched inspectors** get flagged in the preview with an amber badge ("Inspector not matched") and a dropdown to manually select from the inspectors list -- same pattern as the manual building fix.
+
 ```ts
-import MyRoutes from "./pages/MyRoutes";
-import RouteBuilder from "./pages/RouteBuilder";
-// ... etc
-```
-To:
-```ts
-const MyRoutes = lazy(() => import("./pages/MyRoutes"));
-const RouteBuilder = lazy(() => import("./pages/RouteBuilder"));
-const DataManager = lazy(() => import("./pages/DataManager"));
-const Settings = lazy(() => import("./pages/Settings"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Login = lazy(() => import("./pages/Login"));
-const OpsDashboard = lazy(() => import("./pages/ops/OpsDashboard"));
-const OpsJobBoard = lazy(() => import("./pages/ops/OpsJobBoard"));
-const OpsCampaignDetail = lazy(() => import("./pages/ops/OpsCampaignDetail"));
-const OpsScheduling = lazy(() => import("./pages/ops/OpsScheduling"));
-const OpsTimeMileage = lazy(() => import("./pages/ops/OpsTimeMileage"));
-const OpsSettings = lazy(() => import("./pages/ops/OpsSettings"));
+function matchInspector(uploadedName: string, inspectors: { id: string; name: string }[]) {
+  const norm = (s: string) => s.toLowerCase().trim();
+  // Pass 1: exact
+  const exact = inspectors.find(i => norm(i.name) === norm(uploadedName));
+  if (exact) return exact;
+  // Pass 2: last-name
+  const uploadedLast = norm(uploadedName).split(/[\s,]+/).pop() || "";
+  const lastNameMatches = inspectors.filter(i => {
+    const inspLast = norm(i.name).split(/\s+/).pop() || "";
+    return inspLast === uploadedLast && uploadedLast.length > 1;
+  });
+  return lastNameMatches.length === 1 ? lastNameMatches[0] : null;
+}
 ```
 
-### 3. Wrap `<Routes>` in `<Suspense>`
-```tsx
-<Suspense fallback={
-  <div className="flex items-center justify-center h-screen">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-  </div>
-}>
-  <Routes>
-    {/* all existing routes unchanged */}
-  </Routes>
-</Suspense>
-```
+This handles "Kidder, Michael", "M. Kidder", and "Kidder" variations while avoiding false positives when multiple inspectors share a last name.
 
-### What stays the same
-- All route paths, nesting, and `element` props
-- `ProtectedRoute`, `AppLayout`, `OpsLayout` remain static imports (they are layout/wrapper components, not pages)
-- All other imports (react-router-dom, tanstack, etc.) unchanged
+## Everything else remains unchanged from the approved plan
+
+- 4-step wizard structure
+- File parsing with XLSX
+- Column mapping with fuzzy match
+- Building matching (building_code primary, address fallback)
+- Color-coded preview table
+- Manual fix dropdowns for unmatched rows
+- One-at-a-time campaign_buildings updates
+- Integration into OpsScheduling page header
 
