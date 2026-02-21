@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,19 +9,21 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/hooks/use-toast";
 import {
   addMonths, subMonths, addWeeks, subWeeks,
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   eachDayOfInterval, format, isSameMonth, isSameDay,
-  isWithinInterval, parseISO, differenceInCalendarDays,
+  parseISO, differenceInCalendarDays,
   addDays,
 } from "date-fns";
 import {
-  ChevronLeft, ChevronRight, Plus, Filter, Trash2,
+  ChevronLeft, ChevronRight, Plus, Filter, Trash2, AlertTriangle,
 } from "lucide-react";
 import {
   DndContext, DragEndEvent, PointerSensor, useSensor, useSensors,
@@ -39,8 +41,6 @@ const EVENT_TYPES = [
   { key: "travel", label: "Travel", color: "#E67E22" },
   { key: "office", label: "Office", color: "#95A5A6" },
 ] as const;
-
-type EventType = (typeof EVENT_TYPES)[number]["key"];
 
 const eventColor = (type: string, override?: string | null) =>
   override || EVENT_TYPES.find((e) => e.key === type)?.color || "#94a3b8";
@@ -61,7 +61,27 @@ interface CalendarEvent {
   reference_id: string | null;
   user_id: string | null;
   created_by: string | null;
-  virtual?: boolean; // derived events can't be edited
+  virtual?: boolean;
+}
+
+// ─── Conflict detection helper ──────────────────────────────────────────────
+
+function findConflicts(
+  inspectorId: string | null,
+  startDate: string,
+  endDate: string,
+  allEvents: CalendarEvent[],
+  excludeEventId?: string,
+): CalendarEvent[] {
+  if (!inspectorId || !startDate) return [];
+  const end = endDate || startDate;
+  return allEvents.filter(
+    (e) =>
+      e.inspector_id === inspectorId &&
+      e.id !== excludeEventId &&
+      e.start_date <= end &&
+      (e.end_date ?? e.start_date) >= startDate,
+  );
 }
 
 // ─── Data hooks ─────────────────────────────────────────────────────────────
@@ -109,7 +129,6 @@ function useSchedulingEvents(rangeStart: string, rangeEnd: string) {
 }
 
 function useDerivedEvents(rangeStart: string, rangeEnd: string) {
-  // Route plan days → annuals events
   const routePlanDays = useQuery({
     queryKey: ["sched-route-days", rangeStart, rangeEnd],
     staleTime: STALE,
@@ -129,7 +148,6 @@ function useDerivedEvents(rangeStart: string, rangeEnd: string) {
     },
   });
 
-  // Count buildings per route_plan_day
   const dayIds = (routePlanDays.data ?? []).map((d: any) => d.id);
   const buildingCounts = useQuery({
     queryKey: ["sched-route-bldg-counts", dayIds],
@@ -148,7 +166,6 @@ function useDerivedEvents(rangeStart: string, rangeEnd: string) {
     },
   });
 
-  // CM jobs with scheduled_date
   const cmJobs = useQuery({
     queryKey: ["sched-cm-jobs", rangeStart, rangeEnd],
     staleTime: STALE,
@@ -165,8 +182,6 @@ function useDerivedEvents(rangeStart: string, rangeEnd: string) {
 
   const derived = useMemo<CalendarEvent[]>(() => {
     const events: CalendarEvent[] = [];
-
-    // Route plan derived
     (routePlanDays.data ?? []).forEach((d: any) => {
       const rp = d.route_plans as any;
       if (!rp || rp.status === "archived") return;
@@ -189,8 +204,6 @@ function useDerivedEvents(rangeStart: string, rangeEnd: string) {
         virtual: true,
       });
     });
-
-    // CM job derived
     (cmJobs.data ?? []).forEach((j: any) => {
       events.push({
         id: `cmj-${j.id}`,
@@ -208,11 +221,29 @@ function useDerivedEvents(rangeStart: string, rangeEnd: string) {
         virtual: true,
       });
     });
-
     return events;
   }, [routePlanDays.data, buildingCounts.data, cmJobs.data]);
 
   return { derived, isLoading: routePlanDays.isLoading || cmJobs.isLoading };
+}
+
+// ─── CM Jobs search hook ────────────────────────────────────────────────────
+
+function useCmJobsSearch(search: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["sched-cm-search", search],
+    staleTime: STALE,
+    enabled: enabled && search.length >= 1,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("cm_jobs")
+        .select("id, title, address")
+        .ilike("title", `%${search}%`)
+        .neq("status", "complete")
+        .limit(20);
+      return data ?? [];
+    },
+  });
 }
 
 // ─── Event Dialog ───────────────────────────────────────────────────────────
@@ -223,12 +254,15 @@ interface EventDialogProps {
   event: CalendarEvent | null;
   defaultDate?: string;
   inspectors: { id: string; name: string }[];
+  allEvents: CalendarEvent[];
+  isManager: boolean;
 }
 
-function EventDialog({ open, onClose, event, defaultDate, inspectors }: EventDialogProps) {
+function EventDialog({ open, onClose, event, defaultDate, inspectors, allEvents, isManager }: EventDialogProps) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const isEdit = !!event && !event.virtual;
+  const readOnly = !isManager || event?.virtual;
 
   const [title, setTitle] = useState("");
   const [eventType, setEventType] = useState<string>("other_visit");
@@ -236,9 +270,14 @@ function EventDialog({ open, onClose, event, defaultDate, inspectors }: EventDia
   const [endDate, setEndDate] = useState("");
   const [inspectorId, setInspectorId] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [linkedCmJobId, setLinkedCmJobId] = useState<string>("");
+  const [cmSearch, setCmSearch] = useState("");
+  const [cmDropdownOpen, setCmDropdownOpen] = useState(false);
+
+  const { data: cmSearchResults = [] } = useCmJobsSearch(cmSearch, eventType === "cm_job");
 
   // Reset form when dialog opens
-  useMemo(() => {
+  useEffect(() => {
     if (open) {
       if (event && !event.virtual) {
         setTitle(event.title);
@@ -247,6 +286,8 @@ function EventDialog({ open, onClose, event, defaultDate, inspectors }: EventDia
         setEndDate(event.end_date ?? event.start_date);
         setInspectorId(event.inspector_id ?? "");
         setNotes(event.notes ?? "");
+        setLinkedCmJobId(event.reference_type === "cm_job" ? event.reference_id ?? "" : "");
+        setCmSearch("");
       } else {
         setTitle("");
         setEventType("other_visit");
@@ -254,21 +295,41 @@ function EventDialog({ open, onClose, event, defaultDate, inspectors }: EventDia
         setEndDate(defaultDate ?? format(new Date(), "yyyy-MM-dd"));
         setInspectorId("");
         setNotes("");
+        setLinkedCmJobId("");
+        setCmSearch("");
       }
     }
   }, [open, event, defaultDate]);
 
+  // Conflict detection
+  const inspectorName = inspectors.find((i) => i.id === inspectorId)?.name;
+  const conflicts = useMemo(
+    () => findConflicts(inspectorId || null, startDate, endDate || startDate, allEvents, event?.id),
+    [inspectorId, startDate, endDate, allEvents, event?.id],
+  );
+
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const resolvedInspectorId = inspectorId && inspectorId !== "none" ? inspectorId : null;
+      const payload: any = {
         title,
         event_type: eventType,
         start_date: startDate,
         end_date: endDate || startDate,
-        inspector_id: inspectorId || null,
+        inspector_id: resolvedInspectorId,
         notes: notes || null,
         created_by: user?.id ?? null,
       };
+
+      // Link CM job reference
+      if (eventType === "cm_job" && linkedCmJobId) {
+        payload.reference_type = "cm_job";
+        payload.reference_id = linkedCmJobId;
+      } else {
+        payload.reference_type = null;
+        payload.reference_id = null;
+      }
+
       if (isEdit) {
         const { error } = await supabase
           .from("scheduling_events")
@@ -281,9 +342,27 @@ function EventDialog({ open, onClose, event, defaultDate, inspectors }: EventDia
           .insert(payload);
         if (error) throw error;
       }
+
+      // If cm_job linked, update cm_jobs.scheduled_date
+      if (eventType === "cm_job" && linkedCmJobId) {
+        await supabase
+          .from("cm_jobs")
+          .update({ scheduled_date: startDate })
+          .eq("id", linkedCmJobId);
+      }
+
+      // Log to activity_log
+      await supabase.from("activity_log").insert({
+        action: isEdit ? "updated" : "created",
+        entity_type: "scheduling_event",
+        entity_id: event?.id ?? "00000000-0000-0000-0000-000000000000",
+        user_id: user?.id ?? null,
+        details: { title, event_type: eventType, start_date: startDate },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sched-events"] });
+      qc.invalidateQueries({ queryKey: ["sched-cm-jobs"] });
       toast({ title: isEdit ? "Event updated" : "Event created" });
       onClose();
     },
@@ -299,6 +378,13 @@ function EventDialog({ open, onClose, event, defaultDate, inspectors }: EventDia
         .delete()
         .eq("id", event!.id);
       if (error) throw error;
+      await supabase.from("activity_log").insert({
+        action: "deleted",
+        entity_type: "scheduling_event",
+        entity_id: event!.id,
+        user_id: user?.id ?? null,
+        details: { title: event!.title },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sched-events"] });
@@ -310,89 +396,201 @@ function EventDialog({ open, onClose, event, defaultDate, inspectors }: EventDia
     },
   });
 
+  // Virtual / read-only view
+  if (event?.virtual || (!isManager && event)) {
+    return (
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Event Details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p><span className="font-medium">Title:</span> {event?.title}</p>
+            <p>
+              <span className="font-medium">Type:</span>{" "}
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0 inline-block"
+                  style={{ background: eventColor(event?.event_type ?? "", event?.color) }}
+                />
+                {EVENT_TYPES.find((e) => e.key === event?.event_type)?.label ?? event?.event_type}
+              </span>
+            </p>
+            <p><span className="font-medium">Date:</span> {event?.start_date}{event?.end_date !== event?.start_date ? ` — ${event?.end_date}` : ""}</p>
+            {event?.inspector_name && <p><span className="font-medium">Inspector:</span> {event.inspector_name}</p>}
+            {event?.notes && <p><span className="font-medium">Notes:</span> {event.notes}</p>}
+            {event?.virtual && (
+              <p className="text-muted-foreground text-xs mt-2">This is an auto-generated event and cannot be edited here.</p>
+            )}
+            {!isManager && !event?.virtual && (
+              <p className="text-muted-foreground text-xs mt-2">You don't have permission to edit events.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{event?.virtual ? "Event Details" : isEdit ? "Edit Event" : "Add Event"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Event" : "Add Event"}</DialogTitle>
         </DialogHeader>
-        {event?.virtual ? (
-          <div className="space-y-2 text-sm">
-            <p><span className="font-medium">Title:</span> {event.title}</p>
-            <p><span className="font-medium">Type:</span> {EVENT_TYPES.find((e) => e.key === event.event_type)?.label ?? event.event_type}</p>
-            <p><span className="font-medium">Date:</span> {event.start_date}{event.end_date !== event.start_date ? ` — ${event.end_date}` : ""}</p>
-            {event.inspector_name && <p><span className="font-medium">Inspector:</span> {event.inspector_name}</p>}
-            {event.notes && <p><span className="font-medium">Notes:</span> {event.notes}</p>}
-            <p className="text-muted-foreground text-xs mt-2">This is an auto-generated event and cannot be edited here.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <Label>Title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div>
-              <Label>Event Type</Label>
-              <Select value={eventType} onValueChange={setEventType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {EVENT_TYPES.map((t) => (
-                    <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+
+        <div className="space-y-3">
+          {/* Conflict Warning */}
+          {conflicts.length > 0 && inspectorName && (
+            <div className="flex items-start gap-2 p-2.5 rounded-md bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 text-sm">
+              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
               <div>
-                <Label>Start Date</Label>
-                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-              </div>
-              <div>
-                <Label>End Date</Label>
-                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                <p className="font-medium text-yellow-800 dark:text-yellow-300">
+                  {inspectorName} already has {conflicts.length === 1 ? "an event" : `${conflicts.length} events`} on this date:
+                </p>
+                {conflicts.map((c) => (
+                  <p key={c.id} className="text-yellow-700 dark:text-yellow-400 text-xs">
+                    "{c.title}" ({c.start_date}{c.end_date !== c.start_date ? ` — ${c.end_date}` : ""})
+                  </p>
+                ))}
+                <p className="text-yellow-600 dark:text-yellow-500 text-xs mt-1">Continue anyway?</p>
               </div>
             </div>
-            <div>
-              <Label>Inspector</Label>
-              <Select value={inspectorId} onValueChange={setInspectorId}>
-                <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {inspectors.map((i) => (
-                    <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
+          )}
+
+          <div>
+            <Label>Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Event title" />
+          </div>
+
+          <div>
+            <Label>Event Type</Label>
+            <Select value={eventType} onValueChange={(v) => { setEventType(v); if (v !== "cm_job") { setLinkedCmJobId(""); setCmSearch(""); } }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {EVENT_TYPES.map((t) => (
+                  <SelectItem key={t.key} value={t.key}>
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: t.color }} />
+                      {t.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* CM Job linking */}
+          {eventType === "cm_job" && (
+            <div className="relative">
+              <Label>Link to CM Job (optional)</Label>
+              <Input
+                value={cmSearch}
+                onChange={(e) => { setCmSearch(e.target.value); setCmDropdownOpen(true); }}
+                placeholder={linkedCmJobId ? "Linked — type to change" : "Search jobs by title..."}
+                onFocus={() => setCmDropdownOpen(true)}
+              />
+              {linkedCmJobId && (
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="text-xs text-muted-foreground">
+                    Linked: {cmSearchResults.find((j) => j.id === linkedCmJobId)?.title || "Job selected"}
+                  </span>
+                  <button
+                    className="text-xs text-destructive hover:underline"
+                    onClick={() => { setLinkedCmJobId(""); setCmSearch(""); }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+              {cmDropdownOpen && cmSearch.length >= 1 && cmSearchResults.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto">
+                  {cmSearchResults.map((j) => (
+                    <button
+                      key={j.id}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+                      onClick={() => {
+                        setLinkedCmJobId(j.id);
+                        setCmSearch(j.title);
+                        setCmDropdownOpen(false);
+                        if (!title) setTitle(j.title);
+                      }}
+                    >
+                      <span className="font-medium">{j.title}</span>
+                      {j.address && <span className="text-muted-foreground ml-1 text-xs">— {j.address}</span>}
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <Label>Inspector</Label>
+            <Select value={inspectorId || "none"} onValueChange={(v) => setInspectorId(v === "none" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {inspectors.map((i) => (
+                  <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Start Date</Label>
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div>
-              <Label>Notes</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+              <Label>End Date</Label>
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
           </div>
-        )}
-        {!event?.virtual && (
-          <DialogFooter className="flex justify-between">
-            {isEdit && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
-              >
-                <Trash2 className="h-4 w-4 mr-1" /> Delete
-              </Button>
-            )}
-            <div className="flex gap-2 ml-auto">
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={!title.trim() || !startDate || saveMutation.isPending}
-              >
-                {isEdit ? "Update" : "Create"}
-              </Button>
-            </div>
-          </DialogFooter>
-        )}
+
+          <div>
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional notes" />
+          </div>
+        </div>
+
+        <DialogFooter className="flex justify-between">
+          {isEdit && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="h-4 w-4 mr-1" /> Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete event?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete "{event?.title}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={!title.trim() || !startDate || saveMutation.isPending}
+            >
+              {saveMutation.isPending ? "Saving…" : isEdit ? "Update" : "Create"}
+            </Button>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -404,15 +602,17 @@ function DraggableEvent({
   event,
   onClick,
   showInspector,
+  isManager,
 }: {
   event: CalendarEvent;
   onClick: () => void;
   showInspector?: boolean;
+  isManager: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: event.id,
     data: { event },
-    disabled: event.virtual,
+    disabled: event.virtual || !isManager,
   });
 
   const style: React.CSSProperties = {
@@ -564,11 +764,13 @@ function MonthView({
   events,
   onDayClick,
   onEventClick,
+  isManager,
 }: {
   currentDate: Date;
   events: CalendarEvent[];
   onDayClick: (date: string) => void;
   onEventClick: (e: CalendarEvent) => void;
+  isManager: boolean;
 }) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -576,10 +778,7 @@ function MonthView({
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
 
-  // Filter to Mon-Fri
   const weekdays = days.filter((d) => d.getDay() !== 0 && d.getDay() !== 6);
-
-  // Build weeks
   const weeks: Date[][] = [];
   for (let i = 0; i < weekdays.length; i += 5) {
     weeks.push(weekdays.slice(i, i + 5));
@@ -594,7 +793,6 @@ function MonthView({
 
   return (
     <div className="border rounded-lg overflow-hidden">
-      {/* Header */}
       <div className="grid grid-cols-5 bg-muted/50">
         {["Mon", "Tue", "Wed", "Thu", "Fri"].map((d) => (
           <div key={d} className="text-center text-xs font-medium py-1.5 text-muted-foreground">
@@ -602,7 +800,6 @@ function MonthView({
           </div>
         ))}
       </div>
-      {/* Rows */}
       {weeks.map((week, wi) => (
         <div key={wi} className="grid grid-cols-5 border-t">
           {week.map((day) => {
@@ -637,6 +834,7 @@ function MonthView({
                       key={ev.id}
                       event={ev}
                       onClick={() => onEventClick(ev)}
+                      isManager={isManager}
                     />
                   ))}
                   {dayEvents.length > 3 && (
@@ -661,11 +859,13 @@ function WeekView({
   events,
   onDayClick,
   onEventClick,
+  isManager,
 }: {
   currentDate: Date;
   events: CalendarEvent[];
   onDayClick: (date: string) => void;
   onEventClick: (e: CalendarEvent) => void;
+  isManager: boolean;
 }) {
   const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 5 }, (_, i) => addDays(ws, i));
@@ -713,6 +913,7 @@ function WeekView({
                     event={ev}
                     onClick={() => onEventClick(ev)}
                     showInspector
+                    isManager={isManager}
                   />
                 ))}
               </div>
@@ -727,7 +928,7 @@ function WeekView({
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function OpsScheduling() {
-  const { role, user } = useAuth();
+  const { role, user, profile } = useAuth();
   const isManager = role === "admin" || role === "office_manager";
   const qc = useQueryClient();
 
@@ -739,7 +940,6 @@ export default function OpsScheduling() {
   const [selectedInspectors, setSelectedInspectors] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
 
-  // Compute range for queries
   const rangeStart = format(
     startOfWeek(startOfMonth(view === "month" ? currentDate : currentDate), { weekStartsOn: 1 }),
     "yyyy-MM-dd",
@@ -753,7 +953,13 @@ export default function OpsScheduling() {
   const { data: dbEvents = [], isLoading: eventsLoading } = useSchedulingEvents(rangeStart, rangeEnd);
   const { derived, isLoading: derivedLoading } = useDerivedEvents(rangeStart, rangeEnd);
 
-  // Merge and filter events
+  // Auto-filter field_ops to their linked inspector
+  useEffect(() => {
+    if (role === "field_ops" && profile?.inspector_id && selectedInspectors.length === 0) {
+      setSelectedInspectors([profile.inspector_id]);
+    }
+  }, [role, profile?.inspector_id]);
+
   const allEvents = useMemo(() => {
     let merged = [...dbEvents, ...derived];
     if (selectedInspectors.length > 0) {
@@ -765,7 +971,9 @@ export default function OpsScheduling() {
     return merged;
   }, [dbEvents, derived, selectedInspectors, selectedTypes]);
 
-  // Navigation
+  // All events (unfiltered) for conflict detection
+  const allEventsUnfiltered = useMemo(() => [...dbEvents, ...derived], [dbEvents, derived]);
+
   const goToday = () => setCurrentDate(new Date());
   const goPrev = () =>
     setCurrentDate((d) => (view === "month" ? subMonths(d, 1) : subWeeks(d, 1)));
@@ -788,12 +996,10 @@ export default function OpsScheduling() {
     setDialogOpen(true);
   }, []);
 
-  // Drag-to-reschedule
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const reschedule = useMutation({
     mutationFn: async ({ eventId, newDate }: { eventId: string; newDate: string }) => {
-      // Get original event to compute day offset
       const original = dbEvents.find((e) => e.id === eventId);
       if (!original) throw new Error("Event not found");
       const dayDiff = differenceInCalendarDays(parseISO(newDate), parseISO(original.start_date));
@@ -803,6 +1009,15 @@ export default function OpsScheduling() {
         .update({ start_date: newDate, end_date: newEnd })
         .eq("id", eventId);
       if (error) throw error;
+
+      // Log reschedule
+      await supabase.from("activity_log").insert({
+        action: "rescheduled",
+        entity_type: "scheduling_event",
+        entity_id: eventId,
+        user_id: user?.id ?? null,
+        details: { title: original.title, from: original.start_date, to: newDate },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sched-events"] });
@@ -823,9 +1038,22 @@ export default function OpsScheduling() {
       const ev = dbEvents.find((x) => x.id === eventId);
       if (!ev || ev.virtual) return;
       if (ev.start_date === newDate) return;
+
+      // Check for conflicts and warn via toast
+      if (ev.inspector_id) {
+        const conflicts = findConflicts(ev.inspector_id, newDate, newDate, allEventsUnfiltered, ev.id);
+        if (conflicts.length > 0) {
+          const inspName = inspectors.find((i) => i.id === ev.inspector_id)?.name ?? "Inspector";
+          toast({
+            title: `⚠️ Schedule conflict`,
+            description: `${inspName} already has "${conflicts[0].title}" on ${newDate}. Event moved anyway.`,
+          });
+        }
+      }
+
       reschedule.mutate({ eventId, newDate });
     },
-    [isManager, dbEvents, reschedule],
+    [isManager, dbEvents, reschedule, allEventsUnfiltered, inspectors],
   );
 
   const loading = eventsLoading || derivedLoading;
@@ -836,7 +1064,6 @@ export default function OpsScheduling() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <h1 className="text-xl sm:text-2xl font-bold">Scheduling</h1>
         <div className="flex items-center gap-2 ml-auto flex-wrap">
-          {/* View toggle */}
           <div className="flex border rounded-md overflow-hidden">
             <button
               className={`px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -856,7 +1083,6 @@ export default function OpsScheduling() {
             </button>
           </div>
 
-          {/* Navigation */}
           <div className="flex items-center gap-1">
             <Button variant="outline" size="icon" className="h-8 w-8" onClick={goPrev}>
               <ChevronLeft className="h-4 w-4" />
@@ -920,6 +1146,7 @@ export default function OpsScheduling() {
               events={allEvents}
               onDayClick={onDayClick}
               onEventClick={onEventClick}
+              isManager={isManager}
             />
           ) : (
             <WeekView
@@ -927,6 +1154,7 @@ export default function OpsScheduling() {
               events={allEvents}
               onDayClick={onDayClick}
               onEventClick={onEventClick}
+              isManager={isManager}
             />
           )}
         </DndContext>
@@ -942,6 +1170,8 @@ export default function OpsScheduling() {
         event={selectedEvent}
         defaultDate={defaultDate}
         inspectors={inspectors}
+        allEvents={allEventsUnfiltered}
+        isManager={isManager}
       />
     </div>
   );
