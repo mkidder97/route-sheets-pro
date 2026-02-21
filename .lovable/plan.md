@@ -1,45 +1,32 @@
 
 
-# In-Memory Rate Limiting for manage-users Edge Function
+# Add Content-Security-Policy Header to vercel.json
 
 ## Overview
-Add simple per-IP rate limiting (30 requests/minute) to `supabase/functions/manage-users/index.ts` with automatic cleanup of expired entries.
+Add a `Content-Security-Policy` header to the existing headers array in `vercel.json`. No other headers are changed.
 
-## Changes (single file: `supabase/functions/manage-users/index.ts`)
+## Change
 
-### 1. Rate limit map (after imports, before ALLOWED_ORIGINS)
-- Add a `Map<string, { count: number; resetTime: number }>` at module level
-- Define constants: `RATE_LIMIT = 30`, `RATE_WINDOW = 60_000` (1 minute in ms)
+In `vercel.json`, append one new entry to the `headers` array inside the `"source": "/(.*)"` block:
 
-### 2. Rate limit check function
-A helper that:
-- Extracts IP from `x-forwarded-for` (first entry) or `cf-connecting-ip` or `"unknown"`
-- Iterates the map and deletes entries where `Date.now() > resetTime` (cleanup)
-- Looks up or creates the entry for the current IP
-- If expired, resets count to 1 and resetTime to now + 60s
-- If count exceeds 30, returns a 429 response with `Retry-After: 60` header
-- Otherwise increments count and returns `null` (proceed)
-
-### 3. Integration point (after OPTIONS check, before `req.json()`)
-Insert the rate limit check. If it returns a response, return it immediately. This is around line 85 in the current file, right after the OPTIONS handler block.
-
-### No other changes
-- No new dependencies
-- No changes to validation, CORS, auth, audit, or action logic
-
-## Technical Detail
-
-```text
-Location in file:
-
-  Deno.serve(async (req) => {
-    if (req.method === "OPTIONS") { ... }    // existing
-
-    // >>> INSERT rate limit check here <<<
-
-    try {
-      const supabaseUrl = ...                // existing
+```json
+{
+  "key": "Content-Security-Policy",
+  "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+}
 ```
 
-The 429 response will include CORS headers (using `getCorsHeaders`) so the browser can read the error, plus `Retry-After: 60`.
+## What it does
+- **default-src 'self'**: Only allow resources from the same origin by default
+- **script-src 'self'**: Only allow scripts from the same origin
+- **style-src 'self' 'unsafe-inline'**: Allow styles from same origin plus inline styles (needed for Tailwind/runtime CSS)
+- **img-src 'self' data: https:**: Allow images from same origin, data URIs, and any HTTPS source
+- **font-src 'self' data:**: Allow fonts from same origin and data URIs
+- **connect-src 'self' https://*.supabase.co wss://*.supabase.co**: Allow API/WebSocket connections to same origin and backend
+- **frame-ancestors 'none'**: Prevent the app from being embedded in iframes (complements existing X-Frame-Options: DENY)
+- **base-uri 'self'**: Prevent base tag hijacking
+- **form-action 'self'**: Restrict form submissions to same origin
+
+## File modified
+- `vercel.json` (one new header entry appended)
 
