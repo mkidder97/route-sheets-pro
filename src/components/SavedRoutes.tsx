@@ -128,6 +128,10 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // Bulk selection state
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // Move building state
   const [moveTarget, setMoveTarget] = useState<{
     buildingId: string;
@@ -355,6 +359,12 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     setDays([]);
     loadPlans();
   }, [inspectorId]);
+
+  // Clear bulk selection when day changes or bulk mode toggles off
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBulkMode(false);
+  }, [selectedDayIndex]);
 
   useEffect(() => {
     if (dayPickerRef.current && days.length > 0) {
@@ -660,6 +670,39 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
     }
     return withDistance.sort((a, b) => (a.distanceMiles ?? 999) - (b.distanceMiles ?? 999));
   }, [locationSort, userLocation, days, priorityFirst]);
+
+  const handleBulkComplete = async () => {
+    if (selectedIds.size === 0) return;
+    setSaving(true);
+    const ids = Array.from(selectedIds);
+
+    const { error } = await supabase
+      .from("buildings")
+      .update({
+        inspection_status: "complete",
+        completion_date: new Date().toISOString(),
+      })
+      .in("id", ids);
+
+    if (error) {
+      toast.error("Failed to update buildings");
+    } else {
+      toast.success(`${ids.length} building${ids.length > 1 ? "s" : ""} marked complete`);
+      setDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          buildings: d.buildings.map((b) =>
+            selectedIds.has(b.id)
+              ? { ...b, inspection_status: "complete" }
+              : b
+          ),
+        }))
+      );
+    }
+    setSelectedIds(new Set());
+    setBulkMode(false);
+    setSaving(false);
+  };
 
   const allBuildings = days.flatMap((d) => d.buildings);
   const totalComplete = allBuildings.filter((b) => b.inspection_status === "complete").length;
@@ -1029,6 +1072,14 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                   )}
                                   <span className="text-muted-foreground">·</span>
                                   <span className="text-muted-foreground">{completeCount}/{dayBuildings.length} complete</span>
+                                  <Button
+                                    size="sm"
+                                    variant={bulkMode ? "default" : "outline"}
+                                    onClick={() => { setBulkMode(!bulkMode); setSelectedIds(new Set()); }}
+                                    className="ml-auto"
+                                  >
+                                    {bulkMode ? "Cancel" : "Select"}
+                                  </Button>
                                 </div>
                                 {(advanceNoticeCount > 0 || escortCount > 0 || equipmentCount > 0) && (
                                   <div className="flex gap-2 flex-wrap">
@@ -1054,18 +1105,64 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                 <p className="text-xs text-muted-foreground text-center py-2">All buildings complete for this day.</p>
                               ) : (
                               <div className="space-y-1">
+                                {bulkMode && (
+                                  <div className="flex items-center gap-3 text-xs pb-1">
+                                    <button
+                                      className="text-primary underline"
+                                      onClick={() => {
+                                        const visible = visibleBuildings.filter(b => b.inspection_status !== "complete").map(b => b.id);
+                                        setSelectedIds(new Set(visible));
+                                      }}
+                                    >
+                                      Select all incomplete
+                                    </button>
+                                    <button
+                                      className="text-primary underline"
+                                      onClick={() => setSelectedIds(new Set())}
+                                    >
+                                      Deselect all
+                                    </button>
+                                    <span className="text-muted-foreground">{selectedIds.size} selected</span>
+                                  </div>
+                                )}
                                 {visibleBuildings.map((b) => {
                                   const cfg = STATUS_CONFIG[b.inspection_status] || STATUS_CONFIG.pending;
-                                  const isBuildingExpanded = expandedBuilding === b.id;
+                                  const isBuildingExpanded = !bulkMode && expandedBuilding === b.id;
+                                  const isSelected = selectedIds.has(b.id);
                                   return (
-                                    <div key={b.id} className="rounded-md bg-background border border-border overflow-hidden">
+                                    <div key={b.id} className={`rounded-md bg-background border overflow-hidden ${bulkMode && isSelected ? "border-primary" : "border-border"}`}>
                                       <button
                                         className="w-full text-left p-3"
-                                        onClick={() => setExpandedBuilding(isBuildingExpanded ? null : b.id)}
+                                        onClick={() => {
+                                          if (bulkMode) {
+                                            setSelectedIds(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(b.id)) next.delete(b.id);
+                                              else next.add(b.id);
+                                              return next;
+                                            });
+                                          } else {
+                                            setExpandedBuilding(isBuildingExpanded ? null : b.id);
+                                          }
+                                        }}
                                       >
                                         {/* Row 1: Stop number, name, badges, status, chevron */}
                                         <div className="flex items-center justify-between">
                                           <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            {bulkMode && (
+                                              <Checkbox
+                                                checked={isSelected}
+                                                onCheckedChange={() => {
+                                                  setSelectedIds(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(b.id)) next.delete(b.id);
+                                                    else next.add(b.id);
+                                                    return next;
+                                                  });
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                              />
+                                            )}
                                             <span className="text-xs text-muted-foreground font-mono">#{b.stop_order}</span>
                                             <span className="text-sm font-medium truncate">{b.property_name}</span>
                                             {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1 py-0">P</Badge>}
@@ -1259,6 +1356,19 @@ export default function SavedRoutes({ inspectorId }: { inspectorId?: string }) {
                                     </div>
                                   );
                                 })}
+                                {bulkMode && selectedIds.size > 0 && (
+                                  <div className="sticky bottom-0 left-0 right-0 p-3 bg-background border-t border-border flex items-center justify-between gap-3 z-10">
+                                    <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                                    <Button
+                                      className="bg-success text-success-foreground hover:bg-success/90"
+                                      disabled={saving}
+                                      onClick={handleBulkComplete}
+                                    >
+                                      {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
+                                      Mark Complete
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
                               )}
                             </div>
