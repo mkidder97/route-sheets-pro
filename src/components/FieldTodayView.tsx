@@ -18,6 +18,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -41,40 +48,45 @@ import { startOfWeek, format } from "date-fns";
 
 // ---------- Types ----------
 
-interface CampaignBuilding {
+interface RoutePlanBuilding {
   id: string;
-  campaign_id: string;
-  building_id: string;
+  property_name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  latitude: number | null;
+  longitude: number | null;
+  square_footage: number | null;
+  roof_access_type: string | null;
+  access_location: string | null;
+  lock_gate_codes: string | null;
+  special_equipment: string[] | null;
+  special_notes: string | null;
+  property_manager_name: string | null;
+  property_manager_phone: string | null;
+  property_manager_email: string | null;
+  requires_advance_notice: boolean | null;
+  requires_escort: boolean | null;
+  building_code: string | null;
+  photo_url: string | null;
   inspection_status: string;
   scheduled_week: string | null;
-  is_priority: boolean;
-  inspector_id: string | null;
+  is_priority: boolean | null;
   inspector_notes: string | null;
-  photo_url: string | null;
   completion_date: string | null;
-  buildings: {
-    id: string;
-    property_name: string;
-    address: string;
-    city: string;
-    state: string;
-    zip_code: string;
-    latitude: number | null;
-    longitude: number | null;
-    square_footage: number | null;
-    roof_access_type: string | null;
-    access_location: string | null;
-    lock_gate_codes: string | null;
-    special_equipment: string[] | null;
-    special_notes: string | null;
-    property_manager_name: string | null;
-    property_manager_phone: string | null;
-    property_manager_email: string | null;
-    requires_advance_notice: boolean | null;
-    requires_escort: boolean | null;
-    building_code: string | null;
-    photo_url: string | null;
-  };
+  // Route plan metadata
+  dayId: string;
+  dayNumber: number;
+  dayDate: string;
+  stopOrder: number;
+}
+
+interface RoutePlanOption {
+  id: string;
+  name: string;
+  clientName: string | null;
+  regionName: string | null;
 }
 
 type Tier = "priority" | "this_week" | "retry" | "overdue" | "backlog" | "complete";
@@ -96,7 +108,7 @@ function getCurrentWeekMonday(): string {
   return format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
 }
 
-function categorizeBuildng(b: CampaignBuilding, currentWeekMonday: string): Tier {
+function categorizeBuilding(b: RoutePlanBuilding, currentWeekMonday: string): Tier {
   if (b.inspection_status === "complete") return "complete";
   if (b.inspection_status === "skipped" || b.inspection_status === "needs_revisit") return "retry";
   if (b.is_priority && b.scheduled_week && b.scheduled_week <= currentWeekMonday) return "priority";
@@ -134,15 +146,17 @@ function openNavigation(address: string, city: string, state: string, zipCode: s
 
 export default function FieldTodayView({ inspectorId }: { inspectorId: string }) {
   const [loading, setLoading] = useState(true);
-  const [campaignName, setCampaignName] = useState<string | null>(null);
-  const [buildings, setBuildings] = useState<CampaignBuilding[]>([]);
+  const [planName, setPlanName] = useState<string | null>(null);
+  const [plans, setPlans] = useState<RoutePlanOption[]>([]);
+  const [activePlanId, setActivePlanId] = useState<string | null>(null);
+  const [buildings, setBuildings] = useState<RoutePlanBuilding[]>([]);
   const [expandedBuilding, setExpandedBuilding] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsActive, setGpsActive] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
 
   // Note dialog
-  const [noteDialog, setNoteDialog] = useState<{ id: string; buildingId: string; status: string } | null>(null);
+  const [noteDialog, setNoteDialog] = useState<{ buildingId: string; status: string } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -155,52 +169,105 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
 
   const currentWeekMonday = useMemo(() => getCurrentWeekMonday(), []);
 
-  // ---------- Campaign Discovery ----------
+  // ---------- Route Plan Discovery ----------
 
-  const discoverCampaign = useCallback(async () => {
-    // Try cached campaign first
-    const cached = localStorage.getItem("roofroute_active_campaign");
+  const discoverRoutePlan = useCallback(async (): Promise<string | null> => {
+    // Try cached plan first
+    const cached = localStorage.getItem("roofroute_active_plan");
     if (cached) {
-      const { count } = await supabase
-        .from("campaign_buildings")
-        .select("id", { count: "exact", head: true })
-        .eq("campaign_id", cached);
-      if (count && count > 0) {
-        return cached;
+      const { data } = await supabase
+        .from("route_plans")
+        .select("id, name, clients(name), regions(name)")
+        .eq("id", cached)
+        .eq("inspector_id", inspectorId)
+        .single();
+      if (data) {
+        const plan = data as any;
+        setPlanName(plan.name);
+        setPlans([{
+          id: plan.id,
+          name: plan.name,
+          clientName: plan.clients?.name ?? null,
+          regionName: plan.regions?.name ?? null,
+        }]);
+        return plan.id;
       }
+      // Cache invalid — clear it
+      localStorage.removeItem("roofroute_active_plan");
     }
 
-    // Single-query discovery
-    const { data } = await supabase
-      .from("campaign_buildings")
-      .select("campaign_id, inspection_campaigns!inner(id, name, status)")
-      .eq("inspection_campaigns.status", "active")
+    // Find recent route plans for this inspector
+    const { data: planRows } = await supabase
+      .from("route_plans")
+      .select("id, name, clients(name), regions(name)")
       .eq("inspector_id", inspectorId)
-      .limit(1);
+      .order("created_at", { ascending: false })
+      .limit(5);
 
-    if (data && data.length > 0) {
-      const campaignId = data[0].campaign_id;
-      localStorage.setItem("roofroute_active_campaign", campaignId);
-      const camp = data[0].inspection_campaigns as any;
-      if (camp?.name) setCampaignName(camp.name);
-      return campaignId;
-    }
-    return null;
+    if (!planRows || planRows.length === 0) return null;
+
+    const options: RoutePlanOption[] = (planRows as any[]).map(p => ({
+      id: p.id,
+      name: p.name,
+      clientName: p.clients?.name ?? null,
+      regionName: p.regions?.name ?? null,
+    }));
+    setPlans(options);
+
+    // Auto-select if exactly one
+    const selected = options[0];
+    setPlanName(selected.name);
+    localStorage.setItem("roofroute_active_plan", selected.id);
+    return selected.id;
   }, [inspectorId]);
 
   // ---------- Load Buildings ----------
 
-  const loadBuildings = useCallback(async (campaignId: string) => {
-    const { data, error } = await supabase
-      .from("campaign_buildings")
-      .select("*, buildings(*)")
-      .eq("campaign_id", campaignId);
+  const loadBuildings = useCallback(async (planId: string) => {
+    // Step 1: Get all days for this route plan
+    const { data: dayRows, error: dayError } = await supabase
+      .from("route_plan_days")
+      .select("id, day_number, day_date")
+      .eq("route_plan_id", planId)
+      .order("day_number");
 
-    if (error) {
-      console.error("Failed to load buildings:", error);
+    if (dayError || !dayRows || dayRows.length === 0) {
+      console.error("Failed to load route plan days:", dayError);
+      setBuildings([]);
       return;
     }
-    setBuildings((data as unknown as CampaignBuilding[]) || []);
+
+    // Step 2: Get all buildings through the junction table
+    const dayIds = dayRows.map(d => d.id);
+    const { data: rpb, error: rpbError } = await supabase
+      .from("route_plan_buildings")
+      .select("route_plan_day_id, stop_order, buildings(*)")
+      .in("route_plan_day_id", dayIds)
+      .order("stop_order");
+
+    if (rpbError || !rpb) {
+      console.error("Failed to load route plan buildings:", rpbError);
+      setBuildings([]);
+      return;
+    }
+
+    // Step 3: Flatten into RoutePlanBuilding[]
+    const dayMap = new Map(dayRows.map(d => [d.id, d]));
+    const flattened: RoutePlanBuilding[] = rpb
+      .filter((r: any) => r.buildings)
+      .map((r: any) => {
+        const day = dayMap.get(r.route_plan_day_id);
+        return {
+          ...r.buildings,
+          is_priority: r.buildings.is_priority ?? false,
+          dayId: r.route_plan_day_id,
+          dayNumber: day?.day_number ?? 0,
+          dayDate: day?.day_date ?? "",
+          stopOrder: r.stop_order,
+        };
+      });
+
+    setBuildings(flattened);
   }, []);
 
   // ---------- Init ----------
@@ -209,32 +276,34 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     let cancelled = false;
     const init = async () => {
       setLoading(true);
-      const campaignId = await discoverCampaign();
+      const planId = await discoverRoutePlan();
       if (cancelled) return;
-      if (!campaignId) {
+      if (!planId) {
+        setActivePlanId(null);
         setLoading(false);
         return;
       }
-
-      // Load campaign name if not set yet
-      if (!campaignName) {
-        const { data: camp } = await supabase
-          .from("inspection_campaigns")
-          .select("name")
-          .eq("id", campaignId)
-          .single();
-        if (!cancelled && camp) setCampaignName(camp.name);
-      }
-
-      await loadBuildings(campaignId);
+      setActivePlanId(planId);
+      await loadBuildings(planId);
       if (!cancelled) setLoading(false);
-
-      // Request GPS
       requestGPS();
     };
     init();
     return () => { cancelled = true; };
-  }, [inspectorId, discoverCampaign, loadBuildings]);
+  }, [inspectorId, discoverRoutePlan, loadBuildings]);
+
+  // ---------- Plan Picker ----------
+
+  const handlePlanChange = useCallback(async (planId: string) => {
+    const plan = plans.find(p => p.id === planId);
+    if (!plan) return;
+    setActivePlanId(planId);
+    setPlanName(plan.name);
+    localStorage.setItem("roofroute_active_plan", planId);
+    setLoading(true);
+    await loadBuildings(planId);
+    setLoading(false);
+  }, [plans, loadBuildings]);
 
   // ---------- GPS ----------
 
@@ -251,7 +320,6 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
       setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
       setGpsActive(true);
     } catch {
-      // GPS denied — will sort alphabetically
       setGpsActive(false);
     }
     setGpsLoading(false);
@@ -260,17 +328,15 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
   // ---------- Categorize & Sort ----------
 
   const tieredBuildings = useMemo(() => {
-    const tiers: Record<Tier, (CampaignBuilding & { distance: number | null })[]> = {
+    const tiers: Record<Tier, (RoutePlanBuilding & { distance: number | null })[]> = {
       priority: [], this_week: [], retry: [], overdue: [], backlog: [], complete: [],
     };
 
     for (const b of buildings) {
-      const tier = categorizeBuildng(b, currentWeekMonday);
-      const lat = b.buildings?.latitude;
-      const lng = b.buildings?.longitude;
+      const tier = categorizeBuilding(b, currentWeekMonday);
       let distance: number | null = null;
-      if (userLocation && lat != null && lng != null) {
-        distance = haversineDistance(userLocation.lat, userLocation.lng, lat, lng);
+      if (userLocation && b.latitude != null && b.longitude != null) {
+        distance = haversineDistance(userLocation.lat, userLocation.lng, b.latitude, b.longitude);
       }
       tiers[tier].push({ ...b, distance });
     }
@@ -281,7 +347,7 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
         if (a.distance != null && b.distance != null) return a.distance - b.distance;
         if (a.distance != null) return -1;
         if (b.distance != null) return 1;
-        return (a.buildings?.address || "").localeCompare(b.buildings?.address || "");
+        return (a.address || "").localeCompare(b.address || "");
       });
     }
 
@@ -297,40 +363,34 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
   const progressPct = totalCount > 0 ? Math.round((completeCount / totalCount) * 100) : 0;
   const weekPct = thisWeekTotal > 0 ? Math.round((thisWeekDone / thisWeekTotal) * 100) : 0;
 
-  // ---------- Status Updates (Dual-Write) ----------
+  // ---------- Status Updates (buildings table only) ----------
 
   const updateStatus = useCallback(async (
-    campaignBuildingId: string,
     buildingId: string,
     status: string,
     notes?: string,
   ) => {
     setSaving(true);
 
-    const cbUpdate: Record<string, unknown> = {
+    const update: Record<string, unknown> = {
       inspection_status: status,
       completion_date: status === "complete" ? new Date().toISOString() : null,
     };
-    if (notes !== undefined) cbUpdate.inspector_notes = notes;
+    if (notes !== undefined) update.inspector_notes = notes;
 
-    const bUpdate: Record<string, unknown> = {
-      inspection_status: status,
-      completion_date: status === "complete" ? new Date().toISOString() : null,
-    };
+    const { error } = await supabase
+      .from("buildings")
+      .update(update)
+      .eq("id", buildingId);
 
-    const [cbRes, bRes] = await Promise.all([
-      supabase.from("campaign_buildings").update(cbUpdate).eq("id", campaignBuildingId),
-      supabase.from("buildings").update(bUpdate).eq("id", buildingId),
-    ]);
-
-    if (cbRes.error || bRes.error) {
+    if (error) {
       toast.error("Failed to update status");
     } else {
       const label = status === "complete" ? "Complete" : status === "skipped" ? "Skipped" : "Needs Revisit";
       toast.success(`Marked ${label}`);
       setBuildings(prev => prev.map(b =>
-        b.id === campaignBuildingId
-          ? { ...b, inspection_status: status, completion_date: cbUpdate.completion_date as string | null, inspector_notes: (notes ?? b.inspector_notes) }
+        b.id === buildingId
+          ? { ...b, inspection_status: status, completion_date: update.completion_date as string | null, inspector_notes: (notes ?? b.inspector_notes) }
           : b
       ));
     }
@@ -340,16 +400,16 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     setNoteText("");
   }, []);
 
-  const handleQuickDone = useCallback((cb: CampaignBuilding) => {
-    updateStatus(cb.id, cb.buildings.id, "complete");
+  const handleQuickDone = useCallback((b: RoutePlanBuilding) => {
+    updateStatus(b.id, "complete");
   }, [updateStatus]);
 
-  const handleStatusWithNote = useCallback((cb: CampaignBuilding, status: string) => {
+  const handleStatusWithNote = useCallback((b: RoutePlanBuilding, status: string) => {
     if (status === "skipped" || status === "needs_revisit") {
-      setNoteDialog({ id: cb.id, buildingId: cb.buildings.id, status });
+      setNoteDialog({ buildingId: b.id, status });
       setNoteText("");
     } else {
-      updateStatus(cb.id, cb.buildings.id, status);
+      updateStatus(b.id, status);
     }
   }, [updateStatus]);
 
@@ -364,23 +424,14 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     if (selectedIds.size === 0) return;
     setSaving(true);
 
-    const selected = buildings.filter(b => selectedIds.has(b.id));
     const now = new Date().toISOString();
 
-    // Update campaign_buildings
-    const { error: cbError } = await supabase
-      .from("campaign_buildings")
+    const { error } = await supabase
+      .from("buildings")
       .update({ inspection_status: "complete", completion_date: now })
       .in("id", Array.from(selectedIds));
 
-    // Dual-write to buildings
-    const buildingIds = selected.map(b => b.buildings.id);
-    const { error: bError } = await supabase
-      .from("buildings")
-      .update({ inspection_status: "complete", completion_date: now })
-      .in("id", buildingIds);
-
-    if (cbError || bError) {
+    if (error) {
       toast.error("Some updates failed");
     } else {
       toast.success(`${selectedIds.size} buildings marked complete`);
@@ -394,7 +445,7 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     setSelectedIds(new Set());
     setBulkMode(false);
     setSaving(false);
-  }, [selectedIds, buildings]);
+  }, [selectedIds]);
 
   // ---------- Section Toggle ----------
 
@@ -416,12 +467,12 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
     );
   }
 
-  if (buildings.length === 0) {
+  if (!activePlanId || buildings.length === 0) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
-          <p className="text-muted-foreground">No active campaign found for this inspector.</p>
-          <p className="text-xs text-muted-foreground mt-2">Campaigns are assigned in the Ops dashboard.</p>
+          <p className="text-muted-foreground">No route plan found for this inspector.</p>
+          <p className="text-xs text-muted-foreground mt-2">Route plans are created in the Route Builder.</p>
         </CardContent>
       </Card>
     );
@@ -429,13 +480,29 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
 
   return (
     <div className="space-y-4 pb-24">
+      {/* Plan Picker (if multiple) */}
+      {plans.length > 1 && (
+        <Select value={activePlanId} onValueChange={handlePlanChange}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select route plan" />
+          </SelectTrigger>
+          <SelectContent>
+            {plans.map(p => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}{p.clientName ? ` — ${p.clientName}` : ""}{p.regionName ? ` (${p.regionName})` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
       {/* Header / Progress */}
       <Card>
         <CardContent className="pt-4 pb-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              {campaignName && (
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{campaignName}</p>
+              {planName && (
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{planName}</p>
               )}
               <p className="text-sm font-semibold">
                 {completeCount} of {totalCount} complete
@@ -521,22 +588,22 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent className={`space-y-2 mt-2 ${config.dimmed ? "opacity-70" : ""}`}>
-              {items.map(cb => (
+              {items.map(b => (
                 <BuildingCard
-                  key={cb.id}
-                  cb={cb}
+                  key={b.id}
+                  b={b}
                   tierConfig={config}
-                  expanded={expandedBuilding === cb.id}
-                  onToggleExpand={() => setExpandedBuilding(expandedBuilding === cb.id ? null : cb.id)}
-                  onQuickDone={() => handleQuickDone(cb)}
-                  onStatusChange={(status) => handleStatusWithNote(cb, status)}
-                  onNavigate={() => openNavigation(cb.buildings.address, cb.buildings.city, cb.buildings.state, cb.buildings.zip_code)}
+                  expanded={expandedBuilding === b.id}
+                  onToggleExpand={() => setExpandedBuilding(expandedBuilding === b.id ? null : b.id)}
+                  onQuickDone={() => handleQuickDone(b)}
+                  onStatusChange={(status) => handleStatusWithNote(b, status)}
+                  onNavigate={() => openNavigation(b.address, b.city, b.state, b.zip_code)}
                   bulkMode={bulkMode}
-                  selected={selectedIds.has(cb.id)}
+                  selected={selectedIds.has(b.id)}
                   onToggleSelect={() => {
                     setSelectedIds(prev => {
                       const next = new Set(prev);
-                      if (next.has(cb.id)) next.delete(cb.id); else next.add(cb.id);
+                      if (next.has(b.id)) next.delete(b.id); else next.add(b.id);
                       return next;
                     });
                   }}
@@ -564,7 +631,7 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
           <DialogFooter>
             <Button variant="ghost" onClick={() => setNoteDialog(null)}>Cancel</Button>
             <Button
-              onClick={() => noteDialog && updateStatus(noteDialog.id, noteDialog.buildingId, noteDialog.status, noteText)}
+              onClick={() => noteDialog && updateStatus(noteDialog.buildingId, noteDialog.status, noteText)}
               disabled={saving}
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
@@ -591,7 +658,7 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
 // ---------- Building Card Sub-component ----------
 
 interface BuildingCardProps {
-  cb: CampaignBuilding & { distance: number | null };
+  b: RoutePlanBuilding & { distance: number | null };
   tierConfig: { borderClass: string };
   expanded: boolean;
   onToggleExpand: () => void;
@@ -605,7 +672,7 @@ interface BuildingCardProps {
 }
 
 function BuildingCard({
-  cb,
+  b,
   tierConfig,
   expanded,
   onToggleExpand,
@@ -617,9 +684,6 @@ function BuildingCard({
   onToggleSelect,
   saving,
 }: BuildingCardProps) {
-  const b = cb.buildings;
-  if (!b) return null;
-
   return (
     <Card className={`${tierConfig.borderClass} overflow-hidden`}>
       <CardContent className="p-3 space-y-2">
@@ -635,15 +699,15 @@ function BuildingCard({
           <div className="flex-1 min-w-0 cursor-pointer" onClick={onToggleExpand}>
             <div className="flex items-center gap-2">
               <span className="font-semibold text-sm truncate">{b.property_name}</span>
-              {cb.is_priority && (
+              {b.is_priority && (
                 <Badge className="bg-destructive/20 text-destructive text-[10px] px-1.5 py-0">P</Badge>
               )}
             </div>
             <p className="text-xs text-muted-foreground truncate">{b.address}, {b.city}</p>
           </div>
-          {cb.distance != null && (
+          {b.distance != null && (
             <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-              {formatDistance(cb.distance)}
+              {formatDistance(b.distance)}
             </span>
           )}
         </div>
@@ -683,7 +747,7 @@ function BuildingCard({
               size="sm"
               className="h-8 text-xs flex-1 bg-success text-success-foreground hover:bg-success/90"
               onClick={onQuickDone}
-              disabled={saving || cb.inspection_status === "complete"}
+              disabled={saving || b.inspection_status === "complete"}
             >
               <Check className="h-3 w-3 mr-1" /> Done
             </Button>
@@ -745,20 +809,20 @@ function BuildingCard({
             )}
 
             {/* Inspector notes */}
-            {cb.inspector_notes && (
+            {b.inspector_notes && (
               <div>
                 <p className="text-xs font-semibold">Inspector Notes</p>
-                <p className="text-xs text-muted-foreground">{cb.inspector_notes}</p>
+                <p className="text-xs text-muted-foreground">{b.inspector_notes}</p>
               </div>
             )}
 
             {/* CAD */}
-            {(cb.photo_url || b.photo_url) && (
+            {b.photo_url && (
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full text-xs"
-                onClick={() => window.open(cb.photo_url || b.photo_url!, "_blank")}
+                onClick={() => window.open(b.photo_url!, "_blank")}
               >
                 <ImageIcon className="h-3 w-3 mr-1" /> View CAD
               </Button>
@@ -770,7 +834,7 @@ function BuildingCard({
                 size="sm"
                 className="text-xs bg-success text-success-foreground hover:bg-success/90"
                 onClick={onQuickDone}
-                disabled={saving || cb.inspection_status === "complete"}
+                disabled={saving || b.inspection_status === "complete"}
               >
                 <Check className="h-3 w-3 mr-1" /> Done
               </Button>
