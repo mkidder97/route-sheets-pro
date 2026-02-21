@@ -1,5 +1,45 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// --- In-memory rate limiting ---
+const RATE_LIMIT = 30;
+const RATE_WINDOW = 60_000;
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(req: Request): Response | null {
+  const forwarded = req.headers.get("x-forwarded-for");
+  const ip = (forwarded ? forwarded.split(",")[0].trim() : null)
+    || req.headers.get("cf-connecting-ip")
+    || "unknown";
+
+  const now = Date.now();
+  for (const [key, entry] of rateLimitMap) {
+    if (now > entry.resetTime) rateLimitMap.delete(key);
+  }
+
+  let entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetTime) {
+    entry = { count: 1, resetTime: now + RATE_WINDOW };
+    rateLimitMap.set(ip, entry);
+    return null;
+  }
+
+  entry.count++;
+  if (entry.count > RATE_LIMIT) {
+    return new Response(
+      JSON.stringify({ error: "Too many requests. Please try again later." }),
+      {
+        status: 429,
+        headers: {
+          ...getCorsHeaders(req),
+          "Content-Type": "application/json",
+          "Retry-After": "60",
+        },
+      }
+    );
+  }
+  return null;
+}
+
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "http://localhost:5173")
   .split(",")
   .map((o) => o.trim());
@@ -81,6 +121,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: getCorsHeaders(req) });
   }
+
+  // Rate limit check
+  const rateLimitResponse = checkRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
