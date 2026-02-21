@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import SavedRoutes from "@/components/SavedRoutes";
+import FieldTodayView from "@/components/FieldTodayView";
 
 interface InspectorOption {
   id: string;
@@ -78,7 +78,7 @@ export default function MyRoutes() {
         </Card>
       )}
 
-      {selectedId && <SavedRoutes inspectorId={selectedId} />}
+      {selectedId && <FieldTodayView inspectorId={selectedId} />}
     </div>
   );
 }
