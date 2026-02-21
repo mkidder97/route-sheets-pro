@@ -111,13 +111,35 @@ function getCurrentWeekMonday(): string {
   return format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
 }
 
+/**
+ * Normalize scheduled_week values from various formats to ISO "yyyy-MM-dd".
+ * Handles: "2026-02-09", "Week of 02/09/2026", "Week of 2/9/2026", etc.
+ * Returns null for unparseable values like "DRAW CAD", "TBD Disposition".
+ */
+function normalizeWeekToISO(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // Already ISO format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  // "Week of MM/DD/YYYY" pattern
+  const match = raw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) {
+    const [, m, d, y] = match;
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    if (!isNaN(date.getTime())) {
+      return format(date, "yyyy-MM-dd");
+    }
+  }
+  return null;
+}
+
 function categorizeBuilding(b: RoutePlanBuilding, currentWeekMonday: string): Tier {
   if (b.inspection_status === "complete") return "complete";
   if (b.inspection_status === "skipped" || b.inspection_status === "needs_revisit") return "retry";
-  if (b.is_priority && b.scheduled_week && b.scheduled_week <= currentWeekMonday) return "priority";
-  if (b.is_priority && !b.scheduled_week) return "priority";
-  if (b.scheduled_week === currentWeekMonday) return "this_week";
-  if (b.scheduled_week && b.scheduled_week < currentWeekMonday) return "overdue";
+  const weekISO = normalizeWeekToISO(b.scheduled_week);
+  if (b.is_priority && weekISO && weekISO <= currentWeekMonday) return "priority";
+  if (b.is_priority && !weekISO) return "priority";
+  if (weekISO === currentWeekMonday) return "this_week";
+  if (weekISO && weekISO < currentWeekMonday) return "overdue";
   return "backlog";
 }
 
@@ -336,8 +358,10 @@ export default function FieldTodayView({ inspectorId }: { inspectorId: string })
   // ---------- Week Navigation ----------
 
   const availableWeeks = useMemo(() => {
-    const weeks = [...new Set(buildings.map(b => b.scheduled_week).filter(Boolean))] as string[];
-    return weeks.sort();
+    const isoWeeks = buildings
+      .map(b => normalizeWeekToISO(b.scheduled_week))
+      .filter((w): w is string => w !== null);
+    return [...new Set(isoWeeks)].sort();
   }, [buildings]);
 
   const goToPrevWeek = useCallback(() => {
