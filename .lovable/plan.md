@@ -1,74 +1,27 @@
 
 
-# Building Detail Page
+# Add Codes Tab to the Buildings Page
 
-## Overview
+## Problem
 
-Create `/buildings/:id` detail page with tabbed layout showing all building information, add route to App.tsx, and link property names in Buildings.tsx.
+The Codes feature (lockbox code lookup) is currently only accessible at `/admin/data` under the Data Import page. It's not visible from the main `/buildings` route that the user navigates to regularly. This was a tool the user actively used, and it needs to be front-and-center on the Buildings page.
 
-## Files to Create
+## Solution
 
-### `src/pages/BuildingDetail.tsx`
+Add a tabbed layout to the Buildings page with two tabs: **Buildings** (the current table) and **Codes** (the existing `CodesContent` component). This mirrors the pattern already used in `DataManager.tsx`.
 
-New page component with:
-
-**Data fetching:**
-- `useParams()` to get `id`
-- Query: `supabase.from("buildings").select("*, clients(name), regions(name), inspectors(name)").eq("id", id).maybeSingle()`
-- Inspection history: `supabase.from("campaign_buildings").select("*, inspection_campaigns(name, inspection_type), inspectors(name)").eq("building_id", id).order("created_at", { ascending: false })`
-- "Building not found" state if null result
-
-**Role gating:**
-```typescript
-const { role } = useAuth();
-const canWrite = role === "admin" || role === "office_manager";
-```
-
-**Header (always visible):**
-- Back button (ArrowLeft) linking to `/buildings`
-- `property_name` as h1
-- Address line in muted text
-- Client/Region name badges (when present)
-- Yellow "Priority" badge when `is_priority === true`
-- Edit button (Pencil icon, `canWrite` only) opens Dialog with fields: property_name, address, city, state, zip_code, building_code, roof_group, square_footage, install_year, roof_system, manufacturer, is_priority (Switch)
-
-**Tab 1 -- Overview:**
-- Key facts grid: Building Code, Roof Group, Square Footage, Install Year, Roof System, Manufacturer, Inspector
-- Roof Access section: roof_access_type, roof_access_description, access_location, lock_gate_codes
-- Flags: requires_advance_notice / requires_escort as icon + label
-- Special equipment list, special notes block
-- Map section: if lat/lng exist, "Open in Google Maps" button (`https://www.google.com/maps?q=${lat},${lng}`). If missing, "Geocode Address" button calling Google Maps Geocoding API directly (NOT `geocodeBuildingsBatch`)
-
-**Tab 2 -- Contacts:**
-- Property Manager card (name, phone, mobile, email)
-- Asset Manager card (name, phone, email)
-- Site Contact card (name, office phone, mobile, email)
-- Each card only renders if at least one field is non-null
-- Empty state if all groups are null
-
-**Tab 3 -- Inspection History:**
-- Table: Campaign Name (link to `/inspections/campaigns/:campaign_id`), Inspection Type, Status (Badge), Inspector, Completion Date
-- Empty state if no rows
-
-**Tab 4 -- Notes:**
-- Two Textarea fields for `special_notes` and `inspector_notes`
-- Save button per field (`canWrite` only)
-
-**Tabs 5 & 6 -- Stubs:**
-- "Warranties" and "Documents" as "Coming Soon" placeholders
-
-## Files to Modify
-
-### `src/App.tsx`
-- Add lazy import: `const BuildingDetail = lazy(() => import("./pages/BuildingDetail"));`
-- Add route inside UnifiedLayout group: `<Route path="/buildings/:id" element={<BuildingDetail />} />`
+## Changes
 
 ### `src/pages/Buildings.tsx`
-- Import `Link` from `react-router-dom`
-- Find the `<span className="font-medium">{b.property_name}</span>` inside the TableCell and replace it with:
-  `<Link to={/buildings/${b.id}} className="font-medium hover:underline text-primary">{b.property_name}</Link>`
-- This is located by searching for the content `b.property_name` in the TableCell render -- no line number assumed
 
-## No Database Changes
-All tables and columns already exist. No migrations needed.
+Modify the default export to wrap `BuildingsContent` and `CodesContent` in a `Tabs` component:
 
+- Import `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` from shadcn
+- Import `CodesContent` from `./Codes`
+- Replace the current simple layout with a tabbed layout:
+  - Tab 1: "Buildings" (default) renders `BuildingsContent`
+  - Tab 2: "Codes" renders `CodesContent`
+
+The page header stays as-is ("Buildings" title), and the tabs appear below it.
+
+No other files need to change. The existing `/admin/data` DataManager page continues to work independently.
