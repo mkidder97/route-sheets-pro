@@ -595,8 +595,8 @@ export default function OpsCampaignDetail() {
     <div className="space-y-6 pb-24">
       {/* Header */}
       <div className="space-y-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/ops/jobs")}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Back to Job Board
+        <Button variant="ghost" size="sm" onClick={() => navigate("/inspections/campaigns")}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> Back to Campaigns
         </Button>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">

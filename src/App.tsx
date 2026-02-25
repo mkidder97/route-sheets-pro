@@ -75,6 +75,7 @@ const App = () => (
               <Route path="/ops" element={<Navigate to="/ops/jobs" replace />} />
               <Route path="/ops/jobs" element={<OpsJobBoard />} />
               <Route path="/ops/jobs/campaign/:id" element={<OpsCampaignDetail />} />
+              <Route path="/inspections/campaigns/:id" element={<OpsCampaignDetail />} />
               <Route path="/ops/work-orders" element={<OpsWorkOrders />} />
               <Route path="/ops/time-mileage" element={<OpsTimeMileage />} />
               <Route path="/ops/scheduling" element={<OpsScheduling />} />
