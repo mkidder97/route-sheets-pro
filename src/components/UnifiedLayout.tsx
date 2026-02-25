@@ -126,7 +126,7 @@ function DesktopNav() {
 
         {/* Dropdown sections */}
         {NAV_SECTIONS.map((section) => (
-          <NavigationMenuItem key={section.label}>
+          <NavigationMenuItem key={section.label} className="relative">
             <NavigationMenuTrigger
               className={cn(isSectionActive(pathname, section.prefix) && "text-primary")}
             >
