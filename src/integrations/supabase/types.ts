@@ -492,11 +492,14 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          industry: string | null
           is_active: boolean
           name: string
+          notes: string | null
           phone: string | null
           state: string | null
           updated_at: string
+          website: string | null
           zip: string | null
         }
         Insert: {
@@ -506,11 +509,14 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          industry?: string | null
           is_active?: boolean
           name: string
+          notes?: string | null
           phone?: string | null
           state?: string | null
           updated_at?: string
+          website?: string | null
           zip?: string | null
         }
         Update: {
@@ -520,11 +526,14 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          industry?: string | null
           is_active?: boolean
           name?: string
+          notes?: string | null
           phone?: string | null
           state?: string | null
           updated_at?: string
+          website?: string | null
           zip?: string | null
         }
         Relationships: []
@@ -748,6 +757,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      contacts: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          title: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          title?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       generated_documents: {
         Row: {
