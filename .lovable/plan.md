@@ -1,122 +1,74 @@
 
 
-# Build Functional Pages: Clients, Contacts, Contractors, Warranties, Budgets
+# Building Detail Page
 
 ## Overview
 
-Replace 5 placeholder "Coming Soon" pages with real CRUD pages. The `clients` table already exists; `contacts` will be created; `contractors`, `warranties`, and `budgets` will use local mock data.
+Create `/buildings/:id` detail page with tabbed layout showing all building information, add route to App.tsx, and link property names in Buildings.tsx.
 
-## Role-Gating Pattern
+## Files to Create
 
-Matches the existing codebase pattern used in `CMJobsBoard.tsx` and `Campaigns.tsx`:
+### `src/pages/BuildingDetail.tsx`
 
+New page component with:
+
+**Data fetching:**
+- `useParams()` to get `id`
+- Query: `supabase.from("buildings").select("*, clients(name), regions(name), inspectors(name)").eq("id", id).maybeSingle()`
+- Inspection history: `supabase.from("campaign_buildings").select("*, inspection_campaigns(name, inspection_type), inspectors(name)").eq("building_id", id).order("created_at", { ascending: false })`
+- "Building not found" state if null result
+
+**Role gating:**
 ```typescript
-import { useAuth } from "@/hooks/useAuth";
-// ...
 const { role } = useAuth();
 const canWrite = role === "admin" || role === "office_manager";
 ```
 
-`canWrite` gates the Add button, Edit/Delete actions, and dialog visibility.
+**Header (always visible):**
+- Back button (ArrowLeft) linking to `/buildings`
+- `property_name` as h1
+- Address line in muted text
+- Client/Region name badges (when present)
+- Yellow "Priority" badge when `is_priority === true`
+- Edit button (Pencil icon, `canWrite` only) opens Dialog with fields: property_name, address, city, state, zip_code, building_code, roof_group, square_footage, install_year, roof_system, manufacturer, is_priority (Switch)
 
-## Database Changes
+**Tab 1 -- Overview:**
+- Key facts grid: Building Code, Roof Group, Square Footage, Install Year, Roof System, Manufacturer, Inspector
+- Roof Access section: roof_access_type, roof_access_description, access_location, lock_gate_codes
+- Flags: requires_advance_notice / requires_escort as icon + label
+- Special equipment list, special notes block
+- Map section: if lat/lng exist, "Open in Google Maps" button (`https://www.google.com/maps?q=${lat},${lng}`). If missing, "Geocode Address" button calling Google Maps Geocoding API directly (NOT `geocodeBuildingsBatch`)
 
-### 1. Add columns to `clients`
+**Tab 2 -- Contacts:**
+- Property Manager card (name, phone, mobile, email)
+- Asset Manager card (name, phone, email)
+- Site Contact card (name, office phone, mobile, email)
+- Each card only renders if at least one field is non-null
+- Empty state if all groups are null
 
-The existing `clients` table has `contact_name`, `email`, `phone` but lacks `industry`, `website`, `notes`. Add them:
+**Tab 3 -- Inspection History:**
+- Table: Campaign Name (link to `/inspections/campaigns/:campaign_id`), Inspection Type, Status (Badge), Inspector, Completion Date
+- Empty state if no rows
 
-```sql
-ALTER TABLE public.clients
-  ADD COLUMN IF NOT EXISTS industry text,
-  ADD COLUMN IF NOT EXISTS website text,
-  ADD COLUMN IF NOT EXISTS notes text;
-```
+**Tab 4 -- Notes:**
+- Two Textarea fields for `special_notes` and `inspector_notes`
+- Save button per field (`canWrite` only)
 
-### 2. Create `contacts` table
+**Tabs 5 & 6 -- Stubs:**
+- "Warranties" and "Documents" as "Coming Soon" placeholders
 
-```sql
-CREATE TABLE public.contacts (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  email text,
-  phone text,
-  title text,
-  client_id uuid REFERENCES public.clients(id) ON DELETE SET NULL,
-  notes text,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+## Files to Modify
 
-ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
+### `src/App.tsx`
+- Add lazy import: `const BuildingDetail = lazy(() => import("./pages/BuildingDetail"));`
+- Add route inside UnifiedLayout group: `<Route path="/buildings/:id" element={<BuildingDetail />} />`
 
-CREATE POLICY "Authenticated read contacts" ON public.contacts
-  FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Role insert contacts" ON public.contacts
-  FOR INSERT TO authenticated
-  WITH CHECK (has_ops_role(auth.uid(), 'admin'::ops_role)
-           OR has_ops_role(auth.uid(), 'office_manager'::ops_role));
-CREATE POLICY "Role update contacts" ON public.contacts
-  FOR UPDATE TO authenticated
-  USING (has_ops_role(auth.uid(), 'admin'::ops_role)
-      OR has_ops_role(auth.uid(), 'office_manager'::ops_role)
-      OR has_ops_role(auth.uid(), 'field_ops'::ops_role));
-CREATE POLICY "Admin delete contacts" ON public.contacts
-  FOR DELETE TO authenticated
-  USING (has_ops_role(auth.uid(), 'admin'::ops_role));
-```
+### `src/pages/Buildings.tsx`
+- Import `Link` from `react-router-dom`
+- Find the `<span className="font-medium">{b.property_name}</span>` inside the TableCell and replace it with:
+  `<Link to={/buildings/${b.id}} className="font-medium hover:underline text-primary">{b.property_name}</Link>`
+- This is located by searching for the content `b.property_name` in the TableCell render -- no line number assumed
 
-### 3. No tables for contractors, warranties, budgets
+## No Database Changes
+All tables and columns already exist. No migrations needed.
 
-These use local state with mock data and `// TODO` comments.
-
-## Page Implementations (5 files)
-
-All pages follow the same structure as `Buildings.tsx` and `Campaigns.tsx`:
-
-- `useAuth()` for `role` and `canWrite` check
-- Loading spinner, search input, optional filter dropdowns
-- shadcn `Table` with relevant columns
-- Add/Edit `Dialog` (visible only when `canWrite`)
-- Delete confirmation (admin/office_manager only)
-- `toast` from sonner for success/error feedback
-- Empty state when no results
-
-### `src/pages/Clients.tsx`
-- **Source**: Supabase `clients` table
-- **Columns**: Name, Industry, Primary Contact (`contact_name`), Email, Phone, Active (badge), Actions
-- **Filters**: Active/Inactive/All select, search by name
-- **Dialog**: name (required), industry, website, contact_name, email, phone, is_active switch, notes
-
-### `src/pages/Contacts.tsx`
-- **Source**: Supabase `contacts` table; fetches `clients` for dropdown
-- **Columns**: Name, Title, Client (name), Email, Phone, Actions
-- **Filters**: Client dropdown, search by name
-- **Dialog**: name (required), title, email, phone, client_id (select), notes
-
-### `src/pages/Contractors.tsx`
-- **Source**: Local mock data (3 sample rows)
-- **Comment**: `// TODO: create contractors table in Supabase`
-- **Columns**: Name, Specialty, Phone, Email, Active, Actions
-- **Info banner**: "This page uses sample data. Connect to a database table for persistence."
-
-### `src/pages/Warranties.tsx`
-- **Source**: Local mock data (3 sample rows)
-- **Comment**: `// TODO: create warranties table in Supabase`
-- **Columns**: Manufacturer, Product, Coverage, Expiration, Building, Status, Actions
-
-### `src/pages/Budgets.tsx`
-- **Source**: Local mock data (3 sample rows)
-- **Comment**: `// TODO: create budgets table in Supabase`
-- **Columns**: Project Name, Client, Amount, Status, Date, Actions
-
-## Files Modified
-
-| File | Action |
-|------|--------|
-| `src/pages/Clients.tsx` | Rewrite with full Supabase CRUD |
-| `src/pages/Contacts.tsx` | Rewrite with full Supabase CRUD |
-| `src/pages/Contractors.tsx` | Rewrite with mock data CRUD |
-| `src/pages/Warranties.tsx` | Rewrite with mock data CRUD |
-| `src/pages/Budgets.tsx` | Rewrite with mock data CRUD |
-| Database migration | Add columns to `clients`, create `contacts` table |
-
-No changes to `App.tsx`, `UnifiedLayout.tsx`, or any other files.
