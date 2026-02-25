@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CodesContent } from "./Codes";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -416,7 +418,18 @@ export default function Buildings() {
         <h1 className="text-3xl font-bold">Buildings</h1>
         <p className="text-muted-foreground mt-1">View and manage all buildings</p>
       </div>
-      <BuildingsContent />
+      <Tabs defaultValue="buildings">
+        <TabsList>
+          <TabsTrigger value="buildings">Buildings</TabsTrigger>
+          <TabsTrigger value="codes">Codes</TabsTrigger>
+        </TabsList>
+        <TabsContent value="buildings">
+          <BuildingsContent />
+        </TabsContent>
+        <TabsContent value="codes">
+          <CodesContent />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
