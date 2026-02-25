@@ -1,28 +1,29 @@
 
 
-# Add Regions Fetch to Dashboard
+# Add "Data Import" to Admin Nav
 
-## Summary
+## Single Change: `src/components/UnifiedLayout.tsx`
 
-Add a 5th parallel fetch for `regions` data to compute the "Across N regions" subtext on the Active Clients KPI card.
+In the `NAV_SECTIONS` array, add `{ label: "Data Import", to: "/admin/data" }` to the Admin section's `items` array, positioned after "Regions" and before "Settings".
 
-## Change: `src/pages/Dashboard.tsx`
-
-### Data Fetching
-
-Add to the existing `Promise.all`:
-
+### Before
 ```typescript
-supabase.from('regions').select('id, client_id')
+items: [
+  { label: "Users", to: "/admin/users" },
+  { label: "Regions", to: "/admin/regions" },
+  { label: "Settings", to: "/settings" },
+],
 ```
 
-This becomes the 5th query alongside buildings, clients, inspection_campaigns, and cm_jobs.
+### After
+```typescript
+items: [
+  { label: "Users", to: "/admin/users" },
+  { label: "Regions", to: "/admin/regions" },
+  { label: "Data Import", to: "/admin/data" },
+  { label: "Settings", to: "/settings" },
+],
+```
 
-### Computation
-
-From the regions result, count distinct `region_id` values (just `regions.length` since each row is a unique region). Use this as the "Across N regions" subtext on the Active Clients card.
-
-### No other changes
-
-Everything else in the approved dashboard plan remains identical. This just adds one more query to the parallel fetch and wires the count into the existing KPI card subtext.
+No other files change. The route `/admin/data` already exists in `App.tsx` pointing to `DataManager`.
 
