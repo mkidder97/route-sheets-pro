@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -321,7 +322,7 @@ export function BuildingsContent() {
                       <TableRow className="cursor-pointer">
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{b.property_name}</span>
+                            <Link to={`/buildings/${b.id}`} className="font-medium hover:underline text-primary">{b.property_name}</Link>
                             {b.is_priority && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">P</Badge>}
                           </div>
                         </TableCell>
