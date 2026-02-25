@@ -80,6 +80,7 @@ const NAV_SECTIONS = [
     items: [
       { label: "Users", to: "/admin/users" },
       { label: "Regions", to: "/admin/regions" },
+      { label: "Data Import", to: "/admin/data" },
       { label: "Settings", to: "/settings" },
     ],
   },
