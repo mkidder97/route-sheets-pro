@@ -13,6 +13,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Buildings = lazy(() => import("./pages/Buildings"));
+const BuildingDetail = lazy(() => import("./pages/BuildingDetail"));
 const DataManager = lazy(() => import("./pages/DataManager"));
 const RouteBuilder = lazy(() => import("./pages/RouteBuilder"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -61,6 +62,7 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
 
               <Route path="/buildings" element={<Buildings />} />
+              <Route path="/buildings/:id" element={<BuildingDetail />} />
               <Route path="/admin/data" element={<DataManager />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/contacts" element={<Contacts />} />
