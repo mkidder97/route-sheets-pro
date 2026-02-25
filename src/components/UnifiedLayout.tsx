@@ -151,10 +151,17 @@ function MobileNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [openSection, setOpenSection] = useState<string | null>(
+    () => NAV_SECTIONS.find((s) => isSectionActive(pathname, s.prefix))?.label ?? null
+  );
 
   const go = (to: string) => {
     navigate(to);
     setOpen(false);
+  };
+
+  const toggleSection = (label: string) => {
+    setOpenSection((prev) => (prev === label ? null : label));
   };
 
   return (
@@ -178,9 +185,13 @@ function MobileNav() {
             Dashboard
           </button>
 
-          {/* Sections */}
+          {/* Sections — accordion behavior */}
           {NAV_SECTIONS.map((section) => (
-            <Collapsible key={section.label} defaultOpen={isSectionActive(pathname, section.prefix)}>
+            <Collapsible
+              key={section.label}
+              open={openSection === section.label}
+              onOpenChange={(isOpen) => toggleSection(section.label)}
+            >
               <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium mt-2 hover:bg-accent/50 transition-colors">
                 <span className="flex items-center gap-2">
                   <section.icon className="h-4 w-4" />
