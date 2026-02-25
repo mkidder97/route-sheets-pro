@@ -86,39 +86,101 @@ export type Database = {
         Row: {
           access_location: string | null
           address: string
+          asset_manager_email: string | null
+          asset_manager_name: string | null
+          asset_manager_phone: string | null
           building_code: string | null
+          building_status: string | null
+          capital_budget_actual: number | null
+          capital_budget_category: string | null
+          capital_budget_completed: boolean | null
+          capital_budget_estimated: number | null
+          capital_budget_scope_of_work: string | null
+          capital_budget_year: number | null
           city: string
           client_id: string
           completion_date: string | null
           created_at: string
+          customer: string | null
+          customer_sensitivity: string | null
+          drainage_system: string | null
+          estimated_lttr_value: number | null
+          flashing_detail: string | null
+          has_daylighting: boolean | null
+          has_solar: boolean | null
           id: string
           inspection_date: string | null
           inspection_status: string
           inspector_id: string | null
           inspector_notes: string | null
+          install_date: string | null
+          install_year: number | null
+          installer_has_warranty: boolean | null
+          installer_warranty_expiration: string | null
+          installer_warranty_number: string | null
+          installer_warranty_term: string | null
+          installing_contractor: string | null
+          is_deleted: boolean | null
           is_priority: boolean | null
+          last_inspection_date: string | null
           latitude: number | null
           lock_gate_codes: string | null
           longitude: number | null
+          maintenance_contact_name: string | null
+          maintenance_contact_phone: string | null
+          manufacturer: string | null
+          manufacturer_has_warranty: boolean | null
+          manufacturer_warranty_expiration: string | null
+          manufacturer_warranty_number: string | null
+          manufacturer_warranty_term: string | null
+          market: string | null
+          next_inspection_due: string | null
+          occupant_concern: string | null
+          perimeter_detail: string | null
           photo_url: string | null
+          preventative_budget_actual: number | null
+          preventative_budget_category: string | null
+          preventative_budget_completed: boolean | null
+          preventative_budget_estimated: number | null
+          preventative_budget_scope_of_work: string | null
+          preventative_budget_year: number | null
           property_manager_email: string | null
+          property_manager_mobile: string | null
           property_manager_name: string | null
           property_manager_phone: string | null
           property_name: string
-          region_id: string
+          region_id: string | null
+          repair_contractor: string | null
           requires_advance_notice: boolean | null
           requires_escort: boolean | null
           roof_access_description: string | null
+          roof_access_location: string | null
+          roof_access_safety_concern: string | null
           roof_access_type:
             | Database["public"]["Enums"]["roof_access_type"]
             | null
+          roof_area_unit: string | null
+          roof_category: string | null
           roof_group: string | null
+          roof_rating: string | null
+          roof_section: string | null
+          roof_system: string | null
+          roof_system_description: string | null
+          roof_type: string | null
+          roofmind_id: string | null
+          safety_concerns: string | null
           scheduled_week: string | null
+          site_contact: string | null
+          site_contact_email: string | null
+          site_contact_mobile_phone: string | null
+          site_contact_office_phone: string | null
           special_equipment: string[] | null
           special_notes: string | null
           square_footage: number | null
           state: string
           stop_number: string | null
+          total_leak_expense_12mo: number | null
+          total_leaks_12mo: number | null
           updated_at: string
           upload_id: string | null
           zip_code: string
@@ -126,39 +188,101 @@ export type Database = {
         Insert: {
           access_location?: string | null
           address: string
+          asset_manager_email?: string | null
+          asset_manager_name?: string | null
+          asset_manager_phone?: string | null
           building_code?: string | null
+          building_status?: string | null
+          capital_budget_actual?: number | null
+          capital_budget_category?: string | null
+          capital_budget_completed?: boolean | null
+          capital_budget_estimated?: number | null
+          capital_budget_scope_of_work?: string | null
+          capital_budget_year?: number | null
           city: string
           client_id: string
           completion_date?: string | null
           created_at?: string
+          customer?: string | null
+          customer_sensitivity?: string | null
+          drainage_system?: string | null
+          estimated_lttr_value?: number | null
+          flashing_detail?: string | null
+          has_daylighting?: boolean | null
+          has_solar?: boolean | null
           id?: string
           inspection_date?: string | null
           inspection_status?: string
           inspector_id?: string | null
           inspector_notes?: string | null
+          install_date?: string | null
+          install_year?: number | null
+          installer_has_warranty?: boolean | null
+          installer_warranty_expiration?: string | null
+          installer_warranty_number?: string | null
+          installer_warranty_term?: string | null
+          installing_contractor?: string | null
+          is_deleted?: boolean | null
           is_priority?: boolean | null
+          last_inspection_date?: string | null
           latitude?: number | null
           lock_gate_codes?: string | null
           longitude?: number | null
+          maintenance_contact_name?: string | null
+          maintenance_contact_phone?: string | null
+          manufacturer?: string | null
+          manufacturer_has_warranty?: boolean | null
+          manufacturer_warranty_expiration?: string | null
+          manufacturer_warranty_number?: string | null
+          manufacturer_warranty_term?: string | null
+          market?: string | null
+          next_inspection_due?: string | null
+          occupant_concern?: string | null
+          perimeter_detail?: string | null
           photo_url?: string | null
+          preventative_budget_actual?: number | null
+          preventative_budget_category?: string | null
+          preventative_budget_completed?: boolean | null
+          preventative_budget_estimated?: number | null
+          preventative_budget_scope_of_work?: string | null
+          preventative_budget_year?: number | null
           property_manager_email?: string | null
+          property_manager_mobile?: string | null
           property_manager_name?: string | null
           property_manager_phone?: string | null
           property_name: string
-          region_id: string
+          region_id?: string | null
+          repair_contractor?: string | null
           requires_advance_notice?: boolean | null
           requires_escort?: boolean | null
           roof_access_description?: string | null
+          roof_access_location?: string | null
+          roof_access_safety_concern?: string | null
           roof_access_type?:
             | Database["public"]["Enums"]["roof_access_type"]
             | null
+          roof_area_unit?: string | null
+          roof_category?: string | null
           roof_group?: string | null
+          roof_rating?: string | null
+          roof_section?: string | null
+          roof_system?: string | null
+          roof_system_description?: string | null
+          roof_type?: string | null
+          roofmind_id?: string | null
+          safety_concerns?: string | null
           scheduled_week?: string | null
+          site_contact?: string | null
+          site_contact_email?: string | null
+          site_contact_mobile_phone?: string | null
+          site_contact_office_phone?: string | null
           special_equipment?: string[] | null
           special_notes?: string | null
           square_footage?: number | null
           state: string
           stop_number?: string | null
+          total_leak_expense_12mo?: number | null
+          total_leaks_12mo?: number | null
           updated_at?: string
           upload_id?: string | null
           zip_code: string
@@ -166,39 +290,101 @@ export type Database = {
         Update: {
           access_location?: string | null
           address?: string
+          asset_manager_email?: string | null
+          asset_manager_name?: string | null
+          asset_manager_phone?: string | null
           building_code?: string | null
+          building_status?: string | null
+          capital_budget_actual?: number | null
+          capital_budget_category?: string | null
+          capital_budget_completed?: boolean | null
+          capital_budget_estimated?: number | null
+          capital_budget_scope_of_work?: string | null
+          capital_budget_year?: number | null
           city?: string
           client_id?: string
           completion_date?: string | null
           created_at?: string
+          customer?: string | null
+          customer_sensitivity?: string | null
+          drainage_system?: string | null
+          estimated_lttr_value?: number | null
+          flashing_detail?: string | null
+          has_daylighting?: boolean | null
+          has_solar?: boolean | null
           id?: string
           inspection_date?: string | null
           inspection_status?: string
           inspector_id?: string | null
           inspector_notes?: string | null
+          install_date?: string | null
+          install_year?: number | null
+          installer_has_warranty?: boolean | null
+          installer_warranty_expiration?: string | null
+          installer_warranty_number?: string | null
+          installer_warranty_term?: string | null
+          installing_contractor?: string | null
+          is_deleted?: boolean | null
           is_priority?: boolean | null
+          last_inspection_date?: string | null
           latitude?: number | null
           lock_gate_codes?: string | null
           longitude?: number | null
+          maintenance_contact_name?: string | null
+          maintenance_contact_phone?: string | null
+          manufacturer?: string | null
+          manufacturer_has_warranty?: boolean | null
+          manufacturer_warranty_expiration?: string | null
+          manufacturer_warranty_number?: string | null
+          manufacturer_warranty_term?: string | null
+          market?: string | null
+          next_inspection_due?: string | null
+          occupant_concern?: string | null
+          perimeter_detail?: string | null
           photo_url?: string | null
+          preventative_budget_actual?: number | null
+          preventative_budget_category?: string | null
+          preventative_budget_completed?: boolean | null
+          preventative_budget_estimated?: number | null
+          preventative_budget_scope_of_work?: string | null
+          preventative_budget_year?: number | null
           property_manager_email?: string | null
+          property_manager_mobile?: string | null
           property_manager_name?: string | null
           property_manager_phone?: string | null
           property_name?: string
-          region_id?: string
+          region_id?: string | null
+          repair_contractor?: string | null
           requires_advance_notice?: boolean | null
           requires_escort?: boolean | null
           roof_access_description?: string | null
+          roof_access_location?: string | null
+          roof_access_safety_concern?: string | null
           roof_access_type?:
             | Database["public"]["Enums"]["roof_access_type"]
             | null
+          roof_area_unit?: string | null
+          roof_category?: string | null
           roof_group?: string | null
+          roof_rating?: string | null
+          roof_section?: string | null
+          roof_system?: string | null
+          roof_system_description?: string | null
+          roof_type?: string | null
+          roofmind_id?: string | null
+          safety_concerns?: string | null
           scheduled_week?: string | null
+          site_contact?: string | null
+          site_contact_email?: string | null
+          site_contact_mobile_phone?: string | null
+          site_contact_office_phone?: string | null
           special_equipment?: string[] | null
           special_notes?: string | null
           square_footage?: number | null
           state?: string
           stop_number?: string | null
+          total_leak_expense_12mo?: number | null
+          total_leaks_12mo?: number | null
           updated_at?: string
           upload_id?: string | null
           zip_code?: string
@@ -300,25 +486,46 @@ export type Database = {
       }
       clients: {
         Row: {
+          address: string | null
+          city: string | null
+          contact_name: string | null
           created_at: string
+          email: string | null
           id: string
           is_active: boolean
           name: string
+          phone: string | null
+          state: string | null
           updated_at: string
+          zip: string | null
         }
         Insert: {
+          address?: string | null
+          city?: string | null
+          contact_name?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           is_active?: boolean
           name: string
+          phone?: string | null
+          state?: string | null
           updated_at?: string
+          zip?: string | null
         }
         Update: {
+          address?: string | null
+          city?: string | null
+          contact_name?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           is_active?: boolean
           name?: string
+          phone?: string | null
+          state?: string | null
           updated_at?: string
+          zip?: string | null
         }
         Relationships: []
       }

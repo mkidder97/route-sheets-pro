@@ -12,7 +12,7 @@ import { Building2, Loader2 } from "lucide-react";
 export default function Login() {
   const { user, isLoading, signIn } = useAuth();
   const location = useLocation();
-  const from = (location.state as any)?.from?.pathname || "/";
+  const from = (location.state as any)?.from?.pathname || "/dashboard";
 
   const [rememberMe, setRememberMe] = useState(
     () => localStorage.getItem("roofroute_remember_me") === "true"
@@ -113,7 +113,7 @@ export default function Login() {
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white/20">
           <Building2 className="h-4 w-4 text-white" />
         </div>
-        <span className="text-sm font-bold text-white">Roof Group</span>
+        <span className="text-sm font-bold text-white">RoofMind</span>
       </div>
 
       <div className="flex flex-1 items-center justify-center p-4">
