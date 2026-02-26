@@ -90,6 +90,7 @@ export type Database = {
           asset_manager_name: string | null
           asset_manager_phone: string | null
           building_code: string | null
+          building_front_photo_url: string | null
           building_status: string | null
           capital_budget_actual: number | null
           capital_budget_category: string | null
@@ -105,6 +106,7 @@ export type Database = {
           customer_sensitivity: string | null
           drainage_system: string | null
           estimated_lttr_value: number | null
+          expected_roof_life_years: number | null
           flashing_detail: string | null
           has_daylighting: boolean | null
           has_solar: boolean | null
@@ -192,6 +194,7 @@ export type Database = {
           asset_manager_name?: string | null
           asset_manager_phone?: string | null
           building_code?: string | null
+          building_front_photo_url?: string | null
           building_status?: string | null
           capital_budget_actual?: number | null
           capital_budget_category?: string | null
@@ -207,6 +210,7 @@ export type Database = {
           customer_sensitivity?: string | null
           drainage_system?: string | null
           estimated_lttr_value?: number | null
+          expected_roof_life_years?: number | null
           flashing_detail?: string | null
           has_daylighting?: boolean | null
           has_solar?: boolean | null
@@ -294,6 +298,7 @@ export type Database = {
           asset_manager_name?: string | null
           asset_manager_phone?: string | null
           building_code?: string | null
+          building_front_photo_url?: string | null
           building_status?: string | null
           capital_budget_actual?: number | null
           capital_budget_category?: string | null
@@ -309,6 +314,7 @@ export type Database = {
           customer_sensitivity?: string | null
           drainage_system?: string | null
           estimated_lttr_value?: number | null
+          expected_roof_life_years?: number | null
           flashing_detail?: string | null
           has_daylighting?: boolean | null
           has_solar?: boolean | null
@@ -1117,6 +1123,178 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_assembly_layers: {
+        Row: {
+          attachment_method: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          layer_type: string | null
+          roof_section_id: string
+          sort_order: number
+          thickness: string | null
+        }
+        Insert: {
+          attachment_method?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          layer_type?: string | null
+          roof_section_id: string
+          sort_order?: number
+          thickness?: string | null
+        }
+        Update: {
+          attachment_method?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          layer_type?: string | null
+          roof_section_id?: string
+          sort_order?: number
+          thickness?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_assembly_layers_roof_section_id_fkey"
+            columns: ["roof_section_id"]
+            isOneToOne: false
+            referencedRelation: "roof_sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_sections: {
+        Row: {
+          building_id: string
+          capital_expense_amount: number | null
+          capital_expense_per_sqft: number | null
+          capital_expense_type: string | null
+          capital_expense_year: number | null
+          contractor_warranty_expiration: string | null
+          core_photo_url: string | null
+          created_at: string | null
+          drainage_system: string | null
+          flashing_detail: string | null
+          has_contractor_warranty: boolean | null
+          has_daylighting: boolean | null
+          has_manufacturer_warranty: boolean | null
+          has_recover: boolean | null
+          has_solar: boolean | null
+          id: string
+          installing_contractor: string | null
+          is_live: boolean | null
+          lttr_value: number | null
+          maintenance_budget_amount: number | null
+          maintenance_budget_source_date: string | null
+          manufacturer: string | null
+          perimeter_detail: string | null
+          rating: number | null
+          recover_type: string | null
+          repairing_contractor: string | null
+          replacement_year: number | null
+          roof_area_sqft: number | null
+          roof_section_photo_url: string | null
+          roof_system: string | null
+          section_name: string
+          system_description: string | null
+          updated_at: string | null
+          warranty_expiration_date: string | null
+          warranty_guarantee_number: string | null
+          warranty_issued_by: string | null
+          year_installed: number | null
+          year_originally_installed: number | null
+        }
+        Insert: {
+          building_id: string
+          capital_expense_amount?: number | null
+          capital_expense_per_sqft?: number | null
+          capital_expense_type?: string | null
+          capital_expense_year?: number | null
+          contractor_warranty_expiration?: string | null
+          core_photo_url?: string | null
+          created_at?: string | null
+          drainage_system?: string | null
+          flashing_detail?: string | null
+          has_contractor_warranty?: boolean | null
+          has_daylighting?: boolean | null
+          has_manufacturer_warranty?: boolean | null
+          has_recover?: boolean | null
+          has_solar?: boolean | null
+          id?: string
+          installing_contractor?: string | null
+          is_live?: boolean | null
+          lttr_value?: number | null
+          maintenance_budget_amount?: number | null
+          maintenance_budget_source_date?: string | null
+          manufacturer?: string | null
+          perimeter_detail?: string | null
+          rating?: number | null
+          recover_type?: string | null
+          repairing_contractor?: string | null
+          replacement_year?: number | null
+          roof_area_sqft?: number | null
+          roof_section_photo_url?: string | null
+          roof_system?: string | null
+          section_name?: string
+          system_description?: string | null
+          updated_at?: string | null
+          warranty_expiration_date?: string | null
+          warranty_guarantee_number?: string | null
+          warranty_issued_by?: string | null
+          year_installed?: number | null
+          year_originally_installed?: number | null
+        }
+        Update: {
+          building_id?: string
+          capital_expense_amount?: number | null
+          capital_expense_per_sqft?: number | null
+          capital_expense_type?: string | null
+          capital_expense_year?: number | null
+          contractor_warranty_expiration?: string | null
+          core_photo_url?: string | null
+          created_at?: string | null
+          drainage_system?: string | null
+          flashing_detail?: string | null
+          has_contractor_warranty?: boolean | null
+          has_daylighting?: boolean | null
+          has_manufacturer_warranty?: boolean | null
+          has_recover?: boolean | null
+          has_solar?: boolean | null
+          id?: string
+          installing_contractor?: string | null
+          is_live?: boolean | null
+          lttr_value?: number | null
+          maintenance_budget_amount?: number | null
+          maintenance_budget_source_date?: string | null
+          manufacturer?: string | null
+          perimeter_detail?: string | null
+          rating?: number | null
+          recover_type?: string | null
+          repairing_contractor?: string | null
+          replacement_year?: number | null
+          roof_area_sqft?: number | null
+          roof_section_photo_url?: string | null
+          roof_system?: string | null
+          section_name?: string
+          system_description?: string | null
+          updated_at?: string | null
+          warranty_expiration_date?: string | null
+          warranty_guarantee_number?: string | null
+          warranty_issued_by?: string | null
+          year_installed?: number | null
+          year_originally_installed?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_sections_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
         ]
