@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import RoofSpecsTab from "@/components/building/RoofSpecsTab";
 import FindingsTab from "@/components/building/FindingsTab";
+import DocumentsTab from "@/components/building/DocumentsTab";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface BuildingRow extends Tables<"buildings"> {
@@ -525,13 +526,9 @@ export default function BuildingDetail() {
           <RoofSpecsTab buildingId={building.id} canWrite={canWrite} isAdmin={role === "admin"} />
         </TabsContent>
 
-        {/* Tab 6: Documents stub */}
+        {/* Tab 6: Documents */}
         <TabsContent value="documents">
-          <div className="text-center py-16 text-muted-foreground">
-            <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="text-lg font-medium">Coming Soon</p>
-            <p className="text-sm">Document management will be available here.</p>
-          </div>
+          <DocumentsTab buildingId={building.id} canWrite={canWrite} />
         </TabsContent>
       </Tabs>
 
