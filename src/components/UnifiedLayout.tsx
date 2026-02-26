@@ -231,7 +231,7 @@ export default function UnifiedLayout() {
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Top Nav Bar */}
-      <header className="sticky top-0 z-50 flex h-11 items-center gap-2 border-b border-border bg-background/95 backdrop-blur-sm px-4 lg:px-6">
+      <header className="sticky top-0 z-50 flex h-11 items-center gap-2 border-b border-slate-700/50 bg-slate-900/95 backdrop-blur-sm px-4 lg:px-6">
         {/* Mobile hamburger */}
         {isMobile && <MobileNav />}
 
@@ -240,7 +240,7 @@ export default function UnifiedLayout() {
           <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
             <Building2 className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <span className="text-sm font-semibold text-foreground tracking-tight">RoofMind</span>
+          <span className="text-sm font-semibold text-white tracking-tight">RoofMind</span>
         </Link>
 
         {/* Desktop nav */}
