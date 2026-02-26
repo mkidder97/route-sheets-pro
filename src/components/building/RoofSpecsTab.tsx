@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,6 +46,7 @@ import {
   DollarSign,
   ShieldCheck,
   Droplets,
+  Camera,
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -76,6 +77,10 @@ export default function RoofSpecsTab({ buildingId, canWrite, isAdmin }: RoofSpec
   const [layerDialogOpen, setLayerDialogOpen] = useState(false);
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState<{ sectionId: string; type: 'core' | 'section' } | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
+  const corePhotoRef = useRef<HTMLInputElement>(null);
+  const sectionPhotoRef = useRef<HTMLInputElement>(null);
 
   // Form data
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -264,6 +269,30 @@ export default function RoofSpecsTab({ buildingId, canWrite, isAdmin }: RoofSpec
       if (selectedId) await loadLayers(selectedId);
     }
     setSaving(false);
+  };
+
+  // Photo upload handler
+  const handlePhotoUpload = async (file: File, sectionId: string, type: 'core' | 'section') => {
+    setUploadingPhoto({ sectionId, type });
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const prefix = type === 'core' ? 'core' : 'section';
+      const path = `${buildingId}/roof-sections/${sectionId}/${prefix}-${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage.from('building-files').upload(path, file);
+      if (uploadErr) throw uploadErr;
+      const { data: { publicUrl } } = supabase.storage.from('building-files').getPublicUrl(path);
+      const col = type === 'core' ? 'core_photo_url' : 'roof_section_photo_url';
+      const { error: updateErr } = await supabase.from('roof_sections').update({ [col]: publicUrl }).eq('id', sectionId);
+      if (updateErr) throw updateErr;
+      toast.success(`${type === 'core' ? 'Core' : 'Section'} photo uploaded`);
+      await loadSections();
+    } catch (err: any) {
+      toast.error(err.message || 'Upload failed');
+    } finally {
+      setUploadingPhoto(null);
+      if (corePhotoRef.current) corePhotoRef.current.value = '';
+      if (sectionPhotoRef.current) sectionPhotoRef.current.value = '';
+    }
   };
 
   // Toggle is_live (admin only, immediate)
@@ -480,8 +509,75 @@ export default function RoofSpecsTab({ buildingId, canWrite, isAdmin }: RoofSpec
                     <SpecFact label="Flashing Detail" value={selected.flashing_detail} />
                     <SpecFact label="Drainage System" value={selected.drainage_system} />
                   </div>
+                  {/* Photo thumbnails */}
+                  <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-700">
+                    <div>
+                      <p className="text-slate-400 text-xs mb-2">Core Photo</p>
+                      {selected.core_photo_url ? (
+                        <img
+                          src={selected.core_photo_url}
+                          alt="Core photo"
+                          className="w-24 h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setPreviewPhoto({ url: selected.core_photo_url!, title: `${selected.section_name} — Core Photo` })}
+                        />
+                      ) : (
+                        <div className="w-24 h-24 rounded-lg bg-slate-700/50 border border-slate-600 flex items-center justify-center">
+                          <Camera className="h-6 w-6 text-slate-500" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-xs mb-2">Section Photo</p>
+                      {selected.roof_section_photo_url ? (
+                        <img
+                          src={selected.roof_section_photo_url}
+                          alt="Section photo"
+                          className="w-24 h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setPreviewPhoto({ url: selected.roof_section_photo_url!, title: `${selected.section_name} — Section Photo` })}
+                        />
+                      ) : (
+                        <div className="w-24 h-24 rounded-lg bg-slate-700/50 border border-slate-600 flex items-center justify-center">
+                          <Camera className="h-6 w-6 text-slate-500" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   {canWrite && (
-                    <div className="flex justify-end mt-3">
+                    <div className="flex items-center justify-end gap-2 mt-3">
+                      <input type="file" accept="image/*" ref={corePhotoRef} className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && selected) handlePhotoUpload(file, selected.id, 'core');
+                      }} />
+                      <input type="file" accept="image/*" ref={sectionPhotoRef} className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && selected) handlePhotoUpload(file, selected.id, 'section');
+                      }} />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => corePhotoRef.current?.click()}
+                        disabled={!!uploadingPhoto}
+                      >
+                        {uploadingPhoto?.sectionId === selected.id && uploadingPhoto?.type === 'core' ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Camera className="h-4 w-4 mr-1" />
+                        )}
+                        {selected.core_photo_url ? 'Replace Core Photo' : 'Upload Core Photo'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => sectionPhotoRef.current?.click()}
+                        disabled={!!uploadingPhoto}
+                      >
+                        {uploadingPhoto?.sectionId === selected.id && uploadingPhoto?.type === 'section' ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Camera className="h-4 w-4 mr-1" />
+                        )}
+                        {selected.roof_section_photo_url ? 'Replace Section Photo' : 'Upload Section Photo'}
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={openDetailsEdit}>
                         <Pencil className="h-4 w-4 text-slate-400" />
                       </Button>
@@ -800,6 +896,18 @@ export default function RoofSpecsTab({ buildingId, canWrite, isAdmin }: RoofSpec
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Save
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo Preview Dialog */}
+      <Dialog open={!!previewPhoto} onOpenChange={() => setPreviewPhoto(null)}>
+        <DialogContent className="max-w-2xl bg-slate-800 border-slate-700">
+          <DialogHeader>
+            <DialogTitle>{previewPhoto?.title}</DialogTitle>
+          </DialogHeader>
+          {previewPhoto && (
+            <img src={previewPhoto.url} alt={previewPhoto.title} className="w-full rounded-lg" />
+          )}
         </DialogContent>
       </Dialog>
     </div>
