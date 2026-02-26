@@ -231,16 +231,16 @@ export default function UnifiedLayout() {
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Top Nav Bar */}
-      <header className="sticky top-0 z-50 flex h-14 items-center gap-2 border-b border-border bg-background px-4 lg:px-6">
+      <header className="sticky top-0 z-50 flex h-11 items-center gap-2 border-b border-border bg-background/95 backdrop-blur-sm px-4 lg:px-6">
         {/* Mobile hamburger */}
         {isMobile && <MobileNav />}
 
         {/* Brand */}
         <Link to="/dashboard" className="flex items-center gap-2 mr-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/20">
-            <Building2 className="h-4 w-4 text-primary" />
+          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
+            <Building2 className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <span className="text-sm font-bold text-foreground">RoofMind</span>
+          <span className="text-sm font-semibold text-foreground tracking-tight">RoofMind</span>
         </Link>
 
         {/* Desktop nav */}
@@ -250,20 +250,20 @@ export default function UnifiedLayout() {
         <div className="flex-1" />
 
         {/* Right side */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <NotificationBell />
           {profile?.full_name && (
-            <span className="hidden md:inline text-sm text-muted-foreground">{profile.full_name}</span>
+            <span className="hidden md:inline text-xs text-muted-foreground px-2">{profile.full_name}</span>
           )}
-          <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
-            <LogOut className="h-4 w-4" />
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={signOut} title="Sign out">
+            <LogOut className="h-3.5 w-3.5" />
           </Button>
         </div>
       </header>
 
       {/* Content */}
       <main className="flex-1 overflow-auto">
-        <div className="p-4 lg:p-8">
+        <div className="p-4 lg:p-6">
           <Outlet />
         </div>
       </main>
