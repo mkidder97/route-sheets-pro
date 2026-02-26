@@ -43,6 +43,7 @@ import {
   Wrench,
 } from "lucide-react";
 import RoofSpecsTab from "@/components/building/RoofSpecsTab";
+import FindingsTab from "@/components/building/FindingsTab";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface BuildingRow extends Tables<"buildings"> {
@@ -265,9 +266,10 @@ export default function BuildingDetail() {
         <TabsList className="w-full flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
           <TabsTrigger value="roofspecs">Roof Specs</TabsTrigger>
+          <TabsTrigger value="findings">Findings</TabsTrigger>
+          <TabsTrigger value="campaign-history">Campaign History</TabsTrigger>
+          <TabsTrigger value="notes">Notes</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
         </TabsList>
 
@@ -413,8 +415,13 @@ export default function BuildingDetail() {
           )}
         </TabsContent>
 
-        {/* Tab 3: Inspection History */}
-        <TabsContent value="history">
+        {/* Tab: Findings */}
+        <TabsContent value="findings">
+          <FindingsTab buildingId={building.id} canWrite={canWrite} />
+        </TabsContent>
+
+        {/* Tab: Campaign History */}
+        <TabsContent value="campaign-history">
           {history.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Clock className="h-10 w-10 mx-auto mb-3 opacity-40" />
