@@ -18,11 +18,6 @@ import {
   DrawerContent,
   DrawerTrigger,
 } from "@/components/ui/drawer";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -34,7 +29,6 @@ import {
   ClipboardCheck,
   Wrench,
   Shield,
-  ChevronDown,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -152,17 +146,10 @@ function MobileNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [openSection, setOpenSection] = useState<string | null>(
-    () => NAV_SECTIONS.find((s) => isSectionActive(pathname, s.prefix))?.label ?? null
-  );
 
   const go = (to: string) => {
     navigate(to);
     setOpen(false);
-  };
-
-  const toggleSection = (label: string) => {
-    setOpenSection((prev) => (prev === label ? null : label));
   };
 
   return (
@@ -188,49 +175,33 @@ function MobileNav() {
             Dashboard
           </button>
 
-          {/* Sections — accordion behavior */}
-          {NAV_SECTIONS.map((section) => {
-            const sectionIsActive = isSectionActive(pathname, section.prefix);
-            return (
-              <Collapsible
-                key={section.label}
-                open={openSection === section.label}
-                onOpenChange={() => toggleSection(section.label)}
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mt-4 mb-1 px-5">
-                  {section.label}
-                </p>
-                <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md mx-2 px-3 py-1.5 text-sm font-medium hover:bg-slate-700/30 hover:text-slate-200 transition-colors text-slate-400 w-[calc(100%-1rem)]">
-                  <span className="flex items-center gap-2.5">
-                    <section.icon className={cn("w-4 h-4", sectionIsActive ? "text-white" : "text-slate-400")} />
-                    <span className={sectionIsActive ? "text-white" : ""}>Overview</span>
-                  </span>
-                  <ChevronDown className="h-3 w-3 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="flex flex-col gap-0.5 mt-0.5 mx-2">
-                    {section.items.map((item) => {
-                      const isActive = pathname === item.to;
-                      return (
-                        <button
-                          key={item.to}
-                          onClick={() => go(item.to)}
-                          className={cn(
-                            "rounded-md px-3 py-1.5 pl-[2.75rem] text-sm text-left transition-colors font-medium",
-                            isActive
-                              ? "bg-slate-700/60 text-white"
-                              : "text-slate-400 hover:bg-slate-700/30 hover:text-slate-200"
-                          )}
-                        >
-                          {item.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })}
+          {/* Sections — show items directly under section label */}
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.label}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mt-5 mb-1.5 px-5">
+                {section.label}
+              </p>
+              <div className="flex flex-col gap-0.5 mx-2">
+                {section.items.map((item) => {
+                  const isActive = pathname === item.to;
+                  return (
+                    <button
+                      key={item.to}
+                      onClick={() => go(item.to)}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-left transition-colors font-medium",
+                        isActive
+                          ? "bg-slate-700/60 text-white"
+                          : "text-slate-400 hover:bg-slate-700/30 hover:text-slate-200"
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </DrawerContent>
     </Drawer>
