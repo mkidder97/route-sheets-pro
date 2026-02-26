@@ -22,6 +22,7 @@ const Contacts = lazy(() => import("./pages/Contacts"));
 const Contractors = lazy(() => import("./pages/Contractors"));
 const Warranties = lazy(() => import("./pages/Warranties"));
 const Budgets = lazy(() => import("./pages/Budgets"));
+const Portfolio = lazy(() => import("./pages/Portfolio"));
 
 const InspectionCampaigns = lazy(() => import("./pages/inspections/Campaigns"));
 const InspectionSchedule = lazy(() => import("./pages/inspections/Schedule"));
@@ -69,6 +70,7 @@ const App = () => (
               <Route path="/contractors" element={<Contractors />} />
               <Route path="/warranties" element={<Warranties />} />
               <Route path="/budgets" element={<Budgets />} />
+              <Route path="/portfolio" element={<Portfolio />} />
 
               <Route path="/inspections/campaigns" element={<InspectionCampaigns />} />
               <Route path="/route-builder" element={<RouteBuilder />} />
