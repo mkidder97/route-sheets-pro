@@ -1,50 +1,65 @@
 
 
-# Add "Maint. Cost / 100K sqft" KPI Card to Dashboard
+# Portfolio Analytics Page
 
 ## Summary
-Add a 7th KPI card showing the average estimated preventative maintenance budget per 100,000 square feet, and adjust the grid breakpoint so 7 cards wrap cleanly into two rows (4 + 3).
+Create a new read-only Portfolio Analytics page at `/analytics` with interactive sqft-scale toggling and 5 tabbed breakdowns (Maintenance, Capital & Replacement, Leak & Risk, Condition, Warranty). Also wire it into routing and navigation.
 
-## Changes
+## Files Changed
 
-All changes in a single file: `src/pages/Dashboard.tsx`
+### 1. New file: `src/pages/Analytics.tsx`
+A single large page component containing:
 
-### 1. Update buildings query (line 149)
-Add `preventative_budget_estimated` to the select string.
+- **Shared helpers**: `fmtMoney`, `fmtArea`, `scaleMetric`, `AnalyticsKpiCard` (reusable card matching the design system KPI pattern)
+- **Data loading**: `Promise.all` fetching buildings (non-deleted), roof_sections, and clients from the database
+- **Sqft Scale Selector**: Horizontal pill toggle at page top (Per Building / Per 50K / Per 100K / Per 250K / Per 1M sqft) controlling all per-sqft metrics
+- **5 Tabs** using shadcn `Tabs` component:
+  - **Maintenance**: KPI cards for estimated/actual maint cost (scaled), data coverage %, variance. Breakdown table by client.
+  - **Capital & Replacement**: Cap ex (scaled), avg remaining life, replacements due (5yr), projected 5yr spend. Breakdown tables by replacement timeline and by expense type.
+  - **Leak & Risk**: Leak expense (scaled), leak frequency, overdue inspections, priority buildings. Breakdown by state.
+  - **Condition**: Avg roof rating, poor condition count, avg LTTR, sections with data. Breakdowns by roof system (with inline rating bars) and rating distribution buckets.
+  - **Warranty**: Mfg coverage %, contractor coverage %, expiring (12mo), already expired. Breakdown by expiration timeline windows.
+- **Loading state**: 8 skeleton cards + skeleton tabs
+- **Error state**: Centered retry message
 
-### 2. Update BuildingRow interface (line 42-57)
-Add:
-```ts
-preventative_budget_estimated: number | null;
+All derived metrics follow the user's exact formulas. The scale selector applies to all per-sqft KPI cards across all tabs. Flat metrics (avg rating, remaining life, counts) are unaffected by scale.
+
+### 2. `src/App.tsx`
+- Add lazy import: `const Analytics = lazy(() => import("./pages/Analytics"));`
+- Add route inside the protected layout block: `<Route path="/analytics" element={<Analytics />} />`
+
+### 3. `src/components/UnifiedLayout.tsx`
+- Import `BarChart3` from lucide-react
+- **Desktop nav**: Add "Analytics" as a plain `Link` (same pattern as Dashboard) after the Dashboard link, before the dropdown sections
+- **Mobile drawer**: Add an "Analytics" button with `BarChart3` icon after Dashboard and before the Portfolio section
+
+No database migrations needed. No mutations. Read-only page using existing columns.
+
+## Technical Details
+
+### Data Queries
+Three parallel queries via `Promise.all`:
+1. `buildings` -- selecting id, client_id, square_footage, inspection_status, is_priority, install_year, state, total_leaks_12mo, total_leak_expense_12mo, requires_escort, installer_has_warranty, manufacturer_has_warranty, preventative_budget_estimated, preventative_budget_actual, next_inspection_due (filtered non-deleted)
+2. `roof_sections` -- selecting id, building_id, section_name, roof_system, rating, lttr_value, capital_expense_amount, capital_expense_per_sqft, capital_expense_type, capital_expense_year, replacement_year, year_installed, has_manufacturer_warranty, warranty_expiration_date, has_contractor_warranty, contractor_warranty_expiration, has_recover
+3. `clients` -- id, name, is_active
+
+### Scale Metric Logic
+```text
+per_building mode: totalCost / buildingCount
+per_sqft mode:     (totalCost / totalSqft) * scaleValue
 ```
 
-### 3. Add derived metric (after line 194, in the derived data section)
-```ts
-const maintBuildings = buildings.filter(
-  (b) => b.preventative_budget_estimated != null && (b.square_footage ?? 0) > 0
-);
-const totalMaintBudget = maintBuildings.reduce(
-  (s, b) => s + (b.preventative_budget_estimated ?? 0), 0
-);
-const totalMaintSqft = maintBuildings.reduce(
-  (s, b) => s + (b.square_footage ?? 0), 0
-);
-const maintPer100k = totalMaintSqft > 0
-  ? (totalMaintBudget / totalMaintSqft) * 100_000
-  : 0;
+### Component Structure
+```text
+Analytics (default export)
+  +-- AnalyticsKpiCard (local component, reused ~20 times)
+  +-- fmtMoney, fmtArea, scaleMetric (local helpers)
+  +-- Tabs > TabsContent x5
+       +-- KPI card grids (grid-cols-2 md:grid-cols-4)
+       +-- Breakdown tables (shadcn Table)
 ```
 
-### 4. Update KPI grid breakpoint (line 288)
-Change `xl:grid-cols-6` to `xl:grid-cols-4` so 7 cards wrap into two rows (4 + 3).
+### Navigation Placement
+- Desktop: Dashboard | Analytics | [Portfolio v] | [Inspections v] | ...
+- Mobile drawer: Dashboard, Analytics (with BarChart3 icon), then section groups
 
-### 5. Add 7th KPI card (after the Warranty Coverage card, before the closing `</div>` of the grid at line 363)
-New card using amber/orange color scheme with `DollarSign` icon (already imported):
-- Label: "Maint. Cost / 100K sqft"
-- Value: `fmtMoney(maintPer100k)` (helper already exists)
-- Subtext: `Based on ${maintBuildings.length} buildings with data`
-- Icon container: `bg-amber-500/15`, icon color: `text-amber-400`
-
-### 6. Update loading skeleton (line 252)
-Change `xl:grid-cols-6` to `xl:grid-cols-4` and skeleton count from 6 to 7 to match.
-
-No other dashboard changes.
