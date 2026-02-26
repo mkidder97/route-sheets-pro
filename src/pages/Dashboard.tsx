@@ -271,11 +271,11 @@ export default function Dashboard() {
     );
   }
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 max-w-[1400px] mx-auto">
       {/* Greeting */}
       <div>
         <h1 className="text-2xl font-bold">{getGreeting()}, {firstName}</h1>
-        <p className="text-muted-foreground">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
+        <p className="text-sm text-muted-foreground">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
       </div>
 
       {/* Disclaimer */}
@@ -285,7 +285,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {/* Total Buildings */}
         <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
           <div className="flex items-center justify-between mb-3">
@@ -363,7 +363,7 @@ export default function Dashboard() {
       </div>
 
       {/* Portfolio by Client + Inspection Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
         {/* Portfolio by Client */}
         <div className="lg:col-span-3 rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
@@ -454,7 +454,7 @@ export default function Dashboard() {
       </div>
 
       {/* Roof Age + Risk Flags */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Roof Age */}
         <div className="rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
@@ -541,7 +541,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Active Campaigns */}
           <div className="rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
