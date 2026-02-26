@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Shield,
   Activity,
+  Info,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -261,22 +262,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  const kpis = [
-    { label: "Total Buildings", value: totalBuildings.toLocaleString(), sub: `Across ${uniqueStates} states`, icon: Building2 },
-    { label: "Total Area Managed", value: fmtArea(totalArea), sub: `Avg ${avgArea.toLocaleString()} sq ft per building`, icon: Maximize2 },
-    { label: "Active Clients", value: activeClients, sub: `Across ${regionCount} regions`, icon: Users },
-    {
-      label: "Priority Buildings",
-      value: priorityCount,
-      sub: `${priorityPct}% of portfolio`,
-      subColor: priorityPct > 20 ? "text-red-500" : priorityPct > 10 ? "text-amber-500" : undefined,
-      icon: AlertTriangle,
-    },
-    { label: "Inspection Completion", value: `${inspectionPct}%`, sub: `${completedCount} of ${totalBuildings} complete`, icon: CheckCircle2, progress: inspectionPct },
-    { label: "Warranty Coverage", value: `${warrantyPct}%`, sub: `${warrantyCount} buildings covered`, icon: Shield },
-  ];
-
   return (
     <div className="space-y-8">
       {/* Greeting */}
@@ -286,25 +271,87 @@ export default function Dashboard() {
       </div>
 
       {/* Disclaimer */}
-      <div className="rounded-md border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-        📊 Displaying <span className="font-medium text-foreground">{totalBuildings.toLocaleString()}</span> buildings across <span className="font-medium text-foreground">{activeClients}</span> active clients — represents a portion of SRC's total managed portfolio
+      <div className="rounded-md border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+        <Info className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span>Displaying <span className="font-medium text-foreground">{totalBuildings.toLocaleString()}</span> buildings across <span className="font-medium text-foreground">{activeClients}</span> active clients — represents a portion of SRC's total managed portfolio</span>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        {kpis.map((k) => (
-          <Card key={k.label}>
-            <CardContent className="p-4 space-y-1">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <k.icon className="h-4 w-4" />
-                <span className="text-xs font-medium">{k.label}</span>
-              </div>
-              <div className="text-2xl font-bold">{k.value}</div>
-              {"progress" in k && k.progress !== undefined && <Progress value={k.progress} className="h-1.5" />}
-              <p className={`text-xs ${k.subColor ?? "text-muted-foreground"}`}>{k.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* Total Buildings */}
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Total Buildings</p>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-blue-500/15">
+              <Building2 className="w-4 h-4 text-blue-400" />
+            </div>
+          </div>
+          <p className="text-4xl font-bold text-white leading-none">{totalBuildings.toLocaleString()}</p>
+          <p className="text-xs text-slate-500 mt-1">Across {uniqueStates} states</p>
+        </div>
+
+        {/* Total Area Managed */}
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Total Area Managed</p>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-violet-500/15">
+              <Maximize2 className="w-4 h-4 text-violet-400" />
+            </div>
+          </div>
+          <p className="text-4xl font-bold text-white leading-none">{fmtArea(totalArea)}</p>
+          <p className="text-xs text-slate-500 mt-1">Avg {avgArea.toLocaleString()} sq ft per building</p>
+        </div>
+
+        {/* Active Clients */}
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Active Clients</p>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-emerald-500/15">
+              <Users className="w-4 h-4 text-emerald-400" />
+            </div>
+          </div>
+          <p className="text-4xl font-bold text-white leading-none">{activeClients}</p>
+          <p className="text-xs text-slate-500 mt-1">Across {regionCount} regions</p>
+        </div>
+
+        {/* Priority Buildings */}
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Priority Buildings</p>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-amber-500/15">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+            </div>
+          </div>
+          <p className={`text-4xl font-bold leading-none ${priorityCount > 0 ? "text-amber-400" : "text-white"}`}>{priorityCount}</p>
+          <p className="text-xs text-slate-500 mt-1">{priorityPct}% of portfolio</p>
+        </div>
+
+        {/* Inspection Completion */}
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Inspection Completion</p>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-emerald-500/15">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            </div>
+          </div>
+          <p className="text-4xl font-bold text-white leading-none">{inspectionPct}%</p>
+          <div className="mt-2 h-1 rounded-full bg-slate-700">
+            <div className="h-1 rounded-full bg-emerald-500" style={{ width: `${inspectionPct}%` }} />
+          </div>
+          <p className="text-xs text-slate-500 mt-1">{completedCount} of {totalBuildings} complete</p>
+        </div>
+
+        {/* Warranty Coverage */}
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Warranty Coverage</p>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-sky-500/15">
+              <Shield className="w-4 h-4 text-sky-400" />
+            </div>
+          </div>
+          <p className="text-4xl font-bold text-white leading-none">{warrantyPct}%</p>
+          <p className="text-xs text-slate-500 mt-1">{warrantyCount} buildings covered</p>
+        </div>
       </div>
 
       {/* Portfolio by Client + Inspection Status */}
