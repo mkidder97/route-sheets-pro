@@ -1,153 +1,98 @@
 
-# OpsCampaignDetail Full Refactor (Final)
 
-Refactor the existing 938-line file into a tabbed campaign detail page with KPI cards, click-to-cycle status badges, an edit campaign dialog, and a status-note confirmation dialog. Single file change only.
+# Phase 12 File Storage: building_documents Table and building-files Bucket
 
-## Architectural Requirements (locked)
+## Summary
+Create a new `building_documents` table for tracking file metadata and a private `building-files` storage bucket with role-based RLS policies. No changes to existing tables or the `cad-drawings` bucket.
 
-1. **`canEdit`** used throughout (already defined on line 154)
-2. **Single Dialog for status note** at component level with `pendingStatusRow` and `pendingNote` useState values -- rendered once outside the table
-3. **No Popover** -- uses Dialog for skipped/needs_revisit confirmation
+## Database Migration
 
-## Notes State Synchronization (3 sync points)
+A single migration will execute the following:
 
-1. **On fetch**: after `setCampaign(data)`, call `setNotesText(data.notes ?? "")` to seed the Notes tab
-2. **On Edit Dialog save**: after updating campaign local state, call `setNotesText(editForm.notes ?? "")` so the Notes tab reflects changes
-3. **On Notes tab save**: after updating Supabase, call `setCampaign(prev => prev ? { ...prev, notes: notesText } : prev)` and `setEditForm(prev => ({ ...prev, notes: notesText }))` so the Edit Dialog stays in sync
+### 1. building_documents table
+- Columns: id (PK), building_id (FK to buildings with CASCADE delete), uploaded_by (FK to user_profiles), file_name, file_path, file_size, file_type, category (default 'other'), created_at
+- RLS enabled with three policies:
+  - SELECT: all authenticated users
+  - INSERT: admin and office_manager roles (checked via user_roles table)
+  - DELETE: admin and office_manager roles
 
-## Changes to `src/pages/ops/OpsCampaignDetail.tsx`
+### 2. building-files storage bucket
+- Private bucket (public = false)
+- 50MB file size limit
+- No MIME type restrictions
 
-### 1. New Imports
-Add: `Tabs, TabsList, TabsTrigger, TabsContent` from `@/components/ui/tabs`, `Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter` from `@/components/ui/dialog`, `Pencil, Building2, CheckCircle, Clock, AlertCircle, Loader2` from lucide-react.
+### 3. Storage RLS policies on storage.objects
+- **SELECT**: authenticated users can read objects in `building-files` bucket
+- **INSERT**: admin and office_manager roles can upload
+- **DELETE**: admin and office_manager roles can delete
 
-### 2. Dark-Friendly Status Colors
-Replace `BUILDING_STATUS_COLORS` (lines 110-116):
-- `pending`: `bg-slate-500/15 text-slate-400`
-- `in_progress`: `bg-blue-500/15 text-blue-400`
-- `complete`: `bg-emerald-500/15 text-emerald-400`
-- `skipped`: `bg-red-500/15 text-red-400`
-- `needs_revisit`: `bg-amber-500/15 text-amber-400`
+### Storage path conventions (enforced by application code, not SQL)
+- Documents: `{building_id}/documents/{timestamp}-{filename}`
+- Roof section photos: `{building_id}/roof-sections/{section_id}/{type}-{timestamp}.{ext}`
 
-Replace `CAMPAIGN_STATUS_COLORS` (lines 125-130):
-- `planning`: `bg-slate-500/15 text-slate-400`
-- `active`: `bg-blue-500/15 text-blue-400`
-- `complete`: `bg-emerald-500/15 text-emerald-400`
-- `on_hold`: `bg-amber-500/15 text-amber-400`
+## Technical Details
 
-### 3. Status Cycle Constant and Handler
-Add constant:
+The full SQL migration:
+
 ```text
-STATUS_CYCLE: pending -> in_progress -> complete -> skipped -> needs_revisit -> pending
-```
-Handler `handleStatusBadgeClick(cb)`: if next status is `skipped` or `needs_revisit`, set `pendingStatusRow` to open the Dialog. Otherwise call `updateBuildingStatus` directly.
+-- 1. building_documents table
+CREATE TABLE building_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  uploaded_by UUID REFERENCES user_profiles(id),
+  file_name TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  file_size INTEGER,
+  file_type TEXT,
+  category TEXT DEFAULT 'other',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 
-### 4. New Component-Level State
-```ts
-const [pendingStatusRow, setPendingStatusRow] = useState<{
-  cbId: string; buildingId: string; oldStatus: string; newStatus: string;
-} | null>(null);
-const [pendingNote, setPendingNote] = useState("");
-const [editDialogOpen, setEditDialogOpen] = useState(false);
-const [editForm, setEditForm] = useState({ name: "", status: "", end_date: "", notes: "" });
-const [editSaving, setEditSaving] = useState(false);
-const [notesEdit, setNotesEdit] = useState(false);
-const [notesText, setNotesText] = useState("");
-const [notesSaving, setNotesSaving] = useState(false);
-```
+ALTER TABLE building_documents ENABLE ROW LEVEL SECURITY;
 
-### 5. Status Note Confirmation Dialog
-Rendered once at component level, outside the table. Uses Dialog (not Popover):
-```tsx
-<Dialog open={!!pendingStatusRow} onOpenChange={(open) => {
-  if (!open) { setPendingStatusRow(null); setPendingNote(""); }
-}}>
-  <DialogContent className="max-w-sm bg-slate-800 border-slate-700">
-    <DialogHeader>
-      <DialogTitle className="text-slate-100">
-        Add note for "{pendingStatusRow?.newStatus}" status
-      </DialogTitle>
-    </DialogHeader>
-    <Textarea value={pendingNote} onChange={(e) => setPendingNote(e.target.value)}
-      placeholder="Required note..." className="bg-slate-900 border-slate-600 min-h-[80px]" />
-    <DialogFooter>
-      <Button variant="ghost" size="sm" onClick={() => {
-        setPendingStatusRow(null); setPendingNote("");
-      }}>Cancel</Button>
-      <Button size="sm" disabled={!pendingNote.trim()} onClick={async () => {
-        if (!pendingStatusRow) return;
-        await updateBuildingStatus(pendingStatusRow.cbId, pendingStatusRow.buildingId,
-          pendingStatusRow.oldStatus, pendingStatusRow.newStatus);
-        await supabase.from('campaign_buildings')
-          .update({ inspector_notes: pendingNote.trim() })
-          .eq('id', pendingStatusRow.cbId);
-        setPendingStatusRow(null);
-        setPendingNote("");
-      }}>Confirm</Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
-```
+-- Table RLS (3 policies)
+CREATE POLICY "Authenticated users can view building documents"
+  ON building_documents FOR SELECT TO authenticated USING (true);
 
-### 6. Edit Campaign Dialog
-- "Edit" button (Pencil icon) in header, visible when `canEdit`
-- Fields: name (Input), status (Select), end_date (date Input), notes (Textarea)
-- Pre-populates from `campaign` when opened
-- On save: update `inspection_campaigns`, refresh campaign local state, **call `setNotesText(editForm.notes ?? "")`** (sync point 2)
-- Styled: `bg-slate-800 border-slate-700`, inputs `bg-slate-900 border-slate-600`
+CREATE POLICY "Admins and office managers can insert building documents"
+  ON building_documents FOR INSERT TO authenticated
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
+  ));
 
-### 7. Header Refinements
-- Keep back button, h1 `text-2xl font-bold`
-- Badge row: status (colored), client name, campaign type
-- Progress bar: `h-1.5` (slimmer)
-- Date range formatted
-- Add Edit button next to Export (canEdit only)
+CREATE POLICY "Admins and office managers can delete building documents"
+  ON building_documents FOR DELETE TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
+  ));
 
-### 8. Four KPI Stat Cards (below header, above tabs)
-Computed from `buildings` array:
-- **Total** -- Building2 icon in `bg-slate-500/15`
-- **Complete** -- CheckCircle icon in `bg-emerald-500/15`
-- **In Progress** -- Clock icon in `bg-blue-500/15`
-- **Pending** -- AlertCircle icon in `bg-slate-400/15`
+-- 2. Storage bucket
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('building-files', 'building-files', false, 52428800);
 
-Each card: `rounded-xl bg-slate-800 border border-slate-700/50 p-5`, icon `w-9 h-9 rounded-lg`, label `text-[10px] uppercase tracking-widest text-slate-400`, number `text-4xl font-bold text-white leading-none`.
+-- 3. Storage RLS policies
+CREATE POLICY "Authenticated read building-files"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'building-files');
 
-### 9. Tabs: "Buildings" | "Notes"
-Wrap filters + table + bulk bar + comments inside `TabsContent value="buildings"`.
+CREATE POLICY "Admin/office_manager upload building-files"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'building-files'
+    AND EXISTS (
+      SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
+    )
+  );
 
-New `TabsContent value="notes"`:
-- View mode: `text-sm text-slate-300 whitespace-pre-wrap`, shows `notesText`
-- Edit mode (canEdit): Textarea `min-h-[200px] bg-slate-900 border-slate-600`, Save/Cancel
-- On save: update `inspection_campaigns.notes`, **call `setCampaign(prev => prev ? { ...prev, notes: notesText } : prev)` and `setEditForm(prev => ({ ...prev, notes: notesText }))`** (sync point 3)
-- Empty state: "No notes yet"
-
-### 10. Data Fetch Sync
-In `fetchCampaign` (line 240-252), after `setCampaign(data)`, **call `setNotesText(data.notes ?? "")`** (sync point 1).
-
-### 11. Click-to-Cycle Status Badge (Buildings tab)
-Replace per-row `<Select>` dropdown (lines 734-753) with a clickable Badge. The TableCell wrapping the badge must have `onClick={(e) => e.stopPropagation()}` on the cell itself to prevent the collapsible row from toggling on badge clicks:
-
-```tsx
-<TableCell onClick={(e) => e.stopPropagation()}>
-  {canEdit ? (
-    <Badge
-      className={`cursor-pointer ${BUILDING_STATUS_COLORS[b.inspection_status] ?? ""}`}
-      onClick={() => handleStatusBadgeClick(b)}
-    >
-      {BUILDING_STATUS_OPTIONS.find(s => s.value === b.inspection_status)?.label ?? b.inspection_status}
-    </Badge>
-  ) : (
-    <Badge className={BUILDING_STATUS_COLORS[b.inspection_status] ?? ""}>
-      {BUILDING_STATUS_OPTIONS.find(s => s.value === b.inspection_status)?.label ?? b.inspection_status}
-    </Badge>
-  )}
-</TableCell>
+CREATE POLICY "Admin/office_manager delete building-files"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'building-files'
+    AND EXISTS (
+      SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
+    )
+  );
 ```
 
-### 12. Preserved Features (no changes)
-- Collapsible row detail (BuildingDetail) -- unchanged
-- Floating bulk action bar -- unchanged
-- Filters (status, inspector, search, priority toggle) -- unchanged
-- Export button -- unchanged
-- Comments section -- stays in Buildings tab
-- Auto-sync campaign totals -- unchanged
-- SortableHead helper -- unchanged
+No code changes needed -- this is infrastructure-only for Phase 12.
+
