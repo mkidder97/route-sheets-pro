@@ -10,6 +10,14 @@ import {
   Shield,
   Activity,
   Info,
+  TrendingUp,
+  Clock,
+  Droplets,
+  DollarSign,
+  UserCheck,
+  ArrowRight,
+  Calendar,
+  Briefcase,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -355,150 +363,213 @@ export default function Dashboard() {
       </div>
 
       {/* Portfolio by Client + Inspection Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Portfolio by Client */}
-        <Card className="lg:col-span-3">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Portfolio by Client</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="lg:col-span-3 rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Portfolio by Client</h3>
+              <p className="text-[10px] text-slate-500 mt-0.5">{clientRows.length} clients shown</p>
+            </div>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-500/10">
+              <Briefcase className="w-3.5 h-3.5 text-blue-400" />
+            </div>
+          </div>
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead className="text-right">Buildings</TableHead>
-                  <TableHead className="text-right">Sq Footage</TableHead>
-                  <TableHead className="text-right">Inspected</TableHead>
-                  <TableHead className="text-right">Priority</TableHead>
+                <TableRow className="border-slate-700/50 hover:bg-transparent">
+                  <TableHead className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Client</TableHead>
+                  <TableHead className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 text-right">Buildings</TableHead>
+                  <TableHead className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 text-right">Sq Footage</TableHead>
+                  <TableHead className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 text-right">Inspected</TableHead>
+                  <TableHead className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 text-right">Priority</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientRows.map(([id, d]) => (
-                  <TableRow key={id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/portfolio?client=${id}`)}>
-                    <TableCell className="font-medium">{d.name}</TableCell>
-                    <TableCell className="text-right">{d.count}</TableCell>
-                    <TableCell className="text-right">{fmtArea(d.sqft)}</TableCell>
-                    <TableCell className="text-right">{d.inspected} / {d.count}</TableCell>
-                    <TableCell className="text-right">{d.priority}</TableCell>
-                  </TableRow>
-                ))}
+                {clientRows.map(([id, d]) => {
+                  const inspPct = d.count > 0 ? Math.round((d.inspected / d.count) * 100) : 0;
+                  return (
+                    <TableRow key={id} className="border-slate-700/30 cursor-pointer hover:bg-slate-700/50 transition-colors" onClick={() => navigate(`/portfolio?client=${id}`)}>
+                      <TableCell className="font-medium text-sm text-slate-200">{d.name}</TableCell>
+                      <TableCell className="text-right text-sm text-slate-300 tabular-nums">{d.count}</TableCell>
+                      <TableCell className="text-right text-sm text-slate-300 tabular-nums">{fmtArea(d.sqft)}</TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-sm text-slate-300 tabular-nums">{d.inspected}/{d.count}</span>
+                        <span className="ml-1.5 text-[10px] text-slate-500">{inspPct}%</span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {d.priority > 0 ? (
+                          <span className="inline-flex items-center justify-center rounded-full bg-amber-500/15 text-amber-400 text-xs font-medium px-2 py-0.5 tabular-nums">{d.priority}</span>
+                        ) : (
+                          <span className="text-sm text-slate-600">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
-            {byClient.size > 8 && (
-              <Button variant="link" className="mt-2 px-0 text-xs" onClick={() => navigate("/portfolio")}>
-                View all clients →
+          </div>
+          {byClient.size > 8 && (
+            <div className="px-5 py-3 border-t border-slate-700/50">
+              <Button variant="link" className="px-0 text-xs text-blue-400 hover:text-blue-300" onClick={() => navigate("/portfolio")}>
+                View all clients <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
+        </div>
 
         {/* Inspection Status Breakdown */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Inspection Status</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <div className="lg:col-span-2 rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Inspection Status</h3>
+              <p className="text-[10px] text-slate-500 mt-0.5">{totalBuildings} total buildings</p>
+            </div>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-500/10">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
             {statusEntries.map(([status, count]) => {
               const pct = totalBuildings > 0 ? Math.round((count / totalBuildings) * 100) : 0;
               return (
-                <div key={status} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="capitalize">{status.replace(/_/g, " ")}</span>
-                    <span className="text-muted-foreground">{count} ({pct}%)</span>
+                <div key={status} className="space-y-1.5">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm text-slate-300 capitalize font-medium">{status.replace(/_/g, " ")}</span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-sm font-semibold text-white tabular-nums">{count}</span>
+                      <span className="text-[10px] text-slate-500">({pct}%)</span>
+                    </div>
                   </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div className={`h-full rounded-full ${statusColor(status)}`} style={{ width: `${(count / maxStatusCount) * 100}%` }} />
+                  <div className="h-1.5 rounded-full bg-slate-700/80 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-500 ${statusColor(status)}`} style={{ width: `${(count / maxStatusCount) * 100}%` }} />
                   </div>
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Roof Age + Risk Flags */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Roof Age */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Roof Age by Install Year</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {Object.entries(ageBuckets).map(([label, count]) => (
-              <div key={label} className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>{label}</span>
-                  <span className="text-muted-foreground">{count}</span>
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Roof Age by Install Year</h3>
+              <p className="text-[10px] text-slate-500 mt-0.5">Distribution of roof installations</p>
+            </div>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-violet-500/10">
+              <TrendingUp className="w-3.5 h-3.5 text-violet-400" />
+            </div>
+          </div>
+          <div className="p-5 space-y-3">
+            {Object.entries(ageBuckets).map(([label, count]) => {
+              const barPct = (count / maxBucket) * 100;
+              return (
+                <div key={label} className="space-y-1">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm text-slate-300 font-medium">{label}</span>
+                    <span className="text-sm text-white font-semibold tabular-nums">{count}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-700/80 overflow-hidden">
+                    <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${barPct}%` }} />
+                  </div>
                 </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${(count / maxBucket) * 100}%` }} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {missingYear > 0 && (
-              <p className="text-xs text-muted-foreground pt-1">{missingYear} buildings missing install year data</p>
+              <p className="text-[10px] text-slate-500 pt-2 flex items-center gap-1">
+                <Info className="w-3 h-3" />
+                {missingYear} buildings missing install year data
+              </p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Risk Flags */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Portfolio Risk Indicators</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Portfolio Risk Indicators</h3>
+              <p className="text-[10px] text-slate-500 mt-0.5">Key risk metrics across portfolio</p>
+            </div>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-500/10">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+            </div>
+          </div>
+          <div className="p-5 space-y-1">
             {[
-              { label: "Overdue Inspections", value: overdueCount, badge: overdueCount > 0 ? "destructive" as const : undefined },
-              { label: "Active Leak History", value: leakCount },
-              { label: "Total Leak Expense (12mo)", value: fmtMoney(leakExpense), badge: leakExpense > 100_000 ? "secondary" as const : undefined, badgeColor: leakExpense > 100_000 ? "text-amber-500" : undefined },
-              { label: "Escort Required", value: escortCount },
+              { label: "Overdue Inspections", value: overdueCount, icon: Clock, iconColor: "text-red-400", iconBg: "bg-red-500/10", highlight: overdueCount > 0 },
+              { label: "Active Leak History", value: leakCount, icon: Droplets, iconColor: "text-sky-400", iconBg: "bg-sky-500/10", highlight: false },
+              { label: "Total Leak Expense (12mo)", value: fmtMoney(leakExpense), icon: DollarSign, iconColor: "text-amber-400", iconBg: "bg-amber-500/10", highlight: leakExpense > 100_000 },
+              { label: "Escort Required", value: escortCount, icon: UserCheck, iconColor: "text-slate-400", iconBg: "bg-slate-500/10", highlight: false },
             ].map((r) => (
-              <div key={r.label} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                <span className="text-sm">{r.label}</span>
+              <div key={r.label} className="flex items-center justify-between py-3 border-b border-slate-700/30 last:border-0">
+                <div className="flex items-center gap-3">
+                  <div className={`w-7 h-7 rounded-md flex items-center justify-center ${r.iconBg}`}>
+                    <r.icon className={`w-3.5 h-3.5 ${r.iconColor}`} />
+                  </div>
+                  <span className="text-sm text-slate-300">{r.label}</span>
+                </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm font-semibold ${r.badgeColor ?? ""}`}>{r.value}</span>
-                  {r.badge && <Badge variant={r.badge} className="text-xs">{r.badge === "destructive" ? "Action needed" : "Review"}</Badge>}
+                  <span className={`text-sm font-semibold tabular-nums ${r.highlight ? "text-amber-400" : "text-white"}`}>{r.value}</span>
+                  {r.highlight && (
+                    <span className="inline-flex items-center rounded-full bg-red-500/15 text-red-400 text-[10px] font-semibold px-2 py-0.5">
+                      Action needed
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Operations Pulse */}
       <div>
-        <div className="mb-4 border-b border-border pb-2">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-lg font-semibold">Operations Pulse</h2>
+        <div className="mb-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-500/10">
+            <Activity className="w-3.5 h-3.5 text-emerald-400" />
           </div>
-          <p className="text-xs text-muted-foreground">Active work across campaigns &amp; jobs</p>
+          <div>
+            <h2 className="text-base font-semibold text-white">Operations Pulse</h2>
+            <p className="text-[10px] text-slate-500">Active work across campaigns &amp; jobs</p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Active Campaigns */}
-          <Card className="border-dashed">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Active Campaigns</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+          <div className="rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">Active Campaigns</h3>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-blue-500/10">
+                <Calendar className="w-3.5 h-3.5 text-blue-400" />
+              </div>
+            </div>
+            <div className="p-4 space-y-3">
               {campaigns.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active campaigns.</p>
+                <p className="text-sm text-slate-500 text-center py-4">No active campaigns.</p>
               ) : (
                 campaigns.map((c) => {
                   const pct = c.total_buildings > 0 ? Math.round((c.completed_buildings / c.total_buildings) * 100) : 0;
                   return (
                     <div
                       key={c.id}
-                      className="space-y-1.5 cursor-pointer rounded-md border border-border p-3 hover:bg-muted/50 transition-colors"
+                      className="rounded-lg border border-slate-700/50 p-3 cursor-pointer hover:bg-slate-700/30 transition-colors"
                       onClick={() => navigate(`/inspections/campaigns/${c.id}`)}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{c.name}</span>
-                        <Badge variant="outline" className="text-xs">{c.status}</Badge>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-slate-200">{c.name}</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded-full">{c.status}</span>
                       </div>
-                      <Progress value={pct} className="h-1.5" />
-                      <div className="flex justify-between text-xs text-muted-foreground">
+                      <div className="h-1 rounded-full bg-slate-700 mb-2">
+                        <div className="h-1 rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-500">
                         <span>{c.completed_buildings} / {c.total_buildings} buildings</span>
                         <span>Ends {format(new Date(c.end_date), "MMM d")}</span>
                       </div>
@@ -506,44 +577,49 @@ export default function Dashboard() {
                   );
                 })
               )}
-              <Button variant="link" className="px-0 text-xs" onClick={() => navigate("/inspections/campaigns")}>
-                View all →
+              <Button variant="link" className="px-0 text-xs text-blue-400 hover:text-blue-300" onClick={() => navigate("/inspections/campaigns")}>
+                View all <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* CM Jobs Summary */}
-          <Card className="border-dashed">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">CM Jobs Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
+          <div className="rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">CM Jobs Summary</h3>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-500/10">
+                <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="flex flex-wrap gap-1.5">
                 {Array.from(jobStatusGroups.entries()).map(([status, count]) => (
-                  <Badge key={status} variant="secondary" className="capitalize">
-                    {status.replace(/_/g, " ")} ({count})
-                  </Badge>
+                  <span key={status} className="inline-flex items-center rounded-full bg-slate-700/60 text-slate-300 text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 capitalize">
+                    {status.replace(/_/g, " ")} <span className="ml-1 text-white">{count}</span>
+                  </span>
                 ))}
-                {jobStatusGroups.size === 0 && <p className="text-sm text-muted-foreground">No jobs.</p>}
+                {jobStatusGroups.size === 0 && <p className="text-sm text-slate-500">No jobs.</p>}
               </div>
               {recentJobs.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-border">
+                <div className="space-y-1 pt-3 border-t border-slate-700/50">
                   {recentJobs.map((j) => (
-                    <div key={j.id} className="flex items-center justify-between text-sm">
+                    <div key={j.id} className="flex items-center justify-between py-2 rounded-md px-2 hover:bg-slate-700/30 transition-colors">
                       <div className="flex items-center gap-2">
-                        <span>{j.title}</span>
-                        {j.priority !== "normal" && <Badge variant="outline" className="text-xs capitalize">{j.priority}</Badge>}
+                        <span className="text-sm text-slate-200">{j.title}</span>
+                        {j.priority !== "normal" && (
+                          <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-medium px-2 py-0.5 capitalize">{j.priority}</span>
+                        )}
                       </div>
-                      {j.due_date && <span className="text-xs text-muted-foreground">{format(new Date(j.due_date), "MMM d")}</span>}
+                      {j.due_date && <span className="text-[10px] text-slate-500">{format(new Date(j.due_date), "MMM d")}</span>}
                     </div>
                   ))}
                 </div>
               )}
-              <Button variant="link" className="px-0 text-xs" onClick={() => navigate("/ops/jobs")}>
-                View all →
+              <Button variant="link" className="px-0 text-xs text-blue-400 hover:text-blue-300" onClick={() => navigate("/ops/jobs")}>
+                View all <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>

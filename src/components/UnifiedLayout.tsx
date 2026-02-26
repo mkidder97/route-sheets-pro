@@ -171,52 +171,65 @@ function MobileNav() {
           <Menu className="h-5 w-5" />
         </Button>
       </DrawerTrigger>
-      <DrawerContent className="h-full w-[280px] rounded-none border-r fixed left-0 top-0 bottom-0">
-        <div className="flex flex-col h-full overflow-y-auto p-4 pt-6">
+      <DrawerContent className="h-full w-56 rounded-none bg-slate-900 border-r border-slate-700/30 fixed left-0 top-0 bottom-0">
+        <div className="flex flex-col h-full overflow-y-auto py-4">
           {/* Dashboard */}
           <button
             onClick={() => go("/dashboard")}
             className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              pathname === "/dashboard" ? "bg-accent/30 text-primary" : "hover:bg-accent/50"
+              "flex items-center gap-2.5 rounded-md mx-2 px-3 py-1.5 text-sm font-medium transition-colors",
+              pathname === "/dashboard"
+                ? "bg-slate-700/60 text-white"
+                : "text-slate-400 hover:bg-slate-700/30 hover:text-slate-200"
             )}
           >
-            <LayoutDashboard className="h-4 w-4" />
+            <LayoutDashboard className={cn("w-4 h-4", pathname === "/dashboard" ? "text-white" : "text-slate-400")} />
             Dashboard
           </button>
 
           {/* Sections — accordion behavior */}
-          {NAV_SECTIONS.map((section) => (
-            <Collapsible
-              key={section.label}
-              open={openSection === section.label}
-              onOpenChange={(isOpen) => toggleSection(section.label)}
-            >
-              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium mt-2 hover:bg-accent/50 transition-colors">
-                <span className="flex items-center gap-2">
-                  <section.icon className="h-4 w-4" />
+          {NAV_SECTIONS.map((section) => {
+            const sectionIsActive = isSectionActive(pathname, section.prefix);
+            return (
+              <Collapsible
+                key={section.label}
+                open={openSection === section.label}
+                onOpenChange={() => toggleSection(section.label)}
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mt-4 mb-1 px-5">
                   {section.label}
-                </span>
-                <ChevronDown className="h-3 w-3 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="ml-6 flex flex-col gap-0.5 mt-0.5">
-                  {section.items.map((item) => (
-                    <button
-                      key={item.to}
-                      onClick={() => go(item.to)}
-                      className={cn(
-                        "rounded-md px-3 py-1.5 text-sm text-left transition-colors",
-                        pathname === item.to ? "bg-accent/30 text-primary font-medium" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                      )}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          ))}
+                </p>
+                <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md mx-2 px-3 py-1.5 text-sm font-medium hover:bg-slate-700/30 hover:text-slate-200 transition-colors text-slate-400 w-[calc(100%-1rem)]">
+                  <span className="flex items-center gap-2.5">
+                    <section.icon className={cn("w-4 h-4", sectionIsActive ? "text-white" : "text-slate-400")} />
+                    <span className={sectionIsActive ? "text-white" : ""}>Overview</span>
+                  </span>
+                  <ChevronDown className="h-3 w-3 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="flex flex-col gap-0.5 mt-0.5 mx-2">
+                    {section.items.map((item) => {
+                      const isActive = pathname === item.to;
+                      return (
+                        <button
+                          key={item.to}
+                          onClick={() => go(item.to)}
+                          className={cn(
+                            "rounded-md px-3 py-1.5 pl-[2.75rem] text-sm text-left transition-colors font-medium",
+                            isActive
+                              ? "bg-slate-700/60 text-white"
+                              : "text-slate-400 hover:bg-slate-700/30 hover:text-slate-200"
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
         </div>
       </DrawerContent>
     </Drawer>
