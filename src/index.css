@@ -6,51 +6,51 @@
 
 @layer base {
   :root {
-    --background: 220 20% 10%;
+    --background: 222 47% 11%;
     --foreground: 210 20% 92%;
 
-    --card: 220 18% 13%;
+    --card: 217 33% 17%;
     --card-foreground: 210 20% 92%;
 
-    --popover: 220 18% 13%;
+    --popover: 217 33% 17%;
     --popover-foreground: 210 20% 92%;
 
-    --primary: 38 92% 50%;
-    --primary-foreground: 220 20% 8%;
+    --primary: 217 91% 53%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 16% 18%;
+    --secondary: 217 25% 18%;
     --secondary-foreground: 210 20% 85%;
 
-    --muted: 220 14% 16%;
-    --muted-foreground: 215 12% 55%;
+    --muted: 217 20% 16%;
+    --muted-foreground: 215 15% 50%;
 
-    --accent: 38 70% 45%;
-    --accent-foreground: 220 20% 8%;
+    --accent: 217 40% 24%;
+    --accent-foreground: 210 20% 92%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 14% 20%;
-    --input: 220 14% 20%;
-    --ring: 38 92% 50%;
+    --border: 217 20% 18%;
+    --input: 217 20% 18%;
+    --ring: 217 91% 53%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 220 22% 8%;
-    --sidebar-foreground: 210 15% 70%;
-    --sidebar-primary: 38 92% 50%;
-    --sidebar-primary-foreground: 220 20% 8%;
-    --sidebar-accent: 220 16% 14%;
+    --sidebar-background: 222 47% 9%;
+    --sidebar-foreground: 215 15% 55%;
+    --sidebar-primary: 217 91% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 25% 15%;
     --sidebar-accent-foreground: 210 20% 88%;
-    --sidebar-border: 220 14% 16%;
-    --sidebar-ring: 38 92% 50%;
+    --sidebar-border: 217 20% 14%;
+    --sidebar-ring: 217 91% 53%;
 
-    --success: 152 60% 42%;
-    --success-foreground: 220 20% 8%;
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
-    --warning-foreground: 220 20% 8%;
-    --info: 210 70% 55%;
-    --info-foreground: 220 20% 8%;
+    --warning-foreground: 222 47% 11%;
+    --info: 217 91% 53%;
+    --info-foreground: 0 0% 100%;
   }
 }
 
@@ -62,6 +62,8 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -71,7 +73,6 @@
 
 @layer utilities {
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-info;
   }
 }
-
