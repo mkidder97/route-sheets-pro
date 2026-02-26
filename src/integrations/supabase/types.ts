@@ -930,6 +930,64 @@ export type Database = {
           },
         ]
       }
+      inspection_findings: {
+        Row: {
+          building_id: string
+          campaign_id: string | null
+          created_at: string | null
+          id: string
+          inspection_date: string
+          inspector_id: string | null
+          is_in_progress: boolean | null
+          narrative: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          building_id: string
+          campaign_id?: string | null
+          created_at?: string | null
+          id?: string
+          inspection_date: string
+          inspector_id?: string | null
+          is_in_progress?: boolean | null
+          narrative?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          building_id?: string
+          campaign_id?: string | null
+          created_at?: string | null
+          id?: string
+          inspection_date?: string
+          inspector_id?: string | null
+          is_in_progress?: boolean | null
+          narrative?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_findings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_findings_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_findings_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "inspectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspectors: {
         Row: {
           created_at: string
