@@ -54,6 +54,7 @@ interface BuildingRow {
   requires_escort: boolean | null;
   installer_has_warranty: boolean | null;
   manufacturer_has_warranty: boolean | null;
+  preventative_budget_estimated: number | null;
 }
 
 interface ClientRow {
@@ -146,7 +147,7 @@ export default function Dashboard() {
       supabase
         .from("buildings")
         .select(
-          "id, square_footage, inspection_status, is_priority, is_deleted, install_year, state, client_id, next_inspection_due, total_leaks_12mo, total_leak_expense_12mo, requires_escort, installer_has_warranty, manufacturer_has_warranty"
+          "id, square_footage, inspection_status, is_priority, is_deleted, install_year, state, client_id, next_inspection_due, total_leaks_12mo, total_leak_expense_12mo, requires_escort, installer_has_warranty, manufacturer_has_warranty, preventative_budget_estimated"
         )
         .or("is_deleted.is.null,is_deleted.eq.false"),
       supabase.from("clients").select("id, name, is_active"),
@@ -192,6 +193,19 @@ export default function Dashboard() {
   const inspectionPct = totalBuildings > 0 ? Math.round((completedCount / totalBuildings) * 100) : 0;
   const warrantyCount = buildings.filter((b) => b.installer_has_warranty || b.manufacturer_has_warranty).length;
   const warrantyPct = totalBuildings > 0 ? Math.round((warrantyCount / totalBuildings) * 100) : 0;
+
+  const maintBuildings = buildings.filter(
+    (b) => b.preventative_budget_estimated != null && (b.square_footage ?? 0) > 0
+  );
+  const totalMaintBudget = maintBuildings.reduce(
+    (s, b) => s + (b.preventative_budget_estimated ?? 0), 0
+  );
+  const totalMaintSqft = maintBuildings.reduce(
+    (s, b) => s + (b.square_footage ?? 0), 0
+  );
+  const maintPer100k = totalMaintSqft > 0
+    ? (totalMaintBudget / totalMaintSqft) * 100_000
+    : 0;
 
   /* portfolio by client */
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
@@ -249,8 +263,8 @@ export default function Dashboard() {
       <div className="space-y-6">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-12 w-full" />
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="h-28" />
           ))}
         </div>
@@ -285,7 +299,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
         {/* Total Buildings */}
         <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
           <div className="flex items-center justify-between mb-3">
@@ -359,6 +373,18 @@ export default function Dashboard() {
           </div>
           <p className="text-4xl font-bold text-white leading-none">{warrantyPct}%</p>
           <p className="text-xs text-slate-500 mt-1">{warrantyCount} buildings covered</p>
+        </div>
+
+        {/* Maint. Cost / 100K sqft */}
+        <div className="rounded-xl bg-slate-800 border border-slate-700/50 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Maint. Cost / 100K sqft</p>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-amber-500/15">
+              <DollarSign className="w-4 h-4 text-amber-400" />
+            </div>
+          </div>
+          <p className="text-4xl font-bold text-white leading-none">{fmtMoney(maintPer100k)}</p>
+          <p className="text-xs text-slate-500 mt-1">Based on {maintBuildings.length} buildings with data</p>
         </div>
       </div>
 
