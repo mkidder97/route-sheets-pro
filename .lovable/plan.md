@@ -1,98 +1,79 @@
 
 
-# Phase 12 File Storage: building_documents Table and building-files Bucket
+# Add Photo Upload to RoofSpecsTab
 
 ## Summary
-Create a new `building_documents` table for tracking file metadata and a private `building-files` storage bucket with role-based RLS policies. No changes to existing tables or the `cad-drawings` bucket.
+Add photo upload and preview capability for `core_photo_url` and `roof_section_photo_url` fields on each roof section, using the existing `building-files` storage bucket. No database migration needed -- both columns already exist on `roof_sections`.
 
-## Database Migration
+## Changes
 
-A single migration will execute the following:
+All changes are in a single file: `src/components/building/RoofSpecsTab.tsx`
 
-### 1. building_documents table
-- Columns: id (PK), building_id (FK to buildings with CASCADE delete), uploaded_by (FK to user_profiles), file_name, file_path, file_size, file_type, category (default 'other'), created_at
-- RLS enabled with three policies:
-  - SELECT: all authenticated users
-  - INSERT: admin and office_manager roles (checked via user_roles table)
-  - DELETE: admin and office_manager roles
+### 1. New imports
+- Add `Camera` to the lucide-react import (line 38-49). `Dialog` and related components are already imported.
+- Add `useRef` to the React import (line 1 already has `useState, useEffect, useCallback` -- add `useRef`).
 
-### 2. building-files storage bucket
-- Private bucket (public = false)
-- 50MB file size limit
-- No MIME type restrictions
+### 2. New state and refs (inside the component, around line 63-83)
+- `uploadingPhoto` state: `useState<{ sectionId: string; type: 'core' | 'section' } | null>(null)`
+- `previewPhoto` state: `useState<{ url: string; title: string } | null>(null)` -- for the full-size image preview dialog
+- Two refs: `corePhotoRef = useRef<HTMLInputElement>(null)` and `sectionPhotoRef = useRef<HTMLInputElement>(null)`
 
-### 3. Storage RLS policies on storage.objects
-- **SELECT**: authenticated users can read objects in `building-files` bucket
-- **INSERT**: admin and office_manager roles can upload
-- **DELETE**: admin and office_manager roles can delete
+### 3. Photo upload handler function (after existing handler functions, ~line 270)
+New `handlePhotoUpload` function that:
+- Accepts `file: File`, `sectionId: string`, `type: 'core' | 'section'`
+- Sets `uploadingPhoto` state
+- Extracts file extension from `file.name`
+- Builds storage path: `{buildingId}/roof-sections/{sectionId}/{type === 'core' ? 'core' : 'section'}-{Date.now()}.{ext}`
+- Uploads to `building-files` bucket via `supabase.storage.from('building-files').upload(path, file)`
+- Gets public URL via `supabase.storage.from('building-files').getPublicUrl(path).data.publicUrl`
+- Updates `roof_sections` row: sets `core_photo_url` or `roof_section_photo_url` to the public URL
+- Calls `loadSections()` to refresh local state
+- Shows `toast.success` / `toast.error`
+- Clears `uploadingPhoto` state and resets file input value
 
-### Storage path conventions (enforced by application code, not SQL)
-- Documents: `{building_id}/documents/{timestamp}-{filename}`
-- Roof section photos: `{building_id}/roof-sections/{section_id}/{type}-{timestamp}.{ext}`
-
-## Technical Details
-
-The full SQL migration:
+### 4. Photo thumbnails in view mode -- added to Card 2 (Roof Details)
+After the existing grid of spec facts (line 482, before the canWrite edit button), add a new row showing both photo thumbnails side by side:
 
 ```text
--- 1. building_documents table
-CREATE TABLE building_documents (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
-  uploaded_by UUID REFERENCES user_profiles(id),
-  file_name TEXT NOT NULL,
-  file_path TEXT NOT NULL,
-  file_size INTEGER,
-  file_type TEXT,
-  category TEXT DEFAULT 'other',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
-ALTER TABLE building_documents ENABLE ROW LEVEL SECURITY;
-
--- Table RLS (3 policies)
-CREATE POLICY "Authenticated users can view building documents"
-  ON building_documents FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Admins and office managers can insert building documents"
-  ON building_documents FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
-  ));
-
-CREATE POLICY "Admins and office managers can delete building documents"
-  ON building_documents FOR DELETE TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
-  ));
-
--- 2. Storage bucket
-INSERT INTO storage.buckets (id, name, public, file_size_limit)
-VALUES ('building-files', 'building-files', false, 52428800);
-
--- 3. Storage RLS policies
-CREATE POLICY "Authenticated read building-files"
-  ON storage.objects FOR SELECT TO authenticated
-  USING (bucket_id = 'building-files');
-
-CREATE POLICY "Admin/office_manager upload building-files"
-  ON storage.objects FOR INSERT TO authenticated
-  WITH CHECK (
-    bucket_id = 'building-files'
-    AND EXISTS (
-      SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
-    )
-  );
-
-CREATE POLICY "Admin/office_manager delete building-files"
-  ON storage.objects FOR DELETE TO authenticated
-  USING (
-    bucket_id = 'building-files'
-    AND EXISTS (
-      SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','office_manager')
-    )
-  );
+<div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-700">
+  <!-- Core Photo -->
+  <div>
+    <p className="text-slate-400 text-xs mb-2">Core Photo</p>
+    {selected.core_photo_url ? (
+      <img onClick -> open previewPhoto dialog
+           src={selected.core_photo_url}
+           className="w-24 h-24 object-cover rounded-lg cursor-pointer" />
+    ) : (
+      <placeholder with Camera icon>
+    )}
+  </div>
+  <!-- Section Photo (same pattern) -->
+</div>
 ```
 
-No code changes needed -- this is infrastructure-only for Phase 12.
+### 5. Photo upload buttons in edit mode -- added to Card 2 (Roof Details)
+In the canWrite section of Card 2 (currently just a pencil edit button at line 483-489), add two hidden file inputs and two upload buttons alongside the existing pencil icon:
 
+- Hidden `<input type="file" accept="image/*" ref={corePhotoRef} onChange=...>`
+- Hidden `<input type="file" accept="image/*" ref={sectionPhotoRef} onChange=...>`
+- Button: ghost, sm, Camera icon, label "Upload Core Photo" or "Replace Core Photo" depending on whether `selected.core_photo_url` exists
+- Button: ghost, sm, Camera icon, label "Upload Section Photo" or "Replace Section Photo"
+- Show `Loader2` spinner when `uploadingPhoto` matches the current section and type
+
+### 6. Full-size image preview dialog
+Add a new `Dialog` at the bottom of the component (alongside existing dialogs, before `</div>` at line 805):
+
+```text
+<Dialog open={!!previewPhoto} onOpenChange={() => setPreviewPhoto(null)}>
+  <DialogContent className="max-w-2xl bg-slate-800 border-slate-700">
+    <DialogHeader>
+      <DialogTitle>{previewPhoto?.title}</DialogTitle>
+    </DialogHeader>
+    <img src={previewPhoto?.url} className="w-full rounded-lg" />
+  </DialogContent>
+</Dialog>
+```
+
+## What stays the same
+- All existing fields, assembly layers, section CRUD, collapsible cards, edit dialogs, layer dialog, add section dialog -- completely untouched
+- No new files, no migrations, no changes to other components
