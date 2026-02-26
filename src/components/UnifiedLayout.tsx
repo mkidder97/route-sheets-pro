@@ -25,6 +25,7 @@ import {
   Menu,
   LogOut,
   LayoutDashboard,
+  BarChart3,
   Briefcase,
   ClipboardCheck,
   Wrench,
@@ -119,6 +120,13 @@ function DesktopNav() {
           </Link>
         </NavigationMenuItem>
 
+        {/* Analytics — plain link */}
+        <NavigationMenuItem>
+          <Link to="/analytics" className={cn(navigationMenuTriggerStyle(), pathname === "/analytics" && "text-primary")}>
+            Analytics
+          </Link>
+        </NavigationMenuItem>
+
         {/* Dropdown sections */}
         {NAV_SECTIONS.map((section) => (
           <NavigationMenuItem key={section.label} className="relative">
@@ -173,6 +181,20 @@ function MobileNav() {
           >
             <LayoutDashboard className={cn("w-4 h-4", pathname === "/dashboard" ? "text-white" : "text-slate-400")} />
             Dashboard
+          </button>
+
+          {/* Analytics */}
+          <button
+            onClick={() => go("/analytics")}
+            className={cn(
+              "flex items-center gap-2.5 rounded-md mx-2 px-3 py-1.5 text-sm font-medium transition-colors",
+              pathname === "/analytics"
+                ? "bg-slate-700/60 text-white"
+                : "text-slate-400 hover:bg-slate-700/30 hover:text-slate-200"
+            )}
+          >
+            <BarChart3 className={cn("w-4 h-4", pathname === "/analytics" ? "text-white" : "text-slate-400")} />
+            Analytics
           </button>
 
           {/* Sections — show items directly under section label */}
