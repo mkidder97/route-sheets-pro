@@ -481,9 +481,11 @@ export type Database = {
         Row: {
           building_id: string
           campaign_id: string
+          completed_at: string | null
           completion_date: string | null
           created_at: string
           id: string
+          inspection_id: string | null
           inspection_status: string
           inspector_id: string | null
           inspector_notes: string | null
@@ -494,9 +496,11 @@ export type Database = {
         Insert: {
           building_id: string
           campaign_id: string
+          completed_at?: string | null
           completion_date?: string | null
           created_at?: string
           id?: string
+          inspection_id?: string | null
           inspection_status?: string
           inspector_id?: string | null
           inspector_notes?: string | null
@@ -507,9 +511,11 @@ export type Database = {
         Update: {
           building_id?: string
           campaign_id?: string
+          completed_at?: string | null
           completion_date?: string | null
           created_at?: string
           id?: string
+          inspection_id?: string | null
           inspection_status?: string
           inspector_id?: string | null
           inspector_notes?: string | null
@@ -530,6 +536,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "inspection_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_buildings_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
             referencedColumns: ["id"]
           },
           {
@@ -986,33 +999,57 @@ export type Database = {
           building_id: string
           campaign_id: string | null
           created_at: string | null
+          deficiency_number: number | null
+          estimated_repair_cost: number | null
+          finding_status: string | null
           id: string
           inspection_date: string
+          inspection_id: string | null
           inspector_id: string | null
           is_in_progress: boolean | null
+          latitude: number | null
+          longitude: number | null
           narrative: string | null
+          photo_urls: string[] | null
+          repair_scope: string | null
           updated_at: string | null
         }
         Insert: {
           building_id: string
           campaign_id?: string | null
           created_at?: string | null
+          deficiency_number?: number | null
+          estimated_repair_cost?: number | null
+          finding_status?: string | null
           id?: string
           inspection_date: string
+          inspection_id?: string | null
           inspector_id?: string | null
           is_in_progress?: boolean | null
+          latitude?: number | null
+          longitude?: number | null
           narrative?: string | null
+          photo_urls?: string[] | null
+          repair_scope?: string | null
           updated_at?: string | null
         }
         Update: {
           building_id?: string
           campaign_id?: string | null
           created_at?: string | null
+          deficiency_number?: number | null
+          estimated_repair_cost?: number | null
+          finding_status?: string | null
           id?: string
           inspection_date?: string
+          inspection_id?: string | null
           inspector_id?: string | null
           is_in_progress?: boolean | null
+          latitude?: number | null
+          longitude?: number | null
           narrative?: string | null
+          photo_urls?: string[] | null
+          repair_scope?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -1031,10 +1068,185 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "inspection_findings_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "inspection_findings_inspector_id_fkey"
             columns: ["inspector_id"]
             isOneToOne: false
             referencedRelation: "inspectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_overview_photos: {
+        Row: {
+          caption: string | null
+          created_at: string | null
+          file_path: string
+          id: string
+          inspection_id: string
+          public_url: string
+          roof_section_id: string | null
+          sort_order: number | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string | null
+          file_path: string
+          id?: string
+          inspection_id: string
+          public_url: string
+          roof_section_id?: string | null
+          sort_order?: number | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string | null
+          file_path?: string
+          id?: string
+          inspection_id?: string
+          public_url?: string
+          roof_section_id?: string | null
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_overview_photos_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_overview_photos_roof_section_id_fkey"
+            columns: ["roof_section_id"]
+            isOneToOne: false
+            referencedRelation: "roof_sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspections: {
+        Row: {
+          approved_at: string | null
+          building_id: string
+          campaign_building_id: string | null
+          campaign_id: string | null
+          created_at: string | null
+          executive_summary: string | null
+          general_notes: string | null
+          id: string
+          inspection_type: string
+          inspector_id: string
+          internal_notes: string | null
+          overall_rating: number | null
+          recommendation: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          started_at: string | null
+          status: string
+          storm_date: string | null
+          submitted_at: string | null
+          temperature_f: number | null
+          total_estimated_repair_cost: number | null
+          total_findings: number | null
+          updated_at: string | null
+          weather_conditions: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          building_id: string
+          campaign_building_id?: string | null
+          campaign_id?: string | null
+          created_at?: string | null
+          executive_summary?: string | null
+          general_notes?: string | null
+          id?: string
+          inspection_type?: string
+          inspector_id: string
+          internal_notes?: string | null
+          overall_rating?: number | null
+          recommendation?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          started_at?: string | null
+          status?: string
+          storm_date?: string | null
+          submitted_at?: string | null
+          temperature_f?: number | null
+          total_estimated_repair_cost?: number | null
+          total_findings?: number | null
+          updated_at?: string | null
+          weather_conditions?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          building_id?: string
+          campaign_building_id?: string | null
+          campaign_id?: string | null
+          created_at?: string | null
+          executive_summary?: string | null
+          general_notes?: string | null
+          id?: string
+          inspection_type?: string
+          inspector_id?: string
+          internal_notes?: string | null
+          overall_rating?: number | null
+          recommendation?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          started_at?: string | null
+          status?: string
+          storm_date?: string | null
+          submitted_at?: string | null
+          temperature_f?: number | null
+          total_estimated_repair_cost?: number | null
+          total_findings?: number | null
+          updated_at?: string | null
+          weather_conditions?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspections_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_campaign_building_id_fkey"
+            columns: ["campaign_building_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1046,6 +1258,7 @@ export type Database = {
           name: string
           region_id: string | null
           updated_at: string
+          user_profile_id: string | null
         }
         Insert: {
           created_at?: string
@@ -1053,6 +1266,7 @@ export type Database = {
           name: string
           region_id?: string | null
           updated_at?: string
+          user_profile_id?: string | null
         }
         Update: {
           created_at?: string
@@ -1060,6 +1274,7 @@ export type Database = {
           name?: string
           region_id?: string | null
           updated_at?: string
+          user_profile_id?: string | null
         }
         Relationships: [
           {
@@ -1067,6 +1282,13 @@ export type Database = {
             columns: ["region_id"]
             isOneToOne: false
             referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspectors_user_profile_id_fkey"
+            columns: ["user_profile_id"]
+            isOneToOne: true
+            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
