@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import roofmindEmblem from "@/assets/roofmind-emblem.png";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { NotificationBell } from "@/components/ops/NotificationBell";
@@ -250,9 +251,7 @@ export default function UnifiedLayout() {
 
         {/* Brand */}
         <Link to="/dashboard" className="flex items-center gap-2 mr-4">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
-            <Building2 className="h-3.5 w-3.5 text-primary-foreground" />
-          </div>
+          <img src={roofmindEmblem} alt="RoofMind" className="h-6 w-6 rounded object-cover" />
           <span className="text-sm font-semibold text-white tracking-tight">RoofMind</span>
         </Link>
 
