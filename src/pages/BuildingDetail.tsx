@@ -42,6 +42,7 @@ import {
   Clock,
   Wrench,
 } from "lucide-react";
+import RoofSpecsTab from "@/components/building/RoofSpecsTab";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface BuildingRow extends Tables<"buildings"> {
@@ -266,7 +267,7 @@ export default function BuildingDetail() {
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
-          <TabsTrigger value="warranties">Warranties</TabsTrigger>
+          <TabsTrigger value="roofspecs">Roof Specs</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
         </TabsList>
 
@@ -512,13 +513,9 @@ export default function BuildingDetail() {
           </Card>
         </TabsContent>
 
-        {/* Tab 5: Warranties stub */}
-        <TabsContent value="warranties">
-          <div className="text-center py-16 text-muted-foreground">
-            <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="text-lg font-medium">Coming Soon</p>
-            <p className="text-sm">Warranty tracking will be available here.</p>
-          </div>
+        {/* Tab 5: Roof Specs */}
+        <TabsContent value="roofspecs">
+          <RoofSpecsTab buildingId={building.id} canWrite={canWrite} isAdmin={role === "admin"} />
         </TabsContent>
 
         {/* Tab 6: Documents stub */}
