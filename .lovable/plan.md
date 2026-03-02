@@ -1,72 +1,37 @@
 
+# Fix: Eliminate Flash of Unstyled Background on Cold Load
 
-# Field Inspection Module -- Migration Corrections
+## Problem
+The "peachy brown" background appears on cold starts because:
+- The `<body>` and `<html>` tags have no inline background color
+- Tailwind CSS is bundled inside the JS module and doesn't load until React boots
+- During the gap between HTML render and JS execution, the browser shows its default background (Safari on macOS often renders a warm beige/peach)
+- This is a classic FOUC (Flash of Unstyled Content) specific to Vite SPA apps
 
-## Summary
-Update the database migration plan to address four correctness issues before execution. No new features -- this is a pre-flight check on the SQL that will be generated.
+## Why Previous Fixes Didn't Stick
+- Adding `class="dark"` to `<html>` does nothing without the CSS that defines what `dark` means
+- `document.documentElement.classList.add("dark")` runs too late (after React loads)
+- Both fixes only work once Tailwind CSS is already loaded — they don't help the pre-CSS window
 
-## Corrections Required
+## Solution
+Two changes, both in `index.html`:
 
-### 1. Inspections RLS UPDATE policy: use `has_ops_role()` instead of raw EXISTS
-The existing schema consistently uses the `has_ops_role()` security definer function for all RLS policies. Using a raw `EXISTS (SELECT 1 FROM user_roles ...)` would break the pattern and risk recursive RLS issues. The UPDATE policy must be:
+### 1. Add inline `style` to `<html>` and `<body>`
+Set `background-color` directly so the browser paints the correct dark color immediately, before any CSS/JS loads:
 
-```sql
-CREATE POLICY "inspector_update_own" ON inspections
-  FOR UPDATE TO authenticated
-  USING (
-    inspector_id = auth.uid()
-    OR has_ops_role(auth.uid(), 'admin'::ops_role)
-    OR has_ops_role(auth.uid(), 'office_manager'::ops_role)
-  );
+```html
+<html lang="en" class="dark" style="background-color: #0F172A;">
+  ...
+  <body style="background-color: #0F172A; color: #F1F5F9;">
 ```
 
-### 2. Inspections `updated_at` trigger: explicit CREATE TRIGGER required
-The migration must include:
+`#0F172A` = `rgb(15, 23, 42)` = your `--background` value. This is painted instantly by the browser, zero dependencies.
 
-```sql
-CREATE TRIGGER update_inspections_updated_at
-  BEFORE UPDATE ON inspections
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-```
+### 2. Add a `<style>` block in `<head>` for the loading spinner
+Move the spinner's critical styles inline so the loading state also looks correct before Tailwind loads.
 
-Every other table with `updated_at` (clients, regions, buildings, inspectors, cm_jobs, mileage_logs, scheduling_events, inspection_findings) has this trigger explicitly created. The `inspections` table must follow the same pattern.
+## Files Changed
+- `index.html` — add inline styles to `<html>` and `<body>` tags
 
-### 3. `inspection_findings` ALTER: use IF NOT EXISTS on all 7 new columns
-The table already exists (migration `20260226203110`) with columns: id, building_id, inspection_date, narrative, is_in_progress, inspector_id, campaign_id, created_at, updated_at. The ALTER must be:
-
-```sql
-ALTER TABLE inspection_findings
-  ADD COLUMN IF NOT EXISTS inspection_id UUID REFERENCES inspections(id) ON DELETE CASCADE,
-  ADD COLUMN IF NOT EXISTS deficiency_number INTEGER,
-  ADD COLUMN IF NOT EXISTS repair_scope TEXT,
-  ADD COLUMN IF NOT EXISTS estimated_repair_cost NUMERIC,
-  ADD COLUMN IF NOT EXISTS latitude NUMERIC,
-  ADD COLUMN IF NOT EXISTS longitude NUMERIC,
-  ADD COLUMN IF NOT EXISTS finding_status TEXT DEFAULT 'open',
-  ADD COLUMN IF NOT EXISTS photo_urls TEXT[] DEFAULT '{}';
-```
-
-### 4. `campaign_buildings` ALTER: use IF NOT EXISTS
-```sql
-ALTER TABLE campaign_buildings
-  ADD COLUMN IF NOT EXISTS inspection_id UUID REFERENCES inspections(id),
-  ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
-```
-
-### 5. `inspectors` ALTER: use IF NOT EXISTS
-```sql
-ALTER TABLE inspectors
-  ADD COLUMN IF NOT EXISTS user_profile_id UUID REFERENCES user_profiles(id) UNIQUE;
-```
-
-## Execution Order
-All five migrations will be combined into a single SQL migration with this order:
-1. CREATE TABLE inspections (with RLS policies using `has_ops_role` + trigger)
-2. CREATE TABLE inspection_overview_photos (with RLS)
-3. ALTER inspection_findings (IF NOT EXISTS on all columns)
-4. ALTER campaign_buildings (IF NOT EXISTS)
-5. ALTER inspectors (IF NOT EXISTS)
-
-## No UI Changes
-Schema only. No files created or modified beyond the migration.
+## No Other Changes
+This is a one-line HTML fix. No React, Tailwind, or component changes needed.
