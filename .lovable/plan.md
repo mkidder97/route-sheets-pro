@@ -1,37 +1,25 @@
 
-# Fix: Eliminate Flash of Unstyled Background on Cold Load
+# Construction Management Module -- Database Migration and Storage
 
-## Problem
-The "peachy brown" background appears on cold starts because:
-- The `<body>` and `<html>` tags have no inline background color
-- Tailwind CSS is bundled inside the JS module and doesn't load until React boots
-- During the gap between HTML render and JS execution, the browser shows its default background (Safari on macOS often renders a warm beige/peach)
-- This is a classic FOUC (Flash of Unstyled Content) specific to Vite SPA apps
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-## Why Previous Fixes Didn't Stick
-- Adding `class="dark"` to `<html>` does nothing without the CSS that defines what `dark` means
-- `document.documentElement.classList.add("dark")` runs too late (after React loads)
-- Both fixes only work once Tailwind CSS is already loaded — they don't help the pre-CSS window
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-## Solution
-Two changes, both in `index.html`:
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-### 1. Add inline `style` to `<html>` and `<body>`
-Set `background-color` directly so the browser paints the correct dark color immediately, before any CSS/JS loads:
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-```html
-<html lang="en" class="dark" style="background-color: #0F172A;">
-  ...
-  <body style="background-color: #0F172A; color: #F1F5F9;">
-```
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-`#0F172A` = `rgb(15, 23, 42)` = your `--background` value. This is painted instantly by the browser, zero dependencies.
-
-### 2. Add a `<style>` block in `<head>` for the loading spinner
-Move the spinner's critical styles inline so the loading state also looks correct before Tailwind loads.
-
-## Files Changed
-- `index.html` — add inline styles to `<html>` and `<body>` tags
-
-## No Other Changes
-This is a one-line HTML fix. No React, Tailwind, or component changes needed.
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
