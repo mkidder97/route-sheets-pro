@@ -801,6 +801,335 @@ export type Database = {
           },
         ]
       }
+      cm_photos: {
+        Row: {
+          cm_visit_id: string
+          created_at: string
+          description: string | null
+          id: string
+          photo_number: number
+          public_url: string
+          sort_order: number
+          storage_path: string
+        }
+        Insert: {
+          cm_visit_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          photo_number: number
+          public_url: string
+          sort_order?: number
+          storage_path: string
+        }
+        Update: {
+          cm_visit_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          photo_number?: number
+          public_url?: string
+          sort_order?: number
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cm_photos_cm_visit_id_fkey"
+            columns: ["cm_visit_id"]
+            isOneToOne: false
+            referencedRelation: "cm_visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cm_project_sections: {
+        Row: {
+          checklist_items: Json
+          cm_project_id: string
+          created_at: string
+          id: string
+          section_title: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          checklist_items?: Json
+          cm_project_id: string
+          created_at?: string
+          id?: string
+          section_title: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          checklist_items?: Json
+          cm_project_id?: string
+          created_at?: string
+          id?: string
+          section_title?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cm_project_sections_cm_project_id_fkey"
+            columns: ["cm_project_id"]
+            isOneToOne: false
+            referencedRelation: "cm_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cm_projects: {
+        Row: {
+          building_id: string
+          cc_list: Json
+          contract_completion_date: string | null
+          contract_start_date: string | null
+          contractor_contacts: Json
+          contractor_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          membrane_type: string | null
+          owner_address: string | null
+          owner_city_state_zip: string | null
+          owner_company: string | null
+          owner_contacts: Json
+          project_name: string
+          ri_number: string | null
+          scope_pdf_path: string | null
+          status: string
+          total_contract_days: number | null
+          updated_at: string
+        }
+        Insert: {
+          building_id: string
+          cc_list?: Json
+          contract_completion_date?: string | null
+          contract_start_date?: string | null
+          contractor_contacts?: Json
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          membrane_type?: string | null
+          owner_address?: string | null
+          owner_city_state_zip?: string | null
+          owner_company?: string | null
+          owner_contacts?: Json
+          project_name: string
+          ri_number?: string | null
+          scope_pdf_path?: string | null
+          status?: string
+          total_contract_days?: number | null
+          updated_at?: string
+        }
+        Update: {
+          building_id?: string
+          cc_list?: Json
+          contract_completion_date?: string | null
+          contract_start_date?: string | null
+          contractor_contacts?: Json
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          membrane_type?: string | null
+          owner_address?: string | null
+          owner_city_state_zip?: string | null
+          owner_company?: string | null
+          owner_contacts?: Json
+          project_name?: string
+          ri_number?: string | null
+          scope_pdf_path?: string | null
+          status?: string
+          total_contract_days?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cm_projects_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_projects_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cm_visit_sections: {
+        Row: {
+          checklist_items: Json
+          cm_project_section_id: string | null
+          cm_visit_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          section_title: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          checklist_items?: Json
+          cm_project_section_id?: string | null
+          cm_visit_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          section_title: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          checklist_items?: Json
+          cm_project_section_id?: string | null
+          cm_visit_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          section_title?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cm_visit_sections_cm_project_section_id_fkey"
+            columns: ["cm_project_section_id"]
+            isOneToOne: false
+            referencedRelation: "cm_project_sections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_visit_sections_cm_visit_id_fkey"
+            columns: ["cm_visit_id"]
+            isOneToOne: false
+            referencedRelation: "cm_visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cm_visits: {
+        Row: {
+          cm_project_id: string
+          completion_flashing_pct: number | null
+          completion_membrane_pct: number | null
+          completion_sheet_metal_pct: number | null
+          completion_tpo_delivered_pct: number | null
+          created_at: string
+          general_notes: string | null
+          id: string
+          inspector_id: string | null
+          internal_notes: string | null
+          overview_narrative: string | null
+          pdf_generated_at: string | null
+          pdf_path: string | null
+          schedule_days_remaining: number | null
+          schedule_days_used: number | null
+          schedule_weather_days_credited: number
+          src_associate_id: string | null
+          status: string
+          submitted_at: string | null
+          unit_qty_deck_coating_sf: number
+          unit_qty_deck_replaced_sf: number
+          unit_qty_infill_sf: number
+          updated_at: string
+          visit_date: string
+          visit_number: number
+          weather_rain_pct: string | null
+          weather_temp_range: string | null
+          weather_wind_mph: string | null
+        }
+        Insert: {
+          cm_project_id: string
+          completion_flashing_pct?: number | null
+          completion_membrane_pct?: number | null
+          completion_sheet_metal_pct?: number | null
+          completion_tpo_delivered_pct?: number | null
+          created_at?: string
+          general_notes?: string | null
+          id?: string
+          inspector_id?: string | null
+          internal_notes?: string | null
+          overview_narrative?: string | null
+          pdf_generated_at?: string | null
+          pdf_path?: string | null
+          schedule_days_remaining?: number | null
+          schedule_days_used?: number | null
+          schedule_weather_days_credited?: number
+          src_associate_id?: string | null
+          status?: string
+          submitted_at?: string | null
+          unit_qty_deck_coating_sf?: number
+          unit_qty_deck_replaced_sf?: number
+          unit_qty_infill_sf?: number
+          updated_at?: string
+          visit_date?: string
+          visit_number: number
+          weather_rain_pct?: string | null
+          weather_temp_range?: string | null
+          weather_wind_mph?: string | null
+        }
+        Update: {
+          cm_project_id?: string
+          completion_flashing_pct?: number | null
+          completion_membrane_pct?: number | null
+          completion_sheet_metal_pct?: number | null
+          completion_tpo_delivered_pct?: number | null
+          created_at?: string
+          general_notes?: string | null
+          id?: string
+          inspector_id?: string | null
+          internal_notes?: string | null
+          overview_narrative?: string | null
+          pdf_generated_at?: string | null
+          pdf_path?: string | null
+          schedule_days_remaining?: number | null
+          schedule_days_used?: number | null
+          schedule_weather_days_credited?: number
+          src_associate_id?: string | null
+          status?: string
+          submitted_at?: string | null
+          unit_qty_deck_coating_sf?: number
+          unit_qty_deck_replaced_sf?: number
+          unit_qty_infill_sf?: number
+          updated_at?: string
+          visit_date?: string
+          visit_number?: number
+          weather_rain_pct?: string | null
+          weather_temp_range?: string | null
+          weather_wind_mph?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cm_visits_cm_project_id_fkey"
+            columns: ["cm_project_id"]
+            isOneToOne: false
+            referencedRelation: "cm_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_visits_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cm_visits_src_associate_id_fkey"
+            columns: ["src_associate_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           content: string
