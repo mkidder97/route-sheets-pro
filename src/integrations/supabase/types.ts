@@ -888,6 +888,7 @@ export type Database = {
           contract_start_date: string | null
           contractor_contacts: Json
           contractor_id: string | null
+          contractor_name: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -910,6 +911,7 @@ export type Database = {
           contract_start_date?: string | null
           contractor_contacts?: Json
           contractor_id?: string | null
+          contractor_name?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -932,6 +934,7 @@ export type Database = {
           contract_start_date?: string | null
           contractor_contacts?: Json
           contractor_id?: string | null
+          contractor_name?: string | null
           created_at?: string
           created_by?: string | null
           id?: string

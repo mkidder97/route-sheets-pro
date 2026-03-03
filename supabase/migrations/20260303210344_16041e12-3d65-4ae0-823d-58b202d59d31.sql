@@ -1,0 +1,1 @@
+ALTER TABLE public.cm_projects ADD COLUMN contractor_name TEXT;
