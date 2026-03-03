@@ -313,9 +313,9 @@ export default function CMProjectNew() {
           owner_company: form.owner_company.trim() || null,
           owner_address: form.owner_address.trim() || null,
           owner_city_state_zip: form.owner_city_state_zip.trim() || null,
-          owner_contacts: form.owner_contacts.filter((c) => c.name_title.trim()),
-          contractor_contacts: form.contractor_contacts.filter((c) => c.name_title.trim()),
-          cc_list: form.cc_list.filter((c) => c.names.trim()),
+          owner_contacts: form.owner_contacts.filter((c) => c.name_title.trim()) as unknown as Json,
+          contractor_contacts: form.contractor_contacts.filter((c) => c.name_title.trim()) as unknown as Json,
+          cc_list: form.cc_list.filter((c) => c.names.trim()) as unknown as Json,
           created_by: user?.id ?? null,
         })
         .select("id")
