@@ -2,7 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Home, Building2, ClipboardCheck, User, LogOut } from "lucide-react";
+import { Home, Building2, ClipboardCheck, User, LogOut, Monitor } from "lucide-react";
 import emblem from "@/assets/roofmind-emblem.png";
 
 const NAV_ITEMS = [
