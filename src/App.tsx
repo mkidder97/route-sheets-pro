@@ -43,6 +43,7 @@ const AdminRegions = lazy(() => import("./pages/admin/Regions"));
 const FieldLayout = lazy(() => import("./components/FieldLayout"));
 const FieldHome = lazy(() => import("./pages/field/FieldHome"));
 const CMProjectsList = lazy(() => import("./pages/field/cm/CMProjectsList"));
+const CMProjectNew = lazy(() => import("./pages/field/cm/CMProjectNew"));
 const CMProjectDetail = lazy(() => import("./pages/field/cm/CMProjectDetail"));
 const FieldInspections = lazy(() => import("./pages/field/FieldInspections"));
 const FieldProfile = lazy(() => import("./pages/field/FieldProfile"));
