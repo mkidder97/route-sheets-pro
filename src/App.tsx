@@ -40,6 +40,13 @@ const MyRoutes = lazy(() => import("./pages/MyRoutes"));
 const AdminUsers = lazy(() => import("./pages/admin/Users"));
 const AdminRegions = lazy(() => import("./pages/admin/Regions"));
 
+const FieldLayout = lazy(() => import("./components/FieldLayout"));
+const FieldHome = lazy(() => import("./pages/field/FieldHome"));
+const CMProjectsList = lazy(() => import("./pages/field/cm/CMProjectsList"));
+const CMProjectDetail = lazy(() => import("./pages/field/cm/CMProjectDetail"));
+const FieldInspections = lazy(() => import("./pages/field/FieldInspections"));
+const FieldProfile = lazy(() => import("./pages/field/FieldProfile"));
+
 const queryClient = new QueryClient();
 
 const App = () => (
