@@ -10,9 +10,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Building2, Loader2 } from "lucide-react";
 
 export default function Login() {
-  const { user, isLoading, signIn } = useAuth();
+  const { user, role, isLoading, signIn } = useAuth();
   const location = useLocation();
-  const from = (location.state as any)?.from?.pathname || "/dashboard";
+  const stateFrom = (location.state as any)?.from?.pathname;
+  const defaultTarget = (role === "inspector" || role === "construction_manager") ? "/field" : "/dashboard";
+  const from = stateFrom || defaultTarget;
 
   const [rememberMe, setRememberMe] = useState(
     () => localStorage.getItem("roofroute_remember_me") === "true"
