@@ -233,8 +233,10 @@ function MobileNav() {
 
 /* ─── Unified Layout ─── */
 export default function UnifiedLayout() {
-  const { profile, signOut } = useAuth();
+  const { profile, role, signOut } = useAuth();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  const showFieldMode = role === "inspector" || role === "construction_manager" || role === "admin";
 
   return (
     <div className="flex h-screen flex-col bg-background">
