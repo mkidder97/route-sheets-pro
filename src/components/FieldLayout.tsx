@@ -2,7 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Home, Building2, ClipboardCheck, User, LogOut } from "lucide-react";
+import { Home, Building2, ClipboardCheck, User, LogOut, Monitor } from "lucide-react";
 import emblem from "@/assets/roofmind-emblem.png";
 
 const NAV_ITEMS = [
@@ -32,6 +32,14 @@ export default function FieldLayout() {
           <span className="text-sm font-bold text-slate-100">RoofMind</span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 transition-colors"
+            aria-label="Office mode"
+          >
+            <Monitor className="h-4 w-4" />
+            <span className="hidden sm:inline text-xs font-medium">Office</span>
+          </button>
           <span className="text-xs text-slate-400">{profile?.full_name}</span>
           <button
             onClick={() => signOut()}

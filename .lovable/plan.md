@@ -1,28 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-# Add "Office Mode" Toggle to FieldLayout
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-## Problem
-There's no way to navigate back from the field interface to the office/desktop interface. The two layouts each need a toggle to switch to the other.
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-## Approach
-Mirror the pattern already used in `UnifiedLayout.tsx` — add a small icon button to FieldLayout's top header bar that navigates back to `/dashboard`.
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-### FieldLayout.tsx changes
-- Add a `Monitor` (or `LayoutDashboard`) icon button labeled "Office" in the header, positioned between the user name and the sign-out button (or to the left of the user name).
-- Only visible to roles that have access to the office interface (`admin`, `office_manager`, `field_ops`, `engineer`). Inspectors and construction managers who are office-only field users won't see it unless they also have office access — but since `admin` sees both, it makes sense to show it for `admin`, `office_manager`, `field_ops`, and `engineer`. For `inspector` and `construction_manager`, they can still navigate via URL but the button won't clutter their simpler UI.
-- Actually, the simplest and best approach: show it to **all authenticated users**. Anyone in field mode should be able to get back. The `ProtectedRoute` on office routes will handle access control anyway.
-- Uses `useNavigate()` (already available in the component) to go to `/dashboard`.
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-### Implementation
-Add to FieldLayout header, before the user name span:
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-```tsx
-<button onClick={() => navigate("/dashboard")} className="..." aria-label="Office mode">
-  <Monitor className="h-4 w-4" />
-  <span className="hidden sm:inline text-xs">Office</span>
-</button>
-```
-
-One file changed: `src/components/FieldLayout.tsx`. No other files affected.
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
