@@ -805,24 +805,26 @@ export default function CMProjectNew() {
                 className={cn(inputCls, "flex-1")}
                 maxLength={200}
               />
-              <div className="flex flex-col">
-                <button
-                  type="button"
-                  onClick={() => moveSection(sIdx, -1)}
-                  disabled={submitting || sIdx === 0}
-                  className="text-slate-400 hover:text-slate-200 disabled:opacity-30 p-0.5"
-                >
-                  <ChevronUp className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveSection(sIdx, 1)}
-                  disabled={submitting || sIdx === form.sections.length - 1}
-                  className="text-slate-400 hover:text-slate-200 disabled:opacity-30 p-0.5"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
+              {form.sections.length > 1 && (
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => moveSection(sIdx, -1)}
+                    disabled={submitting || sIdx === 0}
+                    className="text-slate-400 hover:text-slate-200 disabled:opacity-30 p-0.5"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSection(sIdx, 1)}
+                    disabled={submitting || sIdx === form.sections.length - 1}
+                    className="text-slate-400 hover:text-slate-200 disabled:opacity-30 p-0.5"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
               {form.sections.length > 1 && (
                 <button
                   type="button"
