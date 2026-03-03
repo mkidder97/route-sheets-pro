@@ -40,6 +40,13 @@ const MyRoutes = lazy(() => import("./pages/MyRoutes"));
 const AdminUsers = lazy(() => import("./pages/admin/Users"));
 const AdminRegions = lazy(() => import("./pages/admin/Regions"));
 
+const FieldLayout = lazy(() => import("./components/FieldLayout"));
+const FieldHome = lazy(() => import("./pages/field/FieldHome"));
+const CMProjectsList = lazy(() => import("./pages/field/cm/CMProjectsList"));
+const CMProjectDetail = lazy(() => import("./pages/field/cm/CMProjectDetail"));
+const FieldInspections = lazy(() => import("./pages/field/FieldInspections"));
+const FieldProfile = lazy(() => import("./pages/field/FieldProfile"));
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -99,6 +106,15 @@ const App = () => (
                   <OpsSettings />
                 </ProtectedRoute>
               } />
+            </Route>
+
+            <Route element={<ProtectedRoute><FieldLayout /></ProtectedRoute>}>
+              <Route path="/field" element={<FieldHome />} />
+              <Route path="/field/cm" element={<CMProjectsList />} />
+              <Route path="/field/cm/:projectId" element={<CMProjectDetail />} />
+              <Route path="/field/cm/:projectId/visits/:visitId" element={<CMProjectDetail />} />
+              <Route path="/field/inspections" element={<FieldInspections />} />
+              <Route path="/field/profile" element={<FieldProfile />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
