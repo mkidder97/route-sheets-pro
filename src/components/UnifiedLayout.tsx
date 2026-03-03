@@ -30,6 +30,7 @@ import {
   ClipboardCheck,
   Wrench,
   Shield,
+  HardHat,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -232,8 +233,10 @@ function MobileNav() {
 
 /* ─── Unified Layout ─── */
 export default function UnifiedLayout() {
-  const { profile, signOut } = useAuth();
+  const { profile, role, signOut } = useAuth();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  const showFieldMode = role === "inspector" || role === "construction_manager" || role === "admin";
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -256,6 +259,17 @@ export default function UnifiedLayout() {
 
         {/* Right side */}
         <div className="flex items-center gap-1.5">
+          {showFieldMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-slate-400 hover:text-white"
+              onClick={() => navigate("/field")}
+            >
+              <HardHat className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Field Mode</span>
+            </Button>
+          )}
           <NotificationBell />
           {profile?.full_name && (
             <span className="hidden md:inline text-xs text-muted-foreground px-2">{profile.full_name}</span>
