@@ -30,6 +30,7 @@ import {
   ClipboardCheck,
   Wrench,
   Shield,
+  HardHat,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
