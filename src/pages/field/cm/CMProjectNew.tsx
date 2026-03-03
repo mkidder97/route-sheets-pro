@@ -680,6 +680,7 @@ export default function CMProjectNew() {
           disabled={submitting}
           className={inputCls}
           maxLength={200}
+          placeholder="e.g. Realty Associates"
         />
       </div>
       <div>
@@ -690,6 +691,7 @@ export default function CMProjectNew() {
           disabled={submitting}
           className={inputCls}
           maxLength={200}
+          placeholder="e.g. 123 Main Street"
         />
       </div>
       <div>
