@@ -1,25 +1,19 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+# CM Project Wizard — Three Fixes
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+## 1. Migration: Add `contractor_name` column to `cm_projects`
+Add `contractor_name TEXT` column (nullable) to `cm_projects`. Then update the insert in `CMProjectNew.tsx` (line ~300) to include `contractor_name: form.contractor_name.trim() || null`.
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+## 2. Add placeholders to Owner Company and Owner Address inputs
+In `renderStep2()` (~lines 676-691):
+- Owner Company input: add `placeholder="e.g. Realty Associates"`
+- Owner Address input: add `placeholder="e.g. 123 Main Street"`
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+## 3. Hide reorder arrows when only one section
+Wrap the up/down arrow `<div>` (lines 805-822) in a conditional: only render when `form.sections.length > 1`.
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+## Files Changed
+- **Migration**: `ALTER TABLE cm_projects ADD COLUMN contractor_name TEXT;`
+- **Modified**: `src/pages/field/cm/CMProjectNew.tsx` (3 edits: submission insert, placeholders, conditional arrows)
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
