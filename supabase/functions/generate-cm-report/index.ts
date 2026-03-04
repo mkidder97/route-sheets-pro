@@ -645,69 +645,8 @@ Deno.serve(async (req: Request) => {
       .eq("id", visitId);
     if (updateErr) throw new Error(`Failed to update visit: ${updateErr.message}`);
 
-    // ── Email Distribution (conditional) ──
-    const resendKey = Deno.env.get("RESEND_API_KEY");
-    if (resendKey) {
-      try {
-        const allEmails: string[] = [];
-        for (const c of [...ccList, ...ownerContacts]) {
-          if (c.email && !allEmails.includes(c.email)) allEmails.push(c.email);
-        }
-
-        if (allEmails.length > 0) {
-          const visitDate = formatDate(visit.visit_date);
-          const subject = `${buildingName} — Field Observation Report #${visit.visit_number} — ${visitDate}`;
-
-          // Convert PDF to base64 for attachment
-          const base64Pdf = btoa(
-            String.fromCharCode(...pdfBytes),
-          );
-
-          const emailBody = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px;">
-              <h2 style="color: #215c2e;">SRC — Field Observation Report</h2>
-              <p><strong>Project:</strong> ${project.project_name}</p>
-              <p><strong>Visit #${visit.visit_number}</strong> — ${visitDate}</p>
-              <p>The field observation report is attached to this email.</p>
-              <p><a href="${publicUrl}" style="color: #2563EB;">Download PDF</a></p>
-              <hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #666;">Southern Roof Consultants</p>
-            </div>
-          `;
-
-          const emailRes = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${resendKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from: "RoofMind <reports@roofmind.com>",
-              to: allEmails,
-              subject,
-              html: emailBody,
-              attachments: [
-                {
-                  filename: `Field_Observation_Report_${visit.visit_number}.pdf`,
-                  content: base64Pdf,
-                },
-              ],
-            }),
-          });
-
-          if (!emailRes.ok) {
-            const errBody = await emailRes.text();
-            console.error("Email send failed:", errBody);
-          } else {
-            console.log(`Email sent to ${allEmails.length} recipients`);
-          }
-        }
-      } catch (emailErr) {
-        console.error("Email error (non-fatal):", emailErr);
-      }
-    } else {
-      console.log("Email not configured — skipping");
-    }
+    // ── Email Distribution (disabled for development) ──
+    console.log("Email distribution disabled — demo mode");
 
     return new Response(
       JSON.stringify({ success: true, pdfUrl: publicUrl }),
