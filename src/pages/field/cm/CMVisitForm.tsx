@@ -772,6 +772,7 @@ export default function CMVisitForm() {
               <WeatherInput
                 label="Temperature Range:"
                 field="weather_temp_range"
+                suffix="°F"
                 placeholder="e.g. 49-68"
               />
             </div>
