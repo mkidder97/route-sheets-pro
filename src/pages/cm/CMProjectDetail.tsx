@@ -358,22 +358,41 @@ export default function CMProjectDetail() {
 
                       {/* PDF actions (office only, submitted) */}
                       {isOffice && visit.status === "submitted" && (
-                        <div onClick={(e) => e.stopPropagation()}>
+                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
                           {visit.pdf_path ? (
-                            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" asChild>
-                              <a href={visit.pdf_path} target="_blank" rel="noopener noreferrer">
-                                <Download className="h-3.5 w-3.5" />
-                                PDF
-                              </a>
-                            </Button>
+                            <>
+                              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" asChild>
+                                <a href={visit.pdf_path} target="_blank" rel="noopener noreferrer">
+                                  <Download className="h-3.5 w-3.5" />
+                                  PDF
+                                </a>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={generatingPdfId === visit.id}
+                                onClick={() => handleGeneratePdf(visit.id)}
+                              >
+                                {generatingPdfId === visit.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-3 w-3" />
+                                )}
+                              </Button>
+                            </>
                           ) : (
                             <Button
-                              variant="ghost"
                               size="sm"
                               className="h-7 gap-1.5 text-xs"
-                              onClick={() => toast.info("PDF generation coming soon")}
+                              disabled={generatingPdfId === visit.id}
+                              onClick={() => handleGeneratePdf(visit.id)}
                             >
-                              <FileText className="h-3.5 w-3.5" />
+                              {generatingPdfId === visit.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <FileText className="h-3.5 w-3.5" />
+                              )}
                               Generate PDF
                             </Button>
                           )}
