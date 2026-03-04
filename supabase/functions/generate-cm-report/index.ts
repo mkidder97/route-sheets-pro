@@ -285,9 +285,7 @@ Deno.serve(async (req: Request) => {
     });
 
     // Project name
-    const projNameDisplay = project.ri_number
-      ? `${project.project_name} (${project.ri_number})`
-      : project.project_name;
+    const projNameDisplay = project.project_name;
     cover.drawText(projNameDisplay, { x: MARGIN, y, size: 14, font: fontBold, color: SRC_GREEN });
     y -= 14;
 
