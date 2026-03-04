@@ -1,44 +1,25 @@
 
-
-# Weather & Overview + Completion & Schedule Steps — Implementation
+# Construction Management Module -- Database Migration and Storage
 
 ## Summary
-Replace placeholder steps 5 and N+1 in `CMVisitForm.tsx` with full editable content. Filter "GROUND" section out of dynamic steps loop. Single file change.
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-## Changes — `src/pages/field/cm/CMVisitForm.tsx`
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-### Data model updates
-- Expand `VisitData` interface with all weather/completion/schedule/notes fields
-- Expand `ProjectData` interface with `contract_completion_date`, `total_contract_days`, `cc_list`, and `buildings.square_footage`
-- Update project query select string accordingly
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-### Ground section filtering
-- Derive `groundSection` (first section matching "ground" case-insensitive) and `displaySections` (everything else)
-- Use `displaySections` for dynamic step names and step rendering loop
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-### Generic visit field handler
-- `handleVisitFieldChange(field, value)` updates local visit state and calls `debouncedSave`
-- Special case for schedule fields: recalculates `schedule_days_remaining` and saves it too
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-### Step 5 — WEATHER & OVERVIEW
-- Weather Conditions: 3 stacked `<Input>` fields (rain, wind, temp)
-- Overview: textarea for `overview_narrative`
-- Ground Conditions: if ground section found, show checklist + notes textarea; otherwise plain textarea
-
-### Completion step
-- Observation: 4 number inputs (0-100) for TPO/membrane/flashing/sheet metal percentages
-- Schedule: read-only contract line, 2 editable inputs, auto-calculated remaining days
-- Unit Quantities: 3 number inputs
-- General Notes: large textarea
-- SRC Associate: read-only from existing state
-- CC List: read-only from project JSONB
-- Internal Notes: separator + muted label + textarea
-
-### Imports
-Add `Input` and `Separator`
-
-## Files
-1. **Modified**: `src/pages/field/cm/CMVisitForm.tsx`
-
-No database migrations — columns exist. If saves fail due to missing columns, user will provide follow-up SQL.
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
