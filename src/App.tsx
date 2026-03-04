@@ -98,6 +98,7 @@ const App = () => (
 
               <Route path="/cm" element={<ConstructionManagement />} />
               <Route path="/cm/new" element={<CMProjectNew />} />
+              <Route path="/cm/:projectId" element={<CMProjectDetail />} />
 
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/regions" element={<AdminRegions />} />
