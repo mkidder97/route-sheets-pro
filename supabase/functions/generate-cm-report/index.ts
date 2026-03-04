@@ -645,45 +645,22 @@ Deno.serve(async (req: Request) => {
       .eq("id", visitId);
     if (updateErr) throw new Error(`Failed to update visit: ${updateErr.message}`);
 
-    // ── Email Distribution ──
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (resendApiKey) {
-      const visitDate = formatDate(visit.visit_date);
-      const emailSubject = `${buildingName} — Field Observation Report #${visit.visit_number} — ${visitDate}`;
-
-      try {
-        const emailRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: "RoofMind Reports <onboarding@resend.dev>",
-            to: ["rooftestautomation@outlook.com"],
-            subject: emailSubject,
-            html: `<p>Please find the attached Field Observation Report #${visit.visit_number} for ${buildingName}.</p>`,
-            attachments: [
-              {
-                filename: `${buildingName.replace(/[^a-zA-Z0-9]/g, "_")}_Report_${visit.visit_number}.pdf`,
-                content: btoa(String.fromCharCode(...pdfBytes)),
-                type: "application/pdf",
-              },
-            ],
-          }),
-        });
-
-        if (!emailRes.ok) {
-          const errBody = await emailRes.text();
-          console.error("Resend error:", errBody);
-        } else {
-          console.log("Report emailed to rooftestautomation@outlook.com");
-        }
-      } catch (emailErr) {
-        console.error("Email send failed:", emailErr);
-      }
-    } else {
-      console.log("RESEND_API_KEY not set — skipping email");
+    // ── Notify Make automation ──
+    try {
+      await fetch("https://hook.us2.make.com/r5wlvour1t4j8k1wjrdwak11nrnsxh4t", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pdfUrl: publicUrl,
+          buildingName,
+          projectName: project.project_name,
+          visitNumber: visit.visit_number,
+          visitDate: formatDate(visit.visit_date),
+        }),
+      });
+      console.log("Make webhook triggered successfully");
+    } catch (webhookErr) {
+      console.error("Make webhook failed (non-fatal):", webhookErr);
     }
 
     return new Response(
