@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Menu, ChevronLeft, ChevronRight, Check, Loader2 } from "lucide-react";
+import { Menu, ChevronLeft, ChevronRight, Check, Loader2, Plus, Trash2, ArrowUp, ArrowDown, X, Camera } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 import { format } from "date-fns";
 
 interface VisitData {
@@ -75,6 +77,16 @@ interface AssociateOption {
   email: string;
 }
 
+interface CmPhoto {
+  id: string;
+  cm_visit_id: string;
+  photo_number: number;
+  description: string | null;
+  storage_path: string;
+  public_url: string;
+  sort_order: number;
+}
+
 type SaveStatus = "idle" | "saving" | "saved";
 
 export default function CMVisitForm() {
@@ -87,14 +99,21 @@ export default function CMVisitForm() {
   const [sections, setSections] = useState<VisitSection[]>([]);
   const [associates, setAssociates] = useState<AssociateOption[]>([]);
   const [srcAssociate, setSrcAssociate] = useState<AssociateOption | null>(null);
+  const [photos, setPhotos] = useState<CmPhoto[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loading, setLoading] = useState(true);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [deletePhotoId, setDeletePhotoId] = useState<string | null>(null);
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const initRef = useRef(false);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const sectionNotesLocal = useRef<Record<string, string>>({});
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const isSubmitted = visit?.status === "submitted";
 
@@ -104,7 +123,7 @@ export default function CMVisitForm() {
   );
   const displaySections = sections.filter((s) => s.id !== groundSection?.id);
 
-  // Step definitions
+  // Step definitions — photo grid title is dynamic
   const staticStepsBefore = [
     "PROJECT",
     "OWNER",
@@ -112,10 +131,12 @@ export default function CMVisitForm() {
     "ROOFING CONTRACTOR",
     "WEATHER & OVERVIEW",
   ];
-  const staticStepsAfter = ["COMPLETION & SCHEDULE", "PHOTO GRID"];
+  const staticStepsAfter = ["COMPLETION & SCHEDULE", `PHOTO GRID (${photos.length})`];
   const dynamicStepNames = displaySections.map((s) => s.section_title.toUpperCase());
   const allSteps = [...staticStepsBefore, ...dynamicStepNames, ...staticStepsAfter];
   const totalSteps = allSteps.length;
+  const isLastStep = currentStep === totalSteps - 1;
+  const isPhotoStep = isLastStep;
 
   // Auto-save helper
   const debouncedSave = useCallback(
@@ -167,7 +188,7 @@ export default function CMVisitForm() {
     if (!projectId || !visitId) return;
 
     const fetchData = async () => {
-      const [visitRes, projectRes, sectionsRes] = await Promise.all([
+      const [visitRes, projectRes, sectionsRes, photosRes] = await Promise.all([
         supabase.from("cm_visits").select("*").eq("id", visitId).single(),
         supabase
           .from("cm_projects")
@@ -179,11 +200,17 @@ export default function CMVisitForm() {
           .select("*")
           .eq("cm_visit_id", visitId)
           .order("sort_order"),
+        supabase
+          .from("cm_photos")
+          .select("*")
+          .eq("cm_visit_id", visitId)
+          .order("sort_order"),
       ]);
 
       if (visitRes.data) setVisit(visitRes.data as unknown as VisitData);
       if (projectRes.data) setProject(projectRes.data as unknown as ProjectData);
       if (sectionsRes.data) setSections(sectionsRes.data as unknown as VisitSection[]);
+      if (photosRes.data) setPhotos(photosRes.data as unknown as CmPhoto[]);
 
       // Init local notes cache
       if (sectionsRes.data) {
@@ -306,6 +333,171 @@ export default function CMVisitForm() {
       setVisit({ ...visit, src_associate_id: userId });
       debouncedSave("cm_visits", visit.id, { src_associate_id: userId }, "src_associate");
     }
+  };
+
+  // === PHOTO OPERATIONS ===
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!visitId || !visit || isSubmitted) return;
+    setUploading(true);
+
+    try {
+      const uuid = crypto.randomUUID();
+      const storagePath = `visits/${visitId}/${uuid}.jpg`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from("cm-reports")
+        .upload(storagePath, file, { contentType: file.type, upsert: false });
+
+      if (uploadErr) {
+        toast.error("Upload failed: " + uploadErr.message);
+        setUploading(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("cm-reports")
+        .getPublicUrl(storagePath);
+
+      const nextPhotoNum = photos.length > 0
+        ? Math.max(...photos.map((p) => p.photo_number)) + 1
+        : 1;
+
+      const newRow = {
+        cm_visit_id: visitId,
+        photo_number: nextPhotoNum,
+        sort_order: photos.length,
+        storage_path: storagePath,
+        public_url: urlData.publicUrl,
+        description: null,
+      };
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from("cm_photos")
+        .insert(newRow)
+        .select()
+        .single();
+
+      if (insertErr) {
+        toast.error("Failed to save photo record.");
+      } else if (inserted) {
+        setPhotos((prev) => [...prev, inserted as unknown as CmPhoto]);
+        toast.success(`Photo #${nextPhotoNum} added.`);
+      }
+    } catch {
+      toast.error("Upload error.");
+    } finally {
+      setUploading(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handlePhotoUpload(file);
+  };
+
+  const confirmDeletePhoto = async () => {
+    if (!deletePhotoId) return;
+    const photo = photos.find((p) => p.id === deletePhotoId);
+    if (!photo) return;
+
+    // Delete from storage
+    await supabase.storage.from("cm-reports").remove([photo.storage_path]);
+
+    // Delete from table
+    await supabase.from("cm_photos").delete().eq("id", photo.id);
+
+    // Remove and renumber
+    const remaining = photos.filter((p) => p.id !== photo.id);
+    const renumbered = remaining.map((p, idx) => ({
+      ...p,
+      photo_number: idx + 1,
+      sort_order: idx,
+    }));
+
+    // Batch update renumbered rows
+    for (const p of renumbered) {
+      await supabase
+        .from("cm_photos")
+        .update({ photo_number: p.photo_number, sort_order: p.sort_order })
+        .eq("id", p.id);
+    }
+
+    setPhotos(renumbered);
+    setDeletePhotoId(null);
+    toast.success("Photo deleted.");
+  };
+
+  const handleReorder = async (index: number, direction: "up" | "down") => {
+    const swapIdx = direction === "up" ? index - 1 : index + 1;
+    if (swapIdx < 0 || swapIdx >= photos.length) return;
+
+    const updated = [...photos];
+    [updated[index], updated[swapIdx]] = [updated[swapIdx], updated[index]];
+
+    const renumbered = updated.map((p, idx) => ({
+      ...p,
+      photo_number: idx + 1,
+      sort_order: idx,
+    }));
+
+    setPhotos(renumbered);
+
+    // Save all
+    for (const p of renumbered) {
+      await supabase
+        .from("cm_photos")
+        .update({ photo_number: p.photo_number, sort_order: p.sort_order })
+        .eq("id", p.id);
+    }
+  };
+
+  const handlePhotoDescChange = (photoId: string, value: string) => {
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, description: value } : p))
+    );
+    debouncedSave("cm_photos", photoId, { description: value || null }, `photo-desc-${photoId}`);
+  };
+
+  // === SUBMIT VISIT ===
+
+  const handleSubmitVisit = () => {
+    if (!visit) return;
+
+    // Non-blocking warning checks
+    const warnings: string[] = [];
+    if (!visit.overview_narrative) warnings.push("overview narrative");
+    if (photos.length === 0) warnings.push("photos");
+    if (!visit.src_associate_id) warnings.push("SRC associate");
+
+    if (warnings.length > 0) {
+      toast.warning("Some fields are incomplete. You can still submit or go back to fill them in.", {
+        duration: 5000,
+      });
+    }
+
+    setShowSubmitDialog(true);
+  };
+
+  const confirmSubmit = async () => {
+    if (!visit || !projectId) return;
+    setSubmitting(true);
+
+    const { error } = await supabase
+      .from("cm_visits")
+      .update({ status: "submitted", submitted_at: new Date().toISOString() })
+      .eq("id", visit.id);
+
+    if (error) {
+      toast.error("Failed to submit visit.");
+      setSubmitting(false);
+      return;
+    }
+
+    setShowSubmitDialog(false);
+    toast.success(`Visit #${visit.visit_number} submitted successfully`);
+    navigate(`/field/cm/${projectId}`);
   };
 
   if (loading) {
@@ -774,16 +966,118 @@ export default function CMVisitForm() {
       );
     }
 
-    // PHOTO GRID placeholder (last step)
+    // PHOTO GRID step (last step)
     return (
-      <div className="flex items-center justify-center h-48">
-        <p className="text-sm text-slate-500 italic">Coming in next prompt</p>
+      <div className="space-y-4">
+        {photos.length === 0 && !uploading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Camera className="h-12 w-12 text-slate-700 mb-3" />
+            <p className="text-sm text-slate-500">No photos yet. Tap Add Photo to get started.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {/* Table header */}
+            <div className="grid grid-cols-[40px_60px_1fr_88px] gap-2 items-center px-1">
+              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">#</span>
+              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Photo</span>
+              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Description</span>
+              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold text-right">Actions</span>
+            </div>
+
+            {photos.map((photo, idx) => (
+              <div
+                key={photo.id}
+                className="grid grid-cols-[40px_60px_1fr_88px] gap-2 items-center bg-slate-800 border border-slate-700/50 rounded-lg px-2 py-2"
+              >
+                {/* Photo # */}
+                <span className="text-sm font-semibold text-slate-100 text-center">
+                  {photo.photo_number}
+                </span>
+
+                {/* Thumbnail */}
+                <button
+                  className="w-[60px] h-[60px] rounded-md overflow-hidden bg-slate-700 shrink-0"
+                  onClick={() => setPreviewIndex(idx)}
+                >
+                  <img
+                    src={photo.public_url}
+                    alt={`Photo ${photo.photo_number}`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+
+                {/* Description */}
+                <Input
+                  className="bg-slate-900 border-slate-600 text-slate-100 text-xs h-9"
+                  value={photo.description || ""}
+                  onChange={(e) => handlePhotoDescChange(photo.id, e.target.value)}
+                  placeholder="Add description..."
+                  readOnly={isSubmitted}
+                />
+
+                {/* Actions */}
+                {!isSubmitted && (
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 disabled:opacity-30"
+                      disabled={idx === 0}
+                      onClick={() => handleReorder(idx, "up")}
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 disabled:opacity-30"
+                      disabled={idx === photos.length - 1}
+                      onClick={() => handleReorder(idx, "down")}
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                      onClick={() => setDeletePhotoId(photo.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Upload progress row */}
+        {uploading && (
+          <div className="flex items-center gap-3 bg-slate-800 border border-slate-700/50 rounded-lg px-4 py-3">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <span className="text-sm text-slate-300">Uploading photo...</span>
+          </div>
+        )}
+
+        {/* Add Photo button */}
+        {!isSubmitted && (
+          <Button
+            className="w-full min-h-[44px] bg-primary hover:bg-primary/90 text-primary-foreground"
+            onClick={() => photoInputRef.current?.click()}
+            disabled={uploading}
+          >
+            <Camera className="h-4 w-4 mr-2" /> Add Photo
+          </Button>
+        )}
+
+        {/* Hidden file input */}
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
       </div>
     );
   };
 
   const progressPct = totalSteps > 1 ? ((currentStep + 1) / totalSteps) * 100 : 100;
-  const isLastStep = currentStep === totalSteps - 1;
 
   return (
     <div className="flex flex-col h-full -m-4 bg-slate-900">
@@ -812,17 +1106,30 @@ export default function CMVisitForm() {
         <h1 className="flex-1 text-center text-xs font-bold uppercase tracking-wider text-slate-100 truncate px-2">
           {allSteps[currentStep] || ""}
         </h1>
-        <div className="text-xs text-slate-400 min-w-[60px] text-right">
-          {saveStatus === "saving" && (
-            <span className="flex items-center gap-1 justify-end text-amber-400">
-              <Loader2 className="h-3 w-3 animate-spin" /> Saving...
-            </span>
+        <div className="flex items-center gap-2">
+          {/* + shortcut on photo step only */}
+          {isPhotoStep && !isSubmitted && (
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              className="p-2 rounded-md text-primary hover:bg-slate-700/50"
+              aria-label="Add photo"
+              disabled={uploading}
+            >
+              <Plus className="h-5 w-5" />
+            </button>
           )}
-          {saveStatus === "saved" && (
-            <span className="flex items-center gap-1 justify-end text-emerald-400">
-              <Check className="h-3 w-3" /> Saved
-            </span>
-          )}
+          <div className="text-xs text-slate-400 min-w-[60px] text-right">
+            {saveStatus === "saving" && (
+              <span className="flex items-center gap-1 justify-end text-amber-400">
+                <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+              </span>
+            )}
+            {saveStatus === "saved" && (
+              <span className="flex items-center gap-1 justify-end text-emerald-400">
+                <Check className="h-3 w-3" /> Saved
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -847,12 +1154,21 @@ export default function CMVisitForm() {
         >
           <ChevronLeft className="h-5 w-5 mr-1" /> Back
         </Button>
-        {isLastStep ? (
+        {isLastStep && !isSubmitted ? (
+          <Button
+            className="min-h-[44px] bg-primary hover:bg-primary/90 text-primary-foreground"
+            onClick={handleSubmitVisit}
+            disabled={submitting}
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Submit Visit
+          </Button>
+        ) : isLastStep && isSubmitted ? (
           <Button
             className="min-h-[44px] bg-slate-700 text-slate-400 cursor-not-allowed"
             disabled
           >
-            Submit Visit
+            Submitted
           </Button>
         ) : (
           <Button
@@ -895,6 +1211,101 @@ export default function CMVisitForm() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Full-screen photo preview overlay */}
+      {previewIndex !== null && photos[previewIndex] && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center">
+          <button
+            className="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 text-slate-200 hover:bg-slate-700"
+            onClick={() => setPreviewIndex(null)}
+          >
+            <X className="h-6 w-6" />
+          </button>
+
+          {previewIndex > 0 && (
+            <button
+              className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-800/80 text-slate-200 hover:bg-slate-700"
+              onClick={() => setPreviewIndex(previewIndex - 1)}
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+          )}
+
+          <img
+            src={photos[previewIndex].public_url}
+            alt={`Photo ${photos[previewIndex].photo_number}`}
+            className="max-h-[85vh] max-w-[90vw] object-contain rounded"
+          />
+
+          {previewIndex < photos.length - 1 && (
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-800/80 text-slate-200 hover:bg-slate-700"
+              onClick={() => setPreviewIndex(previewIndex + 1)}
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          )}
+
+          <div className="absolute bottom-6 text-center text-sm text-slate-400">
+            Photo {photos[previewIndex].photo_number} of {photos.length}
+            {photos[previewIndex].description && (
+              <p className="mt-1 text-slate-300">{photos[previewIndex].description}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete photo confirm dialog */}
+      <AlertDialog open={!!deletePhotoId} onOpenChange={(open) => !open && setDeletePhotoId(null)}>
+        <AlertDialogContent className="bg-slate-800 border-slate-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-100">
+              Delete photo #{photos.find((p) => p.id === deletePhotoId)?.photo_number}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              Cannot be undone. The photo will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-600 text-slate-300 hover:bg-slate-700/50">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={confirmDeletePhoto}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Submit visit confirm dialog */}
+      <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
+        <AlertDialogContent className="bg-slate-800 border-slate-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-100">
+              Submit Visit #{visit.visit_number}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              This cannot be undone. The visit will be locked for editing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-600 text-slate-300 hover:bg-slate-700/50">
+              Go Back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              onClick={confirmSubmit}
+              disabled={submitting}
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Submit Visit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
