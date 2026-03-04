@@ -813,12 +813,9 @@ export default function CMVisitForm() {
                 />
               </div>
             ) : (
-              <Textarea
-                className="bg-slate-900 border-slate-600 text-slate-100 min-h-[100px] resize-y"
-                value=""
-                readOnly={isSubmitted}
-                placeholder="Ground conditions notes..."
-              />
+              <p className="text-sm text-slate-500 italic">
+                No ground conditions checklist configured for this project.
+              </p>
             )}
           </div>
         </div>
