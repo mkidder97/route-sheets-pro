@@ -120,7 +120,7 @@ const App = () => (
               <Route path="/field/cm" element={<CMProjectsList />} />
               
               <Route path="/field/cm/:projectId" element={<CMProjectDetail />} />
-              <Route path="/field/cm/:projectId/visits/:visitId" element={<CMProjectDetail />} />
+              <Route path="/field/cm/:projectId/visits/:visitId" element={<CMVisitForm />} />
               <Route path="/field/inspections" element={<FieldInspections />} />
               <Route path="/field/profile" element={<FieldProfile />} />
             </Route>
