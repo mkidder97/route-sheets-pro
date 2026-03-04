@@ -55,6 +55,24 @@ export default function CMProjectDetail() {
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [visitDate, setVisitDate] = useState<Date>(new Date());
   const [inspectorId, setInspectorId] = useState<string>("");
+  const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
+
+  const handleGeneratePdf = async (visitId: string) => {
+    setGeneratingPdfId(visitId);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-cm-report", {
+        body: { visitId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      queryClient.invalidateQueries({ queryKey: ["cm-visits", projectId] });
+      toast.success("PDF generated successfully");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate PDF");
+    } finally {
+      setGeneratingPdfId(null);
+    }
+  };
 
   // ── Project with building ──
   const { data: project, isLoading: projectLoading } = useQuery({
