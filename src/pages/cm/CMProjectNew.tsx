@@ -342,7 +342,7 @@ export default function CMProjectNew() {
       }
 
       toast.success("Project created successfully!");
-      navigate(`/field/cm/${project!.id}`);
+      navigate(`/cm/${project!.id}`);
     } catch (err: any) {
       toast.error(err.message || "Failed to create project.");
     } finally {
