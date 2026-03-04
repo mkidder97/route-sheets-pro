@@ -64,8 +64,7 @@ const NAV_SECTIONS = [
     icon: Wrench,
     prefix: ["/ops", "/cm"],
     items: [
-      { label: "CM Projects", to: "/cm" },
-      { label: "CM Jobs", to: "/ops/jobs" },
+      { label: "Construction", to: "/cm" },
       { label: "Work Orders", to: "/ops/work-orders" },
       { label: "Mileage", to: "/ops/time-mileage" },
       { label: "PTO", to: "/ops/scheduling" },

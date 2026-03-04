@@ -96,7 +96,7 @@ const App = () => (
               <Route path="/ops/time-mileage" element={<OpsTimeMileage />} />
               <Route path="/ops/scheduling" element={<OpsScheduling />} />
 
-              <Route path="/cm" element={<CMProjectsList />} />
+              <Route path="/cm" element={<ConstructionManagement />} />
               <Route path="/cm/new" element={<CMProjectNew />} />
 
               <Route path="/admin/users" element={<AdminUsers />} />
