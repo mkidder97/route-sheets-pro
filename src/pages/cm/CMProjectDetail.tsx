@@ -361,11 +361,19 @@ export default function CMProjectDetail() {
                         <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
                           {visit.pdf_path ? (
                             <>
-                              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" asChild>
-                                <a href={visit.pdf_path} target="_blank" rel="noopener noreferrer">
-                                  <Download className="h-3.5 w-3.5" />
-                                  PDF
-                                </a>
+                              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs"
+                                onClick={async () => {
+                                  const res = await fetch(visit.pdf_path!);
+                                  const blob = await res.blob();
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  a.download = `FOR_${visit.visit_number}_${project?.project_name ?? "report"}.pdf`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                }}>
+                                <Download className="h-3.5 w-3.5" />
+                                Download PDF
                               </Button>
                               <Button
                                 variant="ghost"
