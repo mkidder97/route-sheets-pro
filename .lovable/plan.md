@@ -1,28 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-# CM Project Detail — Inspector Dropdown Correction
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-## The Issue
-The user flagged that the plan's inspector dropdown query was wrong. After investigation, here's the actual situation:
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-- `user_profiles` does **not** have a `role` column (confirmed from types.ts — columns are: id, email, full_name, phone, inspector_id, is_active, notification_preferences, created_at, updated_at)
-- `user_roles` **does** exist as a separate table with columns: id, user_id, role (ops_role enum)
-- The original plan was actually correct to use `user_roles` — but the user's proposed query (`user_profiles.in('role', [...])`) would fail because there is no `role` column on `user_profiles`
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-## Correct Approach
-Query `user_roles` to get user_ids with role `inspector` or `construction_manager`, then fetch their profiles from `user_profiles`. This matches how the codebase already works (e.g., `CMJobsBoard.tsx` line 588 queries `user_roles`).
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-Two-step query:
-1. `supabase.from("user_roles").select("user_id").in("role", ["inspector", "construction_manager"])` → get user IDs
-2. `supabase.from("user_profiles").select("id, full_name").in("id", userIds).eq("is_active", true).order("full_name")` → get display names
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-Alternatively, a single query if foreign key relationship exists — but `user_roles.Relationships` is empty in the types, so two queries is safer.
-
-## Everything Else Unchanged
-The rest of the plan (page header, visits tab, project info tab, routing, file deletion) remains exactly as previously approved. Only the inspector dropdown data fetching changes.
-
-## Summary of Files
-1. **Created**: `src/pages/cm/CMProjectDetail.tsx` — with corrected two-step inspector query
-2. **Modified**: `src/App.tsx` — add `/cm/:projectId` route, update import
-3. **Deleted**: `src/pages/field/cm/CMProjectDetail.tsx` — old placeholder
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
