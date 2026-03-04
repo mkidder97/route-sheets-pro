@@ -757,22 +757,21 @@ export default function CMVisitForm() {
           <div>
             <SectionLabel>Weather Conditions</SectionLabel>
             <div className="space-y-3">
-              <LabeledInput
+              <WeatherInput
                 label="Chance of Rain:"
-                value={visit.weather_rain_pct || ""}
-                onChange={(v) => handleVisitFieldChange("weather_rain_pct", v || null)}
-                placeholder="e.g. <10%"
+                field="weather_rain_pct"
+                suffix="%"
+                placeholder="e.g. <10"
               />
-              <LabeledInput
+              <WeatherInput
                 label="Winds:"
-                value={visit.weather_wind_mph || ""}
-                onChange={(v) => handleVisitFieldChange("weather_wind_mph", v || null)}
-                placeholder="e.g. 3-5 mph"
+                field="weather_wind_mph"
+                suffix="mph"
+                placeholder="e.g. 3-5"
               />
-              <LabeledInput
+              <WeatherInput
                 label="Temperature Range:"
-                value={visit.weather_temp_range || ""}
-                onChange={(v) => handleVisitFieldChange("weather_temp_range", v || null)}
+                field="weather_temp_range"
                 placeholder="e.g. 49-68"
               />
             </div>
