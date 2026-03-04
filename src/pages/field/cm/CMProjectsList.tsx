@@ -53,8 +53,6 @@ export default function CMProjectsList() {
     );
   });
 
-  const canCreate = role === "admin" || role === "office_manager";
-
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold text-slate-100">CM Jobs</h1>
