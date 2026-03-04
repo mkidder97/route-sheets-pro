@@ -2,3 +2,6 @@ project_id = "mayuememdgdyqpuqumii"
 
 [functions.manage-users]
 verify_jwt = false
+
+[functions.generate-cm-report]
+verify_jwt = false
