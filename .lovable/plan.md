@@ -1,45 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-# Unified Construction Management Page
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-## Overview
-Create a new `src/pages/cm/ConstructionManagement.tsx` that combines CM Projects and CM Jobs (Pipeline) into a single two-tab hub. Update nav and routing accordingly.
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-## New File: `src/pages/cm/ConstructionManagement.tsx`
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-**Header**: "Construction Management" (`text-2xl font-bold`)
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-**Tabs**: "Active Projects" (default) | "Pipeline"
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-### Tab 1 — Active Projects
-- **Filters**: Search input + status pills (All / Active / On Hold / Complete)
-- **"New Project" button** top-right → `/cm/new`
-- **Data query**: `cm_projects` joined to `buildings(property_name, city, state)`, plus left-joined `cm_visits` counts (total + submitted) per project. All statuses fetched (not filtered to active only like the field version). Order by `created_at DESC`.
-- **Cards** (2-col grid on `lg:`, 1-col mobile): project name + status badge, building name + city/state, RI number + membrane type tags, contractor_name, contract dates, visit summary line
-- **Card click** → `/cm/${projectId}`
-- **Empty state**: icon + message + button to `/cm/new`
-- Status badge colors: Active=green, On Hold=amber, Complete=gray
-
-### Tab 2 — Pipeline
-- Renders `<CMJobsBoard />` as-is, no modifications
-
-## Routing: `App.tsx`
-- Add lazy import: `const ConstructionManagement = lazy(() => import("./pages/cm/ConstructionManagement"))`
-- Change `/cm` route from `CMProjectsList` to `ConstructionManagement`
-- Keep `/cm/new`, `/ops/jobs` routes unchanged
-
-## Nav: `UnifiedLayout.tsx`
-- Operations items: remove "CM Projects" and "CM Jobs", add single item `{ label: "Construction", to: "/cm" }`
-- Operations prefix array: ensure `/cm` is present, remove `/ops/jobs` (route still exists, just not in nav)
-
-## Files Changed
-1. **Created**: `src/pages/cm/ConstructionManagement.tsx`
-2. **Modified**: `src/App.tsx` (swap lazy import + route)
-3. **Modified**: `src/components/UnifiedLayout.tsx` (nav items)
-
-## Not Changed
-- `CMJobsBoard.tsx` — untouched
-- `CMProjectsList.tsx` (field) — untouched
-- `/ops/jobs` route — kept in App.tsx
-- No database migrations needed
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.

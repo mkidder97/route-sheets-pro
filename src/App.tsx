@@ -44,6 +44,7 @@ const FieldLayout = lazy(() => import("./components/FieldLayout"));
 const FieldHome = lazy(() => import("./pages/field/FieldHome"));
 const CMProjectsList = lazy(() => import("./pages/field/cm/CMProjectsList"));
 const CMProjectNew = lazy(() => import("./pages/cm/CMProjectNew"));
+const ConstructionManagement = lazy(() => import("./pages/cm/ConstructionManagement"));
 const CMProjectDetail = lazy(() => import("./pages/field/cm/CMProjectDetail"));
 const FieldInspections = lazy(() => import("./pages/field/FieldInspections"));
 const FieldProfile = lazy(() => import("./pages/field/FieldProfile"));
@@ -95,7 +96,7 @@ const App = () => (
               <Route path="/ops/time-mileage" element={<OpsTimeMileage />} />
               <Route path="/ops/scheduling" element={<OpsScheduling />} />
 
-              <Route path="/cm" element={<CMProjectsList />} />
+              <Route path="/cm" element={<ConstructionManagement />} />
               <Route path="/cm/new" element={<CMProjectNew />} />
 
               <Route path="/admin/users" element={<AdminUsers />} />
