@@ -1,17 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-# Seed Harbor Freight Demo Project
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-## Approach
-Execute the user-provided SQL as data inserts into existing tables. Four operations:
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-1. **Building** — INSERT into `buildings` (Harbor Freight Tools, Duncan OK)
-2. **CM Project** — INSERT into `cm_projects` with owner contacts, contractor info, CC list
-3. **Checklist Sections** — INSERT 7 rows into `cm_project_sections` (Staging, Demo, Blocking, Assembly, Flashings, Drainage, Closeout)
-4. **Demo Visit** — INSERT into `cm_visits` (Visit #1, submitted status)
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-All use `ON CONFLICT (id) DO NOTHING` for idempotency. No schema changes, no UI changes, no component modifications.
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
+
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
 ## Execution
-Use the database insert tool to run the exact SQL provided. Single execution containing all four INSERT statements.
-
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
