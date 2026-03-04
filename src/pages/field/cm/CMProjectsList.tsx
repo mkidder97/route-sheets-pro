@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
 export default function CMProjectsList() {
-  const { role } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
 
