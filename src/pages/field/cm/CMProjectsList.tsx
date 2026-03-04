@@ -108,15 +108,6 @@ export default function CMProjectsList() {
         </div>
       )}
 
-      {canCreate && (
-        <button
-          onClick={() => navigate("/field/cm/new")}
-          className="fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-colors hover:bg-blue-500 md:bottom-6"
-          aria-label="New CM project"
-        >
-          <Plus className="h-5 w-5" />
-        </button>
-      )}
     </div>
   );
 }

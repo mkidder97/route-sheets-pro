@@ -903,7 +903,7 @@ export default function CMProjectNew() {
           type="button"
           variant="ghost"
           className="text-slate-400 hover:text-slate-200 h-11"
-          onClick={() => navigate("/field/cm")}
+          onClick={() => navigate("/cm")}
           disabled={submitting}
         >
           Cancel
