@@ -564,6 +564,68 @@ export default function CMVisitForm() {
     </div>
   );
 
+  // Weather input with local state, onBlur save, and suffix adornment
+  const WeatherInput = ({
+    label,
+    field,
+    suffix,
+    placeholder,
+  }: {
+    label: string;
+    field: "weather_rain_pct" | "weather_wind_mph" | "weather_temp_range";
+    suffix?: string;
+    placeholder?: string;
+  }) => {
+    const stripSuffix = (val: string | null) => {
+      if (!val) return "";
+      if (suffix) return val.replace(new RegExp(`\\s*${suffix}\\s*$`, "i"), "").trim();
+      return val;
+    };
+
+    const [local, setLocal] = useState(() => stripSuffix(visit?.[field] ?? null));
+
+    const handleBlur = () => {
+      if (!visit) return;
+      let saveVal: string | null = local.trim() || null;
+      if (saveVal && suffix && !saveVal.toLowerCase().endsWith(suffix.toLowerCase())) {
+        saveVal = `${saveVal} ${suffix}`;
+      }
+      setVisit((prev) => prev ? { ...prev, [field]: saveVal } : prev);
+      if (debounceTimers.current[`visit-${field}`]) {
+        clearTimeout(debounceTimers.current[`visit-${field}`]);
+      }
+      debounceTimers.current[`visit-${field}`] = setTimeout(async () => {
+        setSaveStatus("saving");
+        const { error } = await (supabase.from("cm_visits" as any) as any)
+          .update({ [field]: saveVal })
+          .eq("id", visit.id);
+        setSaveStatus(error ? "idle" : "saved");
+        if (!error) setTimeout(() => setSaveStatus("idle"), 2000);
+      }, 300);
+    };
+
+    return (
+      <div className="space-y-1">
+        <label className="text-xs text-slate-300 font-medium">{label}</label>
+        <div className="relative flex items-center">
+          <Input
+            className="bg-slate-900 border-slate-600 text-slate-100 pr-12"
+            value={local}
+            onChange={(e) => setLocal(e.target.value)}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+            readOnly={isSubmitted}
+          />
+          {suffix && (
+            <span className="absolute right-3 text-xs text-slate-500 pointer-events-none select-none">
+              {suffix}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Render step content
   const renderStep = () => {
     // Step 0: PROJECT
@@ -695,22 +757,21 @@ export default function CMVisitForm() {
           <div>
             <SectionLabel>Weather Conditions</SectionLabel>
             <div className="space-y-3">
-              <LabeledInput
+              <WeatherInput
                 label="Chance of Rain:"
-                value={visit.weather_rain_pct || ""}
-                onChange={(v) => handleVisitFieldChange("weather_rain_pct", v || null)}
-                placeholder="e.g. <10%"
+                field="weather_rain_pct"
+                suffix="%"
+                placeholder="e.g. <10"
               />
-              <LabeledInput
+              <WeatherInput
                 label="Winds:"
-                value={visit.weather_wind_mph || ""}
-                onChange={(v) => handleVisitFieldChange("weather_wind_mph", v || null)}
-                placeholder="e.g. 3-5 mph"
+                field="weather_wind_mph"
+                suffix="mph"
+                placeholder="e.g. 3-5"
               />
-              <LabeledInput
+              <WeatherInput
                 label="Temperature Range:"
-                value={visit.weather_temp_range || ""}
-                onChange={(v) => handleVisitFieldChange("weather_temp_range", v || null)}
+                field="weather_temp_range"
                 placeholder="e.g. 49-68"
               />
             </div>
