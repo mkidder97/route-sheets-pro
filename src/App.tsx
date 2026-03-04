@@ -48,6 +48,7 @@ const ConstructionManagement = lazy(() => import("./pages/cm/ConstructionManagem
 const CMProjectDetail = lazy(() => import("./pages/cm/CMProjectDetail"));
 const FieldInspections = lazy(() => import("./pages/field/FieldInspections"));
 const FieldProfile = lazy(() => import("./pages/field/FieldProfile"));
+const CMVisitForm = lazy(() => import("./pages/field/cm/CMVisitForm"));
 
 const queryClient = new QueryClient();
 
