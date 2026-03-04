@@ -6,6 +6,8 @@ import { Menu, ChevronLeft, ChevronRight, Check, Loader2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 
@@ -17,6 +19,22 @@ interface VisitData {
   src_associate_id: string | null;
   submitted_at: string | null;
   cm_project_id: string;
+  weather_rain_pct: string | null;
+  weather_wind_mph: string | null;
+  weather_temp_range: string | null;
+  overview_narrative: string | null;
+  completion_tpo_delivered_pct: number | null;
+  completion_membrane_pct: number | null;
+  completion_flashing_pct: number | null;
+  completion_sheet_metal_pct: number | null;
+  schedule_days_used: number | null;
+  schedule_weather_days_credited: number;
+  schedule_days_remaining: number | null;
+  unit_qty_infill_sf: number;
+  unit_qty_deck_coating_sf: number;
+  unit_qty_deck_replaced_sf: number;
+  general_notes: string | null;
+  internal_notes: string | null;
 }
 
 interface ProjectData {
@@ -28,12 +46,16 @@ interface ProjectData {
   owner_contacts: any[];
   contractor_name: string | null;
   contractor_contacts: any[];
+  contract_completion_date: string | null;
+  total_contract_days: number | null;
+  cc_list: any[];
   buildings: {
     property_name: string;
     address: string;
     city: string;
     state: string;
     zip_code: string;
+    square_footage: number | null;
   };
 }
 
@@ -76,6 +98,12 @@ export default function CMVisitForm() {
 
   const isSubmitted = visit?.status === "submitted";
 
+  // Ground section filtering
+  const groundSection = sections.find((s) =>
+    s.section_title.toLowerCase().includes("ground")
+  );
+  const displaySections = sections.filter((s) => s.id !== groundSection?.id);
+
   // Step definitions
   const staticStepsBefore = [
     "PROJECT",
@@ -85,7 +113,7 @@ export default function CMVisitForm() {
     "WEATHER & OVERVIEW",
   ];
   const staticStepsAfter = ["COMPLETION & SCHEDULE", "PHOTO GRID"];
-  const dynamicStepNames = sections.map((s) => s.section_title.toUpperCase());
+  const dynamicStepNames = displaySections.map((s) => s.section_title.toUpperCase());
   const allSteps = [...staticStepsBefore, ...dynamicStepNames, ...staticStepsAfter];
   const totalSteps = allSteps.length;
 
@@ -108,6 +136,32 @@ export default function CMVisitForm() {
     []
   );
 
+  // Generic visit field change handler
+  const handleVisitFieldChange = useCallback(
+    (field: keyof VisitData, value: any) => {
+      if (!visit) return;
+      const updated = { ...visit, [field]: value };
+
+      // Recalculate schedule_days_remaining for schedule fields
+      if (field === "schedule_days_used" || field === "schedule_weather_days_credited") {
+        const totalDays = project?.total_contract_days || 0;
+        const daysUsed = field === "schedule_days_used" ? (value ?? 0) : (updated.schedule_days_used ?? 0);
+        const weatherDays = field === "schedule_weather_days_credited" ? (value ?? 0) : (updated.schedule_weather_days_credited ?? 0);
+        updated.schedule_days_remaining = totalDays + weatherDays - daysUsed;
+      }
+
+      setVisit(updated);
+
+      // Build save payload
+      const savePayload: Record<string, any> = { [field]: value };
+      if (field === "schedule_days_used" || field === "schedule_weather_days_credited") {
+        savePayload.schedule_days_remaining = updated.schedule_days_remaining;
+      }
+      debouncedSave("cm_visits", visit.id, savePayload, `visit-${field}`);
+    },
+    [visit, project, debouncedSave]
+  );
+
   // Fetch all data
   useEffect(() => {
     if (!projectId || !visitId) return;
@@ -117,7 +171,7 @@ export default function CMVisitForm() {
         supabase.from("cm_visits").select("*").eq("id", visitId).single(),
         supabase
           .from("cm_projects")
-          .select("id, project_name, owner_company, owner_address, owner_city_state_zip, owner_contacts, contractor_name, contractor_contacts, buildings(property_name, address, city, state, zip_code)")
+          .select("id, project_name, owner_company, owner_address, owner_city_state_zip, owner_contacts, contractor_name, contractor_contacts, contract_completion_date, total_contract_days, cc_list, buildings(property_name, address, city, state, zip_code, square_footage)")
           .eq("id", projectId)
           .single(),
         supabase
@@ -170,7 +224,6 @@ export default function CMVisitForm() {
         .select("id", { count: "exact", head: true })
         .eq("cm_visit_id", visitId);
 
-      // Double-check count is 0 (sections state may lag)
       if (count && (count as any[]).length > 0) return;
 
       const { data: templateSections } = await supabase
@@ -191,7 +244,6 @@ export default function CMVisitForm() {
 
       await supabase.from("cm_visit_sections").insert(inserts);
 
-      // Refetch
       const { data: newSections } = await supabase
         .from("cm_visit_sections")
         .select("*")
@@ -275,6 +327,50 @@ export default function CMVisitForm() {
   const building = project.buildings;
   const ownerContacts = Array.isArray(project.owner_contacts) ? project.owner_contacts : [];
   const contractorContacts = Array.isArray(project.contractor_contacts) ? project.contractor_contacts : [];
+  const ccList = Array.isArray(project.cc_list) ? project.cc_list : [];
+
+  // Helper: section label
+  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
+      {children}
+    </p>
+  );
+
+  // Helper: labeled input row
+  const LabeledInput = ({
+    label,
+    value,
+    onChange,
+    type = "text",
+    placeholder,
+    readOnly,
+    min,
+    max,
+  }: {
+    label: string;
+    value: string | number;
+    onChange: (val: string) => void;
+    type?: string;
+    placeholder?: string;
+    readOnly?: boolean;
+    min?: number;
+    max?: number;
+  }) => (
+    <div className="space-y-1">
+      <label className="text-xs text-slate-300 font-medium">{label}</label>
+      <Input
+        type={type}
+        className="bg-slate-900 border-slate-600 text-slate-100"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        readOnly={readOnly || isSubmitted}
+        disabled={readOnly}
+        min={min}
+        max={max}
+      />
+    </div>
+  );
 
   // Render step content
   const renderStep = () => {
@@ -347,9 +443,7 @@ export default function CMVisitForm() {
           </div>
 
           <div className="mt-4">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
-              SRC Associate
-            </p>
+            <SectionLabel>SRC Associate</SectionLabel>
             {!srcAssociate && !isSubmitted ? (
               <Select onValueChange={handleAssociateChange}>
                 <SelectTrigger className="bg-slate-900 border-slate-600 text-slate-100">
@@ -401,19 +495,86 @@ export default function CMVisitForm() {
       );
     }
 
-    // Step 4: WEATHER & OVERVIEW (placeholder)
+    // Step 4: WEATHER & OVERVIEW
     if (currentStep === 4) {
       return (
-        <div className="flex items-center justify-center h-48">
-          <p className="text-sm text-slate-500 italic">Coming in next prompt</p>
+        <div className="space-y-6">
+          {/* Weather Conditions */}
+          <div>
+            <SectionLabel>Weather Conditions</SectionLabel>
+            <div className="space-y-3">
+              <LabeledInput
+                label="Chance of Rain:"
+                value={visit.weather_rain_pct || ""}
+                onChange={(v) => handleVisitFieldChange("weather_rain_pct", v || null)}
+                placeholder="e.g. <10%"
+              />
+              <LabeledInput
+                label="Winds:"
+                value={visit.weather_wind_mph || ""}
+                onChange={(v) => handleVisitFieldChange("weather_wind_mph", v || null)}
+                placeholder="e.g. 3-5 mph"
+              />
+              <LabeledInput
+                label="Temperature Range:"
+                value={visit.weather_temp_range || ""}
+                onChange={(v) => handleVisitFieldChange("weather_temp_range", v || null)}
+                placeholder="e.g. 49-68"
+              />
+            </div>
+          </div>
+
+          {/* Overview Narrative */}
+          <div>
+            <SectionLabel>Overview of Today's Work</SectionLabel>
+            <Textarea
+              className="bg-slate-900 border-slate-600 text-slate-100 min-h-[120px] resize-y"
+              value={visit.overview_narrative || ""}
+              onChange={(e) => handleVisitFieldChange("overview_narrative", e.target.value || null)}
+              readOnly={isSubmitted}
+              placeholder="Describe the work observed today..."
+            />
+          </div>
+
+          {/* Ground Conditions & Set-Up */}
+          <div>
+            <SectionLabel>Ground Conditions &amp; Set-Up</SectionLabel>
+            {groundSection ? (
+              <div className="space-y-4">
+                {Array.isArray(groundSection.checklist_items) && groundSection.checklist_items.length > 0 && (
+                  <ol className="list-decimal list-inside space-y-1">
+                    {groundSection.checklist_items.map((item: any, i: number) => (
+                      <li key={i} className="text-sm text-slate-300">
+                        {typeof item === "string" ? item : item.text || item.label || JSON.stringify(item)}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                <Textarea
+                  className="bg-slate-900 border-slate-600 text-slate-100 min-h-[120px] resize-y"
+                  value={groundSection.notes || ""}
+                  onChange={(e) => handleNotesChange(groundSection.id, e.target.value)}
+                  readOnly={isSubmitted}
+                  placeholder="Add ground conditions notes..."
+                />
+              </div>
+            ) : (
+              <Textarea
+                className="bg-slate-900 border-slate-600 text-slate-100 min-h-[100px] resize-y"
+                value=""
+                readOnly={isSubmitted}
+                placeholder="Ground conditions notes..."
+              />
+            )}
+          </div>
         </div>
       );
     }
 
-    // Dynamic checklist sections (steps 5 to 5 + sections.length - 1)
+    // Dynamic checklist sections (using displaySections, ground filtered out)
     const dynamicIndex = currentStep - staticStepsBefore.length;
-    if (dynamicIndex >= 0 && dynamicIndex < sections.length) {
-      const section = sections[dynamicIndex];
+    if (dynamicIndex >= 0 && dynamicIndex < displaySections.length) {
+      const section = displaySections[dynamicIndex];
       const items = Array.isArray(section.checklist_items) ? section.checklist_items : [];
 
       return (
@@ -429,7 +590,7 @@ export default function CMVisitForm() {
           )}
 
           <div className="mt-4">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2">Notes</p>
+            <SectionLabel>Notes</SectionLabel>
             <Textarea
               className="bg-slate-900 border-slate-600 text-slate-100 min-h-[120px] resize-y"
               rows={4}
@@ -443,7 +604,177 @@ export default function CMVisitForm() {
       );
     }
 
-    // Placeholder steps at end
+    // COMPLETION & SCHEDULE step
+    const completionStepIndex = staticStepsBefore.length + displaySections.length;
+    if (currentStep === completionStepIndex) {
+      const sqFt = building.square_footage;
+      const sqFtDisplay = sqFt != null ? sqFt.toLocaleString() : "--";
+      const totalDays = project.total_contract_days || 0;
+      const daysUsed = visit.schedule_days_used ?? 0;
+      const weatherDays = visit.schedule_weather_days_credited ?? 0;
+      const remaining = totalDays + weatherDays - daysUsed;
+
+      return (
+        <div className="space-y-6">
+          {/* Observation of Completed Work */}
+          <div>
+            <SectionLabel>Observation of Completed Work</SectionLabel>
+            <div className="space-y-3">
+              <LabeledInput
+                label="% TPO materials delivered on site."
+                value={visit.completion_tpo_delivered_pct ?? ""}
+                onChange={(v) => handleVisitFieldChange("completion_tpo_delivered_pct", v === "" ? null : Math.min(100, Math.max(0, parseInt(v) || 0)))}
+                type="number"
+                min={0}
+                max={100}
+              />
+              <LabeledInput
+                label={`% New membrane installed to date (${sqFtDisplay} SF).`}
+                value={visit.completion_membrane_pct ?? ""}
+                onChange={(v) => handleVisitFieldChange("completion_membrane_pct", v === "" ? null : Math.min(100, Math.max(0, parseInt(v) || 0)))}
+                type="number"
+                min={0}
+                max={100}
+              />
+              <LabeledInput
+                label="% Flashing details completed to date."
+                value={visit.completion_flashing_pct ?? ""}
+                onChange={(v) => handleVisitFieldChange("completion_flashing_pct", v === "" ? null : Math.min(100, Math.max(0, parseInt(v) || 0)))}
+                type="number"
+                min={0}
+                max={100}
+              />
+              <LabeledInput
+                label="% Sheet metal installed to date."
+                value={visit.completion_sheet_metal_pct ?? ""}
+                onChange={(v) => handleVisitFieldChange("completion_sheet_metal_pct", v === "" ? null : Math.min(100, Math.max(0, parseInt(v) || 0)))}
+                type="number"
+                min={0}
+                max={100}
+              />
+            </div>
+          </div>
+
+          {/* Project Schedule */}
+          <div>
+            <SectionLabel>Project Schedule</SectionLabel>
+            {project.contract_completion_date && (
+              <p className="text-sm text-slate-300 mb-3">
+                {format(new Date(project.contract_completion_date + "T00:00:00"), "MM/dd/yyyy")} — Calendar days to be substantially complete ({totalDays} days).
+              </p>
+            )}
+            <div className="space-y-3">
+              <LabeledInput
+                label="Calendar days used to date."
+                value={daysUsed}
+                onChange={(v) => handleVisitFieldChange("schedule_days_used", v === "" ? null : parseInt(v) || 0)}
+                type="number"
+                min={0}
+              />
+              <LabeledInput
+                label="Weather/Change Order days credited to date."
+                value={weatherDays}
+                onChange={(v) => handleVisitFieldChange("schedule_weather_days_credited", v === "" ? 0 : parseInt(v) || 0)}
+                type="number"
+                min={0}
+              />
+              <div className="space-y-1">
+                <label className="text-xs text-slate-300 font-medium">Remaining calendar days:</label>
+                <div className="rounded-md bg-slate-800 border border-slate-700/50 px-3 py-2 text-sm font-semibold text-slate-100">
+                  {remaining}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Unit Price Quantities */}
+          <div>
+            <SectionLabel>Unit Price Quantities Installed to Date</SectionLabel>
+            <div className="space-y-3">
+              <LabeledInput
+                label="SF of roof assembly removal/replacement with in-fill insulation."
+                value={visit.unit_qty_infill_sf}
+                onChange={(v) => handleVisitFieldChange("unit_qty_infill_sf", parseInt(v) || 0)}
+                type="number"
+                min={0}
+              />
+              <LabeledInput
+                label="SF of rust-inhibiting deck coating installed to date."
+                value={visit.unit_qty_deck_coating_sf}
+                onChange={(v) => handleVisitFieldChange("unit_qty_deck_coating_sf", parseInt(v) || 0)}
+                type="number"
+                min={0}
+              />
+              <LabeledInput
+                label="SF of steel deck replaced to date."
+                value={visit.unit_qty_deck_replaced_sf}
+                onChange={(v) => handleVisitFieldChange("unit_qty_deck_replaced_sf", parseInt(v) || 0)}
+                type="number"
+                min={0}
+              />
+            </div>
+          </div>
+
+          {/* General Notes */}
+          <div>
+            <SectionLabel>General Notes</SectionLabel>
+            <Textarea
+              className="bg-slate-900 border-slate-600 text-slate-100 min-h-[120px] resize-y"
+              value={visit.general_notes || ""}
+              onChange={(e) => handleVisitFieldChange("general_notes", e.target.value || null)}
+              readOnly={isSubmitted}
+              placeholder="General notes about this visit..."
+            />
+          </div>
+
+          {/* SRC Associate */}
+          <div>
+            <SectionLabel>SRC Associate</SectionLabel>
+            {srcAssociate ? (
+              <div className="rounded-lg bg-slate-800 border border-slate-700/50 p-3">
+                <p className="text-sm font-semibold text-slate-100">{srcAssociate.full_name}</p>
+                {srcAssociate.phone && <p className="text-xs text-slate-400">Phone: {srcAssociate.phone}</p>}
+                <p className="text-xs text-slate-400">Email: {srcAssociate.email}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic">No associate assigned.</p>
+            )}
+          </div>
+
+          {/* CC List */}
+          {ccList.length > 0 && (
+            <div>
+              <SectionLabel>CC List</SectionLabel>
+              <div className="rounded-lg bg-slate-800 border border-slate-700/50 p-3 space-y-1">
+                {ccList.map((entry: any, i: number) => (
+                  <p key={i} className="text-sm text-slate-300">
+                    {entry.names || entry.name || ""}{entry.org ? `; ${entry.org}` : ""}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Internal Notes */}
+          <div className="pt-2">
+            <Separator className="bg-slate-700/50 mb-4" />
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-1">
+              Notes to Proofer / Internal Notes
+            </p>
+            <p className="text-[10px] text-slate-600 mb-2 italic">Not shown on report</p>
+            <Textarea
+              className="bg-slate-950 border-slate-700 text-slate-400 min-h-[100px] resize-y"
+              value={visit.internal_notes || ""}
+              onChange={(e) => handleVisitFieldChange("internal_notes", e.target.value || null)}
+              readOnly={isSubmitted}
+              placeholder="Internal notes (not included in client report)..."
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // PHOTO GRID placeholder (last step)
     return (
       <div className="flex items-center justify-center h-48">
         <p className="text-sm text-slate-500 italic">Coming in next prompt</p>
