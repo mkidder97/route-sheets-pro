@@ -48,6 +48,7 @@ const ConstructionManagement = lazy(() => import("./pages/cm/ConstructionManagem
 const CMProjectDetail = lazy(() => import("./pages/cm/CMProjectDetail"));
 const FieldInspections = lazy(() => import("./pages/field/FieldInspections"));
 const FieldProfile = lazy(() => import("./pages/field/FieldProfile"));
+const CMVisitForm = lazy(() => import("./pages/field/cm/CMVisitForm"));
 
 const queryClient = new QueryClient();
 
@@ -119,7 +120,7 @@ const App = () => (
               <Route path="/field/cm" element={<CMProjectsList />} />
               
               <Route path="/field/cm/:projectId" element={<CMProjectDetail />} />
-              <Route path="/field/cm/:projectId/visits/:visitId" element={<CMProjectDetail />} />
+              <Route path="/field/cm/:projectId/visits/:visitId" element={<CMVisitForm />} />
               <Route path="/field/inspections" element={<FieldInspections />} />
               <Route path="/field/profile" element={<FieldProfile />} />
             </Route>
