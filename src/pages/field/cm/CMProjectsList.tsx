@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Building2, Loader2 } from "lucide-react";
+import { Search, Building2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
 export default function CMProjectsList() {
-  const { role } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
 
@@ -54,8 +52,6 @@ export default function CMProjectsList() {
       building?.property_name?.toLowerCase().includes(q)
     );
   });
-
-  const canCreate = role === "admin" || role === "office_manager";
 
   return (
     <div className="space-y-4">
@@ -112,15 +108,6 @@ export default function CMProjectsList() {
         </div>
       )}
 
-      {canCreate && (
-        <button
-          onClick={() => navigate("/field/cm/new")}
-          className="fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-colors hover:bg-blue-500 md:bottom-6"
-          aria-label="New CM project"
-        >
-          <Plus className="h-5 w-5" />
-        </button>
-      )}
     </div>
   );
 }

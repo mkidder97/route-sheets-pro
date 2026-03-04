@@ -1,37 +1,25 @@
 
-
-# Move CM Project Wizard to Office Interface
+# Construction Management Module -- Database Migration and Storage
 
 ## Summary
-Move the project setup wizard from the field interface (`/field/cm/new` in FieldLayout) to the office interface (`/cm/new` in UnifiedLayout). Add "CM Projects" to the office nav. Remove the FAB from the field projects list.
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-## Changes
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-### 1. Move file
-- `src/pages/field/cm/CMProjectNew.tsx` → `src/pages/cm/CMProjectNew.tsx`
-- No internal logic changes except two `navigate()` calls
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-### 2. Update CMProjectNew.tsx (two lines only)
-- Line 345: `navigate(\`/field/cm/${project!.id}\`)` → `navigate(\`/cm/${project!.id}\`)`
-- Line 906: `navigate("/field/cm")` → `navigate("/cm")`
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-### 3. Update App.tsx
-- Change lazy import path from `"./pages/field/cm/CMProjectNew"` to `"./pages/cm/CMProjectNew"`
-- Remove `/field/cm/new` route from the FieldLayout group (line 115)
-- Add two routes inside the UnifiedLayout group (after ops routes, before admin):
-  - `/cm/new` → `CMProjectNew`
-  - `/cm` → `CMProjectsList` (reuses the existing field list component for now)
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-### 4. Update CMProjectsList.tsx (field version)
-- Remove the FAB block (lines 115-123) and the unused `Plus` import
-- Remove the `canCreate` variable and the `useAuth` import (no longer needed)
-
-### 5. Update UnifiedLayout.tsx nav
-- Add "CM Projects" to the Operations section items: `{ label: "CM Projects", to: "/cm" }`
-- Add `"/cm"` to the Operations prefix array so the section highlights correctly
-
-## What does NOT change
-- Wizard internal logic, steps, form state, submission code
-- FieldLayout, FieldHome, or any other field routes
-- CMProjectDetail or visit routes (remain under `/field/cm/:projectId`)
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
