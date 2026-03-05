@@ -1518,7 +1518,9 @@ export default function CMVisitForm() {
                     i === currentStep ? "bg-emerald-500" : "bg-slate-700"
                   }`}
                 />
-                <span className="truncate">{name}</span>
+                <span className="truncate">
+                  {name}{i === totalSteps - 1 && photos.length > 0 ? ` 📷 ${photos.length}` : ""}
+                </span>
               </button>
             ))}
           </div>
