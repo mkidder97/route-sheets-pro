@@ -9,7 +9,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Building2, ClipboardCheck, History, Route, Loader2 } from "lucide-react";
+import { Search, Building2, ClipboardCheck, History, Route, Loader2, ChevronDown, ChevronUp, Phone, Mail, Navigation } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function FieldInspections() {
   const { profile } = useAuth();
