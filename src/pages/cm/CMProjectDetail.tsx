@@ -215,6 +215,19 @@ export default function CMProjectDetail() {
     },
   });
 
+  const handleReassignInspector = async (visitId: string, newInspectorId: string | null) => {
+    const { error } = await supabase
+      .from("cm_visits")
+      .update({ inspector_id: newInspectorId })
+      .eq("id", visitId);
+    if (error) {
+      toast.error("Failed to reassign inspector");
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["cm-visits", projectId] });
+    toast.success("Inspector reassigned");
+  };
+
   if (projectLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -382,10 +395,30 @@ export default function CMProjectDetail() {
                           </span>
                           <Badge className={cn("text-[10px]", vBadge.className)}>{vBadge.label}</Badge>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <User className="h-3 w-3" />
-                          {inspName}
-                        </div>
+                        {isOffice ? (
+                          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+                            <User className="h-3 w-3 text-muted-foreground" />
+                            <Select
+                              value={visit.inspector_id ?? "unassigned"}
+                              onValueChange={(val) => handleReassignInspector(visit.id, val === "unassigned" ? null : val)}
+                            >
+                              <SelectTrigger className="h-6 text-xs border-none bg-transparent p-0 gap-1 text-muted-foreground hover:text-slate-200 w-auto focus:ring-0">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unassigned">Unassigned</SelectItem>
+                                {assignableInspectors?.map((insp) => (
+                                  <SelectItem key={insp.id} value={insp.id}>{insp.full_name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <User className="h-3 w-3" />
+                            {inspName}
+                          </div>
+                        )}
                       </div>
 
                       {/* PDF actions (office only, submitted) */}
