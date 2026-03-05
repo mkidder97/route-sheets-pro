@@ -215,6 +215,19 @@ export default function CMProjectDetail() {
     },
   });
 
+  const handleReassignInspector = async (visitId: string, newInspectorId: string | null) => {
+    const { error } = await supabase
+      .from("cm_visits")
+      .update({ inspector_id: newInspectorId })
+      .eq("id", visitId);
+    if (error) {
+      toast.error("Failed to reassign inspector");
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["cm-visits", projectId] });
+    toast.success("Inspector reassigned");
+  };
+
   if (projectLoading) {
     return (
       <div className="flex items-center justify-center py-20">
