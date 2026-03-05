@@ -50,12 +50,10 @@ const NAV_SECTIONS = [
   {
     label: "Inspections",
     icon: ClipboardCheck,
-    prefix: ["/inspections", "/route-builder", "/my-routes"],
+    prefix: ["/inspections", "/route-builder"],
     items: [
-      { label: "My Routes", to: "/my-routes" },
       { label: "Campaigns", to: "/inspections/campaigns" },
-      { label: "Route Plans", to: "/route-builder" },
-      { label: "Schedule", to: "/inspections/schedule" },
+      { label: "Route Planner", to: "/route-builder" },
       { label: "History", to: "/inspections/history" },
     ],
   },
