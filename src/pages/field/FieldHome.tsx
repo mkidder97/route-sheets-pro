@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { HardHat, Lock, Calendar, Loader2, ClipboardCheck } from "lucide-react";
 import { format } from "date-fns";
-import { Progress } from "@/components/ui/progress";
+
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -77,15 +77,6 @@ export default function FieldHome() {
             </span>
           </div>
           <p className="text-sm font-semibold text-slate-100">{campaign.name}</p>
-          {campaign.total_buildings > 0 && (
-            <Progress
-              value={Math.round((campaign.completed_buildings / campaign.total_buildings) * 100)}
-              className="mt-2 h-2 bg-slate-700"
-            />
-          )}
-          <p className="mt-1.5 text-xs text-slate-400">
-            {campaign.completed_buildings} of {campaign.total_buildings} buildings complete
-          </p>
           <p className="mt-0.5 text-xs text-slate-500">
             {format(new Date(campaign.start_date), "MMM d")} – {format(new Date(campaign.end_date), "MMM d, yyyy")}
           </p>
