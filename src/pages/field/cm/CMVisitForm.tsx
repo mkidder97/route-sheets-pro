@@ -1286,7 +1286,7 @@ export default function CMVisitForm() {
           <Menu className="h-5 w-5" />
         </button>
         <h1 className="flex-1 text-center text-xs font-bold uppercase tracking-wider text-slate-100 truncate px-2">
-          {allSteps[currentStep] || ""}
+          {allSteps[currentStep] || ""}{isLastStep && photos.length > 0 ? ` 📷 ${photos.length}` : ""}
         </h1>
         <div className="flex items-center gap-2">
           {/* + shortcut on photo step only */}
