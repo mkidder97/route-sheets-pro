@@ -69,7 +69,6 @@ const App = () => (
 
             <Route element={<ProtectedRoute><UnifiedLayout /></ProtectedRoute>}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/my-routes" element={<MyRoutes />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/analytics" element={<Analytics />} />
 
