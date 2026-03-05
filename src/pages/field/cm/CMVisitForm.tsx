@@ -1279,8 +1279,15 @@ export default function CMVisitForm() {
       {/* Top bar */}
       <div className="flex items-center h-12 shrink-0 border-b border-slate-700/50 px-3">
         <button
-          onClick={() => setTocOpen(true)}
+          onClick={() => navigate(`/field/cm/${projectId}`)}
           className="p-2 -ml-2 rounded-md text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
+          aria-label="Back to project"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <button
+          onClick={() => setTocOpen(true)}
+          className="p-2 rounded-md text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
           aria-label="Table of contents"
         >
           <Menu className="h-5 w-5" />
