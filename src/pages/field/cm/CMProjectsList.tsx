@@ -5,25 +5,35 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Building2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function CMProjectsList() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const { user } = useAuth();
 
   const { data: projects, isLoading } = useQuery({
-    queryKey: ["field-cm-projects"],
+    queryKey: ["field-cm-projects", user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
+      // Get project IDs where this inspector has at least one visit
+      const { data: assignedVisits } = await supabase
+        .from("cm_visits")
+        .select("cm_project_id")
+        .eq("inspector_id", user!.id);
+
+      const projectIds = [...new Set(assignedVisits?.map((v) => v.cm_project_id) ?? [])];
+      if (projectIds.length === 0) return [];
+
       const { data, error } = await supabase
         .from("cm_projects")
         .select("id, project_name, membrane_type, status, building_id, buildings(property_name, address, city, state)")
+        .in("id", projectIds)
         .eq("status", "active")
         .order("created_at", { ascending: false });
       if (error) throw error;
 
       // Fetch visit counts per project
-      const projectIds = (data ?? []).map((p: any) => p.id);
-      if (!projectIds.length) return [];
-
       const { data: visits } = await supabase
         .from("cm_visits")
         .select("id, cm_project_id, status")
@@ -74,7 +84,7 @@ export default function CMProjectsList() {
       ) : !filtered.length ? (
         <div className="flex flex-col items-center py-12 text-slate-500">
           <Building2 className="h-12 w-12 opacity-20" />
-          <p className="mt-3 text-sm">No active projects</p>
+          <p className="mt-3 text-sm">No projects assigned to you yet.</p>
         </div>
       ) : (
         <div className="space-y-2">
