@@ -1,25 +1,78 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Disable Bootstrap Endpoint After First Use
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+### Changes
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+**1. Database migration — create `system_settings` table**
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+```sql
+CREATE TABLE IF NOT EXISTS public.system_settings (
+  key text PRIMARY KEY,
+  value text NOT NULL,
+  updated_at timestamptz DEFAULT now()
+);
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
+CREATE POLICY "Service role only"
+ON public.system_settings
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+INSERT INTO public.system_settings (key, value)
+VALUES ('bootstrap_completed', 'false')
+ON CONFLICT (key) DO NOTHING;
+```
+
+RLS locks the table to service_role only — no client-side access.
+
+**2. Edge function edit — `supabase/functions/manage-users/index.ts`**
+
+In the `bootstrap` action (lines 145-171), add a `system_settings` check after the existing user count check (after line 151), and set the flag after successful admin creation (before line 170).
+
+Before (lines 149-170):
+```ts
+if ((count ?? 0) > 0) {
+  return json(req, { error: "System already has users. Bootstrap is disabled." }, 403);
+}
+// ... create user, insert role ...
+return json(req, { success: true, user_id: newUser.user.id });
+```
+
+After:
+```ts
+if ((count ?? 0) > 0) {
+  return json(req, { error: "System already has users. Bootstrap is disabled." }, 403);
+}
+
+const { data: setting } = await supabaseAdmin
+  .from("system_settings")
+  .select("value")
+  .eq("key", "bootstrap_completed")
+  .single();
+if (setting?.value === "true") {
+  return json(req, { error: "Bootstrap already completed." }, 403);
+}
+
+// ... existing create user + insert role code ...
+
+await supabaseAdmin
+  .from("system_settings")
+  .update({ value: "true", updated_at: new Date().toISOString() })
+  .eq("key", "bootstrap_completed");
+
+return json(req, { success: true, user_id: newUser.user.id });
+```
+
+### Files Modified
+- `supabase/functions/manage-users/index.ts` — bootstrap action only
+- New migration — `system_settings` table + seed row
+
+### Not Changed
+- `check-setup` action
+- All other actions in the edge function
+- Login page or any application code
+
