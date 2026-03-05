@@ -33,6 +33,27 @@ export default function FieldHome() {
     },
   });
 
+  const { data: campaign } = useQuery({
+    queryKey: ["field-campaign-banner", user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data: prof } = await supabase
+        .from("user_profiles").select("inspector_id").eq("id", user!.id).single();
+      if (!prof?.inspector_id) return null;
+      const { data: insp } = await supabase
+        .from("inspectors").select("region_id").eq("id", prof.inspector_id).single();
+      if (!insp?.region_id) return null;
+      const { data } = await supabase
+        .from("inspection_campaigns")
+        .select("id, name, total_buildings, completed_buildings, start_date, end_date")
+        .eq("region_id", insp.region_id)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      return data ?? null;
+    },
+  });
+
   const comingSoon = [
     { title: "Annual Inspections", desc: "Routine roof assessments" },
     { title: "Storm Inspections", desc: "Post-event damage surveys" },
@@ -44,6 +65,32 @@ export default function FieldHome() {
       <h1 className="text-2xl font-bold text-slate-100">
         {getGreeting()}, {firstName}
       </h1>
+
+      {campaign && (
+        <div className="rounded-xl border border-slate-700/50 bg-slate-800 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/15">
+              <ClipboardCheck className="h-4 w-4 text-blue-400" />
+            </div>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Active Campaign
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-slate-100">{campaign.name}</p>
+          {campaign.total_buildings > 0 && (
+            <Progress
+              value={Math.round((campaign.completed_buildings / campaign.total_buildings) * 100)}
+              className="mt-2 h-2 bg-slate-700"
+            />
+          )}
+          <p className="mt-1.5 text-xs text-slate-400">
+            {campaign.completed_buildings} of {campaign.total_buildings} buildings complete
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {format(new Date(campaign.start_date), "MMM d")} – {format(new Date(campaign.end_date), "MMM d, yyyy")}
+          </p>
+        </div>
+      )}
 
       {/* Assignments */}
       <section>
