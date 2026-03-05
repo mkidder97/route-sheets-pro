@@ -152,12 +152,12 @@ export default function CMVisitForm() {
     "ROOFING CONTRACTOR",
     "WEATHER & OVERVIEW",
   ];
-  const staticStepsAfter = ["COMPLETION & SCHEDULE", `PHOTO GRID (${photos.length})`];
+  const staticStepsAfter = ["COMPLETION & SCHEDULE"];
   const dynamicStepNames = displaySections.map((s) => s.section_title.toUpperCase());
   const allSteps = [...staticStepsBefore, ...dynamicStepNames, ...staticStepsAfter];
   const totalSteps = allSteps.length;
   const isLastStep = currentStep === totalSteps - 1;
-  const isPhotoStep = isLastStep;
+  const isPhotoStep = isLastStep; // photos now live inside the completion step
 
   // Auto-save helper
   const debouncedSave = useCallback(
@@ -1159,126 +1159,104 @@ export default function CMVisitForm() {
               placeholder="Internal notes (not included in client report)..."
             />
           </div>
+
+          {/* ── PHOTOS SECTION ── */}
+          <div className="pt-4">
+            <Separator className="bg-slate-700/50 mb-4" />
+            <SectionLabel>Photos ({photos.length})</SectionLabel>
+
+            {photos.length === 0 && !uploading ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Camera className="h-10 w-10 text-slate-700 mb-2" />
+                <p className="text-sm text-slate-500">No photos yet — use the camera button to add photos.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {photos.map((photo, idx) => (
+                  <div
+                    key={photo.id}
+                    className="relative rounded-xl bg-slate-800 border border-slate-700/50 overflow-hidden"
+                  >
+                    {/* Thumbnail */}
+                    <button
+                      className="w-full aspect-square bg-slate-700"
+                      onClick={() => setPreviewIndex(idx)}
+                    >
+                      <img
+                        src={photo.public_url}
+                        alt={`Photo ${photo.photo_number}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+
+                    {/* Photo number badge — top-left */}
+                    <span className="absolute top-1.5 left-1.5 bg-slate-900/80 text-slate-100 text-[10px] font-bold rounded px-1.5 py-0.5">
+                      #{photo.photo_number}
+                    </span>
+
+                    {/* Delete — top-right */}
+                    {!isSubmitted && (
+                      <button
+                        className="absolute top-1.5 right-1.5 p-1 rounded bg-slate-900/80 text-red-400 hover:text-red-300"
+                        onClick={() => setDeletePhotoId(photo.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+
+                    {/* Label + reorder */}
+                    <div className="px-2 py-1.5">
+                      <p className={`text-xs truncate ${photo.label ? "text-teal-400 font-medium" : "text-slate-500 italic"}`}>
+                        {photo.label || "Unlabeled"}
+                      </p>
+                      {!isSubmitted && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <button
+                            className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 disabled:opacity-30"
+                            disabled={idx === 0}
+                            onClick={() => handleReorder(idx, "up")}
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 disabled:opacity-30"
+                            disabled={idx === photos.length - 1}
+                            onClick={() => handleReorder(idx, "down")}
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload progress */}
+            {uploading && (
+              <div className="flex items-center gap-3 bg-slate-800 border border-slate-700/50 rounded-lg px-4 py-3 mt-3">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span className="text-sm text-slate-300">Uploading photo...</span>
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+          </div>
         </div>
       );
     }
 
-    // PHOTO GRID step (last step)
-    return (
-      <div className="space-y-4">
-        {photos.length === 0 && !uploading ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Camera className="h-12 w-12 text-slate-700 mb-3" />
-            <p className="text-sm text-slate-500">No photos yet. Tap Add Photo to get started.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {/* Table header */}
-            <div className="grid grid-cols-[40px_60px_1fr_88px] gap-2 items-center px-1">
-              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">#</span>
-              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Photo</span>
-              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Description</span>
-              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold text-right">Actions</span>
-            </div>
-
-            {photos.map((photo, idx) => (
-              <div
-                key={photo.id}
-                className="grid grid-cols-[40px_60px_1fr_88px] gap-2 items-center bg-slate-800 border border-slate-700/50 rounded-lg px-2 py-2"
-              >
-                {/* Photo # */}
-                <span className="text-sm font-semibold text-slate-100 text-center">
-                  {photo.photo_number}
-                </span>
-
-                {/* Thumbnail */}
-                <button
-                  className="w-[60px] h-[60px] rounded-md overflow-hidden bg-slate-700 shrink-0"
-                  onClick={() => setPreviewIndex(idx)}
-                >
-                  <img
-                    src={photo.public_url}
-                    alt={`Photo ${photo.photo_number}`}
-                    className="w-full h-full object-cover"
-                  />
-                </button>
-
-                {/* Description */}
-                <div className="space-y-0.5">
-                  {photo.label && (
-                    <span className="inline-block text-[10px] font-medium uppercase tracking-wider text-teal-400 bg-teal-500/10 rounded px-1.5 py-0.5">
-                      {photo.label}
-                    </span>
-                  )}
-                  <Input
-                    className="bg-slate-900 border-slate-600 text-slate-100 text-xs h-9"
-                    value={photo.description || ""}
-                    onChange={(e) => handlePhotoDescChange(photo.id, e.target.value)}
-                    placeholder="Add description..."
-                    readOnly={isSubmitted}
-                  />
-                </div>
-
-                {/* Actions */}
-                {!isSubmitted && (
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 disabled:opacity-30"
-                      disabled={idx === 0}
-                      onClick={() => handleReorder(idx, "up")}
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </button>
-                    <button
-                      className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 disabled:opacity-30"
-                      disabled={idx === photos.length - 1}
-                      onClick={() => handleReorder(idx, "down")}
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </button>
-                    <button
-                      className="p-1.5 rounded text-red-400 hover:text-red-300 hover:bg-red-900/30"
-                      onClick={() => setDeletePhotoId(photo.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Upload progress row */}
-        {uploading && (
-          <div className="flex items-center gap-3 bg-slate-800 border border-slate-700/50 rounded-lg px-4 py-3">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            <span className="text-sm text-slate-300">Uploading photo...</span>
-          </div>
-        )}
-
-        {/* Add Photo button */}
-        {!isSubmitted && (
-          <Button
-            className="w-full min-h-[44px] bg-primary hover:bg-primary/90 text-primary-foreground"
-            onClick={() => photoInputRef.current?.click()}
-            disabled={uploading}
-          >
-            <Camera className="h-4 w-4 mr-2" /> Add Photo
-          </Button>
-        )}
-
-        {/* Hidden file input */}
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-      </div>
-    );
+    // fallback (should not reach)
+    return null;
   };
 
   const progressPct = totalSteps > 1 ? ((currentStep + 1) / totalSteps) * 100 : 100;
@@ -1308,7 +1286,7 @@ export default function CMVisitForm() {
           <Menu className="h-5 w-5" />
         </button>
         <h1 className="flex-1 text-center text-xs font-bold uppercase tracking-wider text-slate-100 truncate px-2">
-          {allSteps[currentStep] || ""}
+          {allSteps[currentStep] || ""}{isLastStep && photos.length > 0 ? ` 📷 ${photos.length}` : ""}
         </h1>
         <div className="flex items-center gap-2">
           {/* + shortcut on photo step only */}
@@ -1540,7 +1518,9 @@ export default function CMVisitForm() {
                     i === currentStep ? "bg-emerald-500" : "bg-slate-700"
                   }`}
                 />
-                <span className="truncate">{name}</span>
+                <span className="truncate">
+                  {name}{i === totalSteps - 1 && photos.length > 0 ? ` 📷 ${photos.length}` : ""}
+                </span>
               </button>
             ))}
           </div>
