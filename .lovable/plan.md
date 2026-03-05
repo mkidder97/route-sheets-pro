@@ -1,25 +1,19 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Active Campaign Banner on Field Home
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+### Changes in `src/pages/field/FieldHome.tsx`
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+**1. Imports (lines 5-6)** — add `ClipboardCheck` to lucide imports, add `Progress` import.
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+**2. New query (after line 33)** — add `useQuery` with key `["field-campaign-banner", user?.id]` that chains: `user_profiles.inspector_id` → `inspectors.region_id` → `inspection_campaigns` where `status = 'active'`, limit 1.
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+**3. Banner JSX (between line 45 and line 47)** — render a card when campaign data exists:
+- `bg-slate-800 border border-slate-700/50 rounded-xl p-4`
+- ClipboardCheck icon in blue tint + "Active Campaign" label
+- Campaign name, Progress bar, completion count, date range
+- Informational only, not clickable
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
+### Files Modified
+- `src/pages/field/FieldHome.tsx`
+
