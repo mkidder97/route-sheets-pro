@@ -195,6 +195,26 @@ export default function CMProjectDetail() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  // ── Revert to draft mutation ──
+  const revertToDraft = useMutation({
+    mutationFn: async (visitId: string) => {
+      const { error } = await supabase
+        .from("cm_visits")
+        .update({ status: "draft", submitted_at: null })
+        .eq("id", visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cm-visits", projectId] });
+      toast.success(`Visit #${revertVisit?.visit_number} reverted to draft`);
+      setRevertVisit(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message);
+      setRevertVisit(null);
+    },
+  });
+
   if (projectLoading) {
     return (
       <div className="flex items-center justify-center py-20">
