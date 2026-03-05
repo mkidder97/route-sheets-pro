@@ -157,7 +157,7 @@ export default function CMVisitForm() {
   const allSteps = [...staticStepsBefore, ...dynamicStepNames, ...staticStepsAfter];
   const totalSteps = allSteps.length;
   const isLastStep = currentStep === totalSteps - 1;
-  const isPhotoStep = isLastStep;
+  const isPhotoStep = isLastStep; // photos now live inside the completion step
 
   // Auto-save helper
   const debouncedSave = useCallback(
