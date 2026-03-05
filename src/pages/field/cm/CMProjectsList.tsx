@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Building2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function CMProjectsList() {
   const navigate = useNavigate();
