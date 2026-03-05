@@ -1,25 +1,24 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Filter CM Jobs to Inspector's Assigned Projects
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+### Changes in `src/pages/field/cm/CMProjectsList.tsx`
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+**1. Import `useAuth`** — add `import { useAuth } from "@/hooks/useAuth";` at line 1.
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+**2. Get user from auth** — add `const { user } = useAuth();` after `const [search, setSearch] = useState("");` (line 11).
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+**3. Replace the query (lines 13-44)** with a filtered version that:
+- Includes `user?.id` in the query key and `enabled: !!user?.id`
+- First queries `cm_visits` for `cm_project_id` values where `inspector_id = user.id`
+- Deduplicates project IDs, returns `[]` if none
+- Fetches only those projects from `cm_projects` with visit counts
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
+**4. Update empty state text (line 77)** — change `"No active projects"` to `"No projects assigned to you yet."`
+
+### Files Modified
+- `src/pages/field/cm/CMProjectsList.tsx` — query logic + empty state text only
+
+### Not Changed
+- Navigation, card layout, search filter, or any other component
+
