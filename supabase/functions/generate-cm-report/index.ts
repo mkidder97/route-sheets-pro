@@ -656,6 +656,9 @@ Deno.serve(async (req: Request) => {
           projectName: project.project_name,
           visitNumber: visit.visit_number,
           visitDate: formatDate(visit.visit_date),
+          clientName: project.owner_company ?? "",
+          buildingId: project.building_id,
+          suggestedFileName: `FOR_${buildingName.replace(/\s+/g, '_')}_Visit${visit.visit_number}_${formatDate(visit.visit_date).replace(/\//g, '')}.pdf`,
         }),
       });
       console.log("Make webhook triggered successfully");

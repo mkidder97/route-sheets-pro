@@ -1,44 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-## Update Make Webhook Payload — generate-cm-report Edge Function
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-### What Changes
-In `supabase/functions/generate-cm-report/index.ts`, add three fields to the existing Make webhook `POST` body (around line 350):
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-- `clientName`: `project.owner_company ?? ""`
-- `buildingId`: `project.building_id`
-- `suggestedFileName`: constructed from building name, visit number, and formatted date
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-### Exact Edit
-The current webhook body (lines ~347-353):
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-```typescript
-body: JSON.stringify({
-  pdfUrl: publicUrl,
-  buildingName,
-  projectName: project.project_name,
-  visitNumber: visit.visit_number,
-  visitDate: formatDate(visit.visit_date),
-}),
-```
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-Becomes:
-
-```typescript
-body: JSON.stringify({
-  pdfUrl: publicUrl,
-  buildingName,
-  projectName: project.project_name,
-  visitNumber: visit.visit_number,
-  visitDate: formatDate(visit.visit_date),
-  clientName: project.owner_company ?? "",
-  buildingId: project.building_id,
-  suggestedFileName: `FOR_${buildingName.replace(/\s+/g, '_')}_Visit${visit.visit_number}_${formatDate(visit.visit_date).replace(/\//g, '')}.pdf`,
-}),
-```
-
-### Files Modified
-- `supabase/functions/generate-cm-report/index.ts` — 3 lines added to webhook payload
-
-No other changes.
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
