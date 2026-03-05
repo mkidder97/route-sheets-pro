@@ -224,23 +224,107 @@ export default function FieldInspections() {
             </div>
           ) : (
             <div className="space-y-2">
-              {buildings?.map((b) => (
-                <div key={b.id} className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-100 text-sm truncate">{b.property_name}</span>
-                    {b.roof_access_type && (
-                      <Badge variant="outline" className="text-[10px] shrink-0">{b.roof_access_type}</Badge>
+              {buildings?.map((b) => {
+                const isExpanded = expandedBuildingId === b.id;
+                const clientName = (b.clients as any)?.name;
+                const regionName = (b.regions as any)?.name;
+                return (
+                  <div key={b.id} className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4">
+                    {/* Collapsed header — always visible */}
+                    <div
+                      className="cursor-pointer space-y-1.5"
+                      onClick={() => setExpandedBuildingId(isExpanded ? null : b.id)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-slate-100 text-sm truncate">{b.property_name}</span>
+                        {b.roof_access_type && (
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {String(b.roof_access_type).replace(/_/g, " ")}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 truncate">{b.address}, {b.city}, {b.state}</p>
+                      {b.lock_gate_codes && (
+                        <code className="block text-xs font-mono font-bold text-primary tracking-wider">🔑 {b.lock_gate_codes}</code>
+                      )}
+                      <div className="flex justify-end">
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-slate-500" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-slate-500" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expanded detail */}
+                    {isExpanded && (
+                      <div className="border-t border-slate-700/50 mt-3 pt-3 space-y-2 text-xs">
+                        {clientName && (
+                          <div className="flex justify-between"><span className="text-slate-500">Client</span><span className="text-slate-200">{clientName}</span></div>
+                        )}
+                        {regionName && (
+                          <div className="flex justify-between"><span className="text-slate-500">Region</span><span className="text-slate-200">{regionName}</span></div>
+                        )}
+                        {b.square_footage && (
+                          <div className="flex justify-between"><span className="text-slate-500">Sq Footage</span><span className="text-slate-200">{b.square_footage.toLocaleString()} SF</span></div>
+                        )}
+                        {b.roof_access_type && (
+                          <div className="flex justify-between"><span className="text-slate-500">Roof Access</span><span className="text-slate-200">{String(b.roof_access_type).replace(/_/g, " ")}</span></div>
+                        )}
+                        {b.access_location && (
+                          <div className="flex justify-between"><span className="text-slate-500">Access Location</span><span className="text-slate-200">{b.access_location}</span></div>
+                        )}
+                        {b.roof_access_description && (
+                          <div className="flex justify-between"><span className="text-slate-500">Access Description</span><span className="text-slate-200 text-right max-w-[60%]">{b.roof_access_description}</span></div>
+                        )}
+                        {b.lock_gate_codes && (
+                          <div className="flex justify-between"><span className="text-slate-500">Lock/Gate Codes</span><code className="font-mono text-primary">{b.lock_gate_codes}</code></div>
+                        )}
+                        {b.special_equipment && (b.special_equipment as string[]).length > 0 && (
+                          <div className="flex justify-between"><span className="text-slate-500">Equipment</span><span className="text-slate-200">{(b.special_equipment as string[]).join(", ")}</span></div>
+                        )}
+                        {b.special_notes && (
+                          <div><span className="text-slate-500 block mb-0.5">Special Notes</span><p className="italic text-slate-300">{b.special_notes}</p></div>
+                        )}
+                        {b.inspector_notes && (
+                          <div><span className="text-slate-500 block mb-0.5">Inspector Notes</span><div className="bg-slate-900/60 rounded p-2 text-slate-300">{b.inspector_notes}</div></div>
+                        )}
+
+                        {/* PM Contact */}
+                        {b.property_manager_name && (
+                          <div className="border-t border-slate-700/50 pt-2 space-y-1.5">
+                            <span className="text-slate-400 font-medium">Property Manager</span>
+                            <p className="text-slate-200">{b.property_manager_name}</p>
+                            {b.property_manager_phone && (
+                              <a href={`tel:${b.property_manager_phone}`} className="flex items-center gap-1.5 text-primary">
+                                <Phone className="h-3.5 w-3.5" /> {b.property_manager_phone}
+                              </a>
+                            )}
+                            {b.property_manager_email && (
+                              <a href={`mailto:${b.property_manager_email}`} className="flex items-center gap-1.5 text-primary">
+                                <Mail className="h-3.5 w-3.5" /> {b.property_manager_email}
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Navigate button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-2 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${b.address}, ${b.city}, ${b.state}`)}`, "_blank");
+                          }}
+                        >
+                          <Navigation className="h-3.5 w-3.5 mr-1.5" /> Navigate
+                        </Button>
+                      </div>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400 truncate">{b.address}, {b.city}, {b.state}</p>
-                  {b.lock_gate_codes && (
-                    <code className="block text-xs font-mono text-primary tracking-wider">{b.lock_gate_codes}</code>
-                  )}
-                  {b.special_notes && (
-                    <p className="text-xs italic text-slate-500">{b.special_notes}</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>
