@@ -152,7 +152,7 @@ export default function CMVisitForm() {
     "ROOFING CONTRACTOR",
     "WEATHER & OVERVIEW",
   ];
-  const staticStepsAfter = ["COMPLETION & SCHEDULE", `PHOTO GRID (${photos.length})`];
+  const staticStepsAfter = ["COMPLETION & SCHEDULE"];
   const dynamicStepNames = displaySections.map((s) => s.section_title.toUpperCase());
   const allSteps = [...staticStepsBefore, ...dynamicStepNames, ...staticStepsAfter];
   const totalSteps = allSteps.length;
