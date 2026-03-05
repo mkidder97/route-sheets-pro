@@ -144,6 +144,24 @@ export default function CMProjectNew() {
     fetchBuildings();
   }, [buildingSearch]);
 
+  // Fetch clients on search
+  useEffect(() => {
+    const fetchClients = async () => {
+      let q = supabase
+        .from("clients")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name")
+        .limit(50);
+      if (clientSearch.trim()) {
+        q = q.ilike("name", `%${clientSearch}%`);
+      }
+      const { data } = await q;
+      if (data) setClients(data);
+    };
+    fetchClients();
+  }, [clientSearch]);
+
   // Auto-calculate contract days
   useEffect(() => {
     if (form.contract_start_date && form.contract_completion_date) {
