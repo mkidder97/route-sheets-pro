@@ -98,21 +98,31 @@ export default function FieldInspections() {
       const campaignIds = campaigns.map((c) => c.id);
       const campaignMap = Object.fromEntries(campaigns.map((c) => [c.id, c.name]));
 
-      const { data: completed } = await supabase
+      const { data: campBuildings } = await supabase
         .from("campaign_buildings")
-        .select("campaign_id, completed_at, buildings(property_name, address, city)")
-        .in("campaign_id", campaignIds)
+        .select("building_id, campaign_id")
+        .in("campaign_id", campaignIds);
+      if (!campBuildings?.length) return [];
+
+      const buildingIds = campBuildings.map((cb: any) => cb.building_id);
+      const { data: completedBuildings } = await supabase
+        .from("buildings")
+        .select("id, property_name, address, city, completion_date")
+        .in("id", buildingIds)
         .eq("inspection_status", "complete")
-        .order("completed_at", { ascending: false })
+        .order("completion_date", { ascending: false })
         .limit(100);
 
-      return (completed ?? []).map((row: any) => ({
-        building_name: row.buildings?.property_name ?? "Unknown",
-        address: row.buildings?.address ?? "",
-        city: row.buildings?.city ?? "",
-        campaign_name: campaignMap[row.campaign_id] ?? "",
-        completed_at: row.completed_at,
-      }));
+      return (completedBuildings ?? []).map((b: any) => {
+        const cb = campBuildings.find((c: any) => c.building_id === b.id);
+        return {
+          building_name: b.property_name,
+          address: b.address,
+          city: b.city,
+          campaign_name: cb ? (campaignMap[cb.campaign_id] ?? "") : "",
+          completed_at: b.completion_date,
+        };
+      });
     },
   });
 
