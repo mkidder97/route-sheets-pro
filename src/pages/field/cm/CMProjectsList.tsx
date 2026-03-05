@@ -84,7 +84,7 @@ export default function CMProjectsList() {
       ) : !filtered.length ? (
         <div className="flex flex-col items-center py-12 text-slate-500">
           <Building2 className="h-12 w-12 opacity-20" />
-          <p className="mt-3 text-sm">No active projects</p>
+          <p className="mt-3 text-sm">No projects assigned to you yet.</p>
         </div>
       ) : (
         <div className="space-y-2">
