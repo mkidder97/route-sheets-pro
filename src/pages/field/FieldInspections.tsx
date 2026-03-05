@@ -64,7 +64,7 @@ export default function FieldInspections() {
     queryFn: async () => {
       let q = supabase
         .from("buildings")
-        .select("id, property_name, address, city, state, roof_access_type, lock_gate_codes, special_notes")
+        .select("id, property_name, address, city, state, roof_access_type, lock_gate_codes, special_notes, square_footage, access_location, special_equipment, property_manager_name, property_manager_phone, property_manager_email, inspector_notes, roof_access_description, clients(name), regions(name)")
         .order("property_name")
         .limit(200);
       if (selectedClient) q = q.eq("client_id", selectedClient);
