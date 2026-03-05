@@ -36,7 +36,6 @@ const OpsTimeMileage = lazy(() => import("./pages/ops/OpsTimeMileage"));
 const OpsScheduling = lazy(() => import("./pages/ops/OpsScheduling"));
 const OpsSettings = lazy(() => import("./pages/ops/OpsSettings"));
 
-const MyRoutes = lazy(() => import("./pages/MyRoutes"));
 const AdminUsers = lazy(() => import("./pages/admin/Users"));
 const AdminRegions = lazy(() => import("./pages/admin/Regions"));
 
@@ -70,7 +69,6 @@ const App = () => (
 
             <Route element={<ProtectedRoute><UnifiedLayout /></ProtectedRoute>}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/my-routes" element={<MyRoutes />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/analytics" element={<Analytics />} />
 
