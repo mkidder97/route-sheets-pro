@@ -1,25 +1,28 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Three Targeted Fixes
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+### Fix 1 — FieldHome.tsx: Remove campaign progress bar and completion counter
+**File**: `src/pages/field/FieldHome.tsx`
+- Lines 7, 80-88: Remove `Progress` import, remove the `<Progress>` bar block and the completed/total text line
+- Keep campaign name and date range only
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+### Fix 2 — FieldInspections.tsx: Buildings tab with client/region filters + smart search
+**File**: `src/pages/field/FieldInspections.tsx`
+- Add imports: `Select, SelectContent, SelectItem, SelectTrigger, SelectValue` from `@/components/ui/select`
+- Remove unused `Progress` import
+- Add state: `selectedClient`, `selectedRegion` (both string, default `""`)
+- Add `useQuery` for filter options: fetches active clients and regions
+- Update buildings query: key includes filter state, enabled when any filter active or search >= 2 chars, applies `.eq("client_id")`, `.eq("region_id")`, `.or("property_name.ilike...,address.ilike...")` conditionally, limit 200
+- Replace Buildings tab content: filter row with Client Select, Region Select, Search Input; conditional empty/loading/results states
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+### Fix 3 — FieldInspections.tsx: History tab with real data
+- Add `useQuery` with key `["field-history", profile?.inspector_id]`
+- Fetches inspector's region, then campaigns for that region, then completed campaign_buildings with building details
+- Maps results to cards showing building name, address, campaign name badge, completion date
+- Empty state: History icon + "No completed inspections yet"
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+### Files touched
+- `src/pages/field/FieldHome.tsx` — remove Progress bar and completion text
+- `src/pages/field/FieldInspections.tsx` — rebuild Buildings tab filters + History tab query
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
