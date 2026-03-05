@@ -450,38 +450,6 @@ export default function CMProjectDetail() {
                         </div>
                       )}
 
-                      {/* Previous PDF + Generate PDF (office only, draft with existing pdf) */}
-                      {isOffice && visit.status === "draft" && visit.pdf_path && (
-                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-amber-400/70 hover:text-amber-400"
-                            onClick={async () => {
-                              const res = await fetch(visit.pdf_path!);
-                              const blob = await res.blob();
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = `FOR_${visit.visit_number}_${project?.project_name ?? "report"}_prev.pdf`;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                            }}>
-                            <Download className="h-3.5 w-3.5" />
-                            Previous PDF
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="h-7 gap-1.5 text-xs"
-                            disabled={generatingPdfId === visit.id}
-                            onClick={() => handleGeneratePdf(visit.id)}
-                          >
-                            {generatingPdfId === visit.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <FileText className="h-3.5 w-3.5" />
-                            )}
-                            Generate PDF
-                          </Button>
-                        </div>
-                      )}
                     </CardContent>
                   </Card>
                 );
