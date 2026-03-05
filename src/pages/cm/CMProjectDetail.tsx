@@ -445,7 +445,7 @@ export default function CMProjectDetail() {
                             onClick={() => setRevertVisit({ id: visit.id, visit_number: visit.visit_number })}
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
-                            Revert
+                            Revert to Draft
                           </Button>
                         </div>
                       )}
