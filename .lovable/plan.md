@@ -1,44 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-## Add Back Button to CMVisitForm Top Bar
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-### Change
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-In `src/pages/field/cm/CMVisitForm.tsx` at line 1280, insert a `ChevronLeft` back button before the existing hamburger menu button inside the top bar `div`.
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-**Current (line 1280-1287):**
-```tsx
-<div className="flex items-center h-12 shrink-0 border-b border-slate-700/50 px-3">
-  <button
-    onClick={() => setTocOpen(true)}
-    className="p-2 -ml-2 rounded-md text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-    aria-label="Table of contents"
-  >
-    <Menu className="h-5 w-5" />
-  </button>
-```
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-**After:**
-```tsx
-<div className="flex items-center h-12 shrink-0 border-b border-slate-700/50 px-3">
-  <button
-    onClick={() => navigate(`/field/cm/${projectId}`)}
-    className="p-2 -ml-2 rounded-md text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-    aria-label="Back to project"
-  >
-    <ChevronLeft className="h-5 w-5" />
-  </button>
-  <button
-    onClick={() => setTocOpen(true)}
-    className="p-2 rounded-md text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-    aria-label="Table of contents"
-  >
-    <Menu className="h-5 w-5" />
-  </button>
-```
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-Note: The `-ml-2` moves from the hamburger button to the new back button so the first icon aligns with the container edge. `ChevronLeft` is already imported (line 5). `navigate` and `projectId` are already available in scope.
-
-### Files Modified
-- `src/pages/field/cm/CMVisitForm.tsx` — top bar section only (lines 1281-1287)
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
