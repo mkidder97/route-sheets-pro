@@ -115,6 +115,11 @@ export default function CMProjectNew() {
   >([]);
   const [selectedBuildingLabel, setSelectedBuildingLabel] = useState("");
 
+  // Client search
+  const [clientOpen, setClientOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+
   // Date picker open states
   const [startDateOpen, setStartDateOpen] = useState(false);
   const [endDateOpen, setEndDateOpen] = useState(false);
