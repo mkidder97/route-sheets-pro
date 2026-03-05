@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Menu, ChevronLeft, ChevronRight, Check, Loader2, Plus, Trash2, ArrowUp, ArrowDown, X, Camera } from "lucide-react";
+import { Menu, ChevronLeft, ChevronRight, Check, Loader2, Plus, Trash2, ArrowUp, ArrowDown, X, Camera, ImagePlus } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ interface VisitData {
   unit_qty_deck_replaced_sf: number;
   general_notes: string | null;
   internal_notes: string | null;
+  custom_photo_labels?: string[];
 }
 
 interface ProjectData {
@@ -82,12 +84,15 @@ interface CmPhoto {
   cm_visit_id: string;
   photo_number: number;
   description: string | null;
+  label: string | null;
   storage_path: string;
   public_url: string;
   sort_order: number;
 }
 
 type SaveStatus = "idle" | "saving" | "saved";
+
+const DEFAULT_LABELS = ["Overview", "Detail", "Punch Item"];
 
 export default function CMVisitForm() {
   const { projectId, visitId } = useParams<{ projectId: string; visitId: string }>();
@@ -110,12 +115,28 @@ export default function CMVisitForm() {
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // FAB state
+  const [fabSheetOpen, setFabSheetOpen] = useState(false);
+  const [labelQueue, setLabelQueue] = useState<File[]>([]);
+  const [currentLabelFile, setCurrentLabelFile] = useState<File | null>(null);
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState<string>("");
+  const [newLabelText, setNewLabelText] = useState("");
+  const [photoNote, setPhotoNote] = useState("");
+  const [fabUploading, setFabUploading] = useState(false);
+
   const initRef = useRef(false);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const sectionNotesLocal = useRef<Record<string, string>>({});
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const takePhotoRef = useRef<HTMLInputElement>(null);
+  const uploadPhotoRef = useRef<HTMLInputElement>(null);
 
   const isSubmitted = visit?.status === "submitted";
+
+  // Custom labels from visit
+  const customLabels = visit?.custom_photo_labels ?? [];
+  const allLabelOptions = [...DEFAULT_LABELS, ...customLabels];
 
   // Ground section filtering
   const groundSection = sections.find((s) =>
@@ -207,7 +228,13 @@ export default function CMVisitForm() {
           .order("sort_order"),
       ]);
 
-      if (visitRes.data) setVisit(visitRes.data as unknown as VisitData);
+      if (visitRes.data) {
+        const vd = visitRes.data as any;
+        setVisit({
+          ...vd,
+          custom_photo_labels: vd.custom_photo_labels ?? [],
+        } as VisitData);
+      }
       if (projectRes.data) setProject(projectRes.data as unknown as ProjectData);
       if (sectionsRes.data) setSections(sectionsRes.data as unknown as VisitSection[]);
       if (photosRes.data) setPhotos(photosRes.data as unknown as CmPhoto[]);
@@ -395,6 +422,117 @@ export default function CMVisitForm() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handlePhotoUpload(file);
+  };
+
+  // === FAB PHOTO UPLOAD WITH LABEL ===
+
+  const handleFabFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setFabSheetOpen(false);
+
+    // Queue all files for labeling
+    setLabelQueue(files.slice(1));
+    setCurrentLabelFile(files[0]);
+    setSelectedLabel("");
+    setNewLabelText("");
+    setPhotoNote("");
+    setLabelModalOpen(true);
+
+    // Reset inputs
+    if (takePhotoRef.current) takePhotoRef.current.value = "";
+    if (uploadPhotoRef.current) uploadPhotoRef.current.value = "";
+  };
+
+  const handleFabPhotoUpload = async (file: File, label: string | null, note: string | null) => {
+    if (!visitId || !visit) return;
+
+    const uuid = crypto.randomUUID();
+    const storagePath = `visits/${visitId}/${uuid}.jpg`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("cm-reports")
+      .upload(storagePath, file, { contentType: file.type, upsert: false });
+
+    if (uploadErr) {
+      toast.error("Upload failed: " + uploadErr.message);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("cm-reports")
+      .getPublicUrl(storagePath);
+
+    const nextPhotoNum = photos.length > 0
+      ? Math.max(...photos.map((p) => p.photo_number)) + 1
+      : 1;
+
+    const newRow = {
+      cm_visit_id: visitId,
+      photo_number: nextPhotoNum,
+      sort_order: photos.length,
+      storage_path: storagePath,
+      public_url: urlData.publicUrl,
+      description: note || null,
+      label: label || null,
+    };
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from("cm_photos")
+      .insert(newRow)
+      .select()
+      .single();
+
+    if (insertErr) {
+      toast.error("Failed to save photo record.");
+    } else if (inserted) {
+      setPhotos((prev) => [...prev, inserted as unknown as CmPhoto]);
+      toast.success(`Photo #${nextPhotoNum} added.`);
+    }
+  };
+
+  const processNextInQueue = () => {
+    if (labelQueue.length > 0) {
+      const next = labelQueue[0];
+      setLabelQueue((prev) => prev.slice(1));
+      setCurrentLabelFile(next);
+      setSelectedLabel("");
+      setNewLabelText("");
+      setPhotoNote("");
+      setLabelModalOpen(true);
+    } else {
+      setCurrentLabelFile(null);
+      setLabelModalOpen(false);
+    }
+  };
+
+  const handleLabelSave = async (skip: boolean) => {
+    if (!currentLabelFile) return;
+    setFabUploading(true);
+
+    let labelToUse: string | null = null;
+    let noteToUse: string | null = null;
+
+    if (!skip) {
+      // Handle "+ New Label"
+      if (selectedLabel === "__new__" && newLabelText.trim()) {
+        const trimmed = newLabelText.trim();
+        labelToUse = trimmed;
+        // Persist new custom label to visit
+        const updatedLabels = [...customLabels, trimmed];
+        setVisit((prev) => prev ? { ...prev, custom_photo_labels: updatedLabels } : prev);
+        await (supabase.from("cm_visits" as any) as any)
+          .update({ custom_photo_labels: updatedLabels })
+          .eq("id", visit!.id);
+      } else if (selectedLabel && selectedLabel !== "__new__") {
+        labelToUse = selectedLabel;
+      }
+      noteToUse = photoNote.trim() || null;
+    }
+
+    await handleFabPhotoUpload(currentLabelFile, labelToUse, noteToUse);
+    setFabUploading(false);
+    processNextInQueue();
   };
 
   const confirmDeletePhoto = async () => {
@@ -1066,13 +1204,20 @@ export default function CMVisitForm() {
                 </button>
 
                 {/* Description */}
-                <Input
-                  className="bg-slate-900 border-slate-600 text-slate-100 text-xs h-9"
-                  value={photo.description || ""}
-                  onChange={(e) => handlePhotoDescChange(photo.id, e.target.value)}
-                  placeholder="Add description..."
-                  readOnly={isSubmitted}
-                />
+                <div className="space-y-0.5">
+                  {photo.label && (
+                    <span className="inline-block text-[10px] font-medium uppercase tracking-wider text-teal-400 bg-teal-500/10 rounded px-1.5 py-0.5">
+                      {photo.label}
+                    </span>
+                  )}
+                  <Input
+                    className="bg-slate-900 border-slate-600 text-slate-100 text-xs h-9"
+                    value={photo.description || ""}
+                    onChange={(e) => handlePhotoDescChange(photo.id, e.target.value)}
+                    placeholder="Add description..."
+                    readOnly={isSubmitted}
+                  />
+                </div>
 
                 {/* Actions */}
                 {!isSubmitted && (
@@ -1239,6 +1384,137 @@ export default function CMVisitForm() {
         )}
       </div>
 
+      {/* === FAB — floating camera button === */}
+      {!isSubmitted && (
+        <button
+          onClick={() => setFabSheetOpen(true)}
+          className="fixed bottom-20 right-4 z-50 w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-700 shadow-lg flex items-center justify-center transition-colors"
+          aria-label="Add photo"
+        >
+          <Camera className="h-6 w-6 text-white" />
+        </button>
+      )}
+
+      {/* FAB bottom sheet */}
+      <Sheet open={fabSheetOpen} onOpenChange={setFabSheetOpen}>
+        <SheetContent side="bottom" className="bg-slate-900 border-slate-700 rounded-t-2xl px-4 pb-8 pt-4">
+          <SheetHeader className="pb-3">
+            <SheetTitle className="text-slate-100 text-sm font-bold">Add Photo</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-2">
+            <button
+              className="flex items-center gap-3 w-full text-left px-4 py-3 rounded-lg bg-slate-800 border border-slate-700/50 hover:bg-slate-700/60 transition-colors min-h-[48px]"
+              onClick={() => takePhotoRef.current?.click()}
+            >
+              <Camera className="h-5 w-5 text-teal-400" />
+              <span className="text-sm font-medium text-slate-100">Take Photo</span>
+            </button>
+            <button
+              className="flex items-center gap-3 w-full text-left px-4 py-3 rounded-lg bg-slate-800 border border-slate-700/50 hover:bg-slate-700/60 transition-colors min-h-[48px]"
+              onClick={() => uploadPhotoRef.current?.click()}
+            >
+              <ImagePlus className="h-5 w-5 text-teal-400" />
+              <span className="text-sm font-medium text-slate-100">Upload from Camera Roll</span>
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Hidden FAB file inputs */}
+      <input
+        ref={takePhotoRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFabFileSelect}
+      />
+      <input
+        ref={uploadPhotoRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleFabFileSelect}
+      />
+
+      {/* Label modal */}
+      <Dialog open={labelModalOpen} onOpenChange={(open) => {
+        if (!open && !fabUploading) {
+          setLabelModalOpen(false);
+          setCurrentLabelFile(null);
+          setLabelQueue([]);
+        }
+      }}>
+        <DialogContent className="bg-slate-800 border-slate-700 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-slate-100 text-sm">
+              Label Photo{labelQueue.length > 0 ? ` (${labelQueue.length + 1} remaining)` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Label select */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-300 font-medium">Label</label>
+              <Select value={selectedLabel} onValueChange={setSelectedLabel}>
+                <SelectTrigger className="bg-slate-900 border-slate-600 text-slate-100">
+                  <SelectValue placeholder="Select label..." />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  {allLabelOptions.map((l) => (
+                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                  ))}
+                  <SelectItem value="__new__">+ New Label</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* New label input */}
+            {selectedLabel === "__new__" && (
+              <div className="space-y-1">
+                <label className="text-xs text-slate-300 font-medium">New Label</label>
+                <Input
+                  className="bg-slate-900 border-slate-600 text-slate-100"
+                  value={newLabelText}
+                  onChange={(e) => setNewLabelText(e.target.value)}
+                  placeholder="Type new label..."
+                  autoFocus
+                />
+              </div>
+            )}
+
+            {/* Note input */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-300 font-medium">Note</label>
+              <Input
+                className="bg-slate-900 border-slate-600 text-slate-100"
+                value={photoNote}
+                onChange={(e) => setPhotoNote(e.target.value)}
+                placeholder="Add a note..."
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex flex-row gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700/50 min-h-[44px]"
+              onClick={() => handleLabelSave(true)}
+              disabled={fabUploading}
+            >
+              Skip
+            </Button>
+            <Button
+              className="flex-1 bg-teal-600 hover:bg-teal-700 text-white min-h-[44px]"
+              onClick={() => handleLabelSave(false)}
+              disabled={fabUploading || (selectedLabel === "__new__" && !newLabelText.trim())}
+            >
+              {fabUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save Photo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* TOC Drawer */}
       <Sheet open={tocOpen} onOpenChange={setTocOpen}>
         <SheetContent side="left" className="bg-slate-900 border-slate-700 w-72 p-0">
@@ -1307,6 +1583,9 @@ export default function CMVisitForm() {
 
           <div className="absolute bottom-6 text-center text-sm text-slate-400">
             Photo {photos[previewIndex].photo_number} of {photos.length}
+            {photos[previewIndex].label && (
+              <p className="mt-0.5 text-teal-400 text-xs">{photos[previewIndex].label}</p>
+            )}
             {photos[previewIndex].description && (
               <p className="mt-1 text-slate-300">{photos[previewIndex].description}</p>
             )}
