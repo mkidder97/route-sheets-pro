@@ -807,6 +807,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          label: string | null
           photo_number: number
           public_url: string
           sort_order: number
@@ -817,6 +818,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          label?: string | null
           photo_number: number
           public_url: string
           sort_order?: number
@@ -827,6 +829,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          label?: string | null
           photo_number?: number
           public_url?: string
           sort_order?: number
@@ -1026,6 +1029,7 @@ export type Database = {
           completion_sheet_metal_pct: number | null
           completion_tpo_delivered_pct: number | null
           created_at: string
+          custom_photo_labels: string[] | null
           general_notes: string | null
           id: string
           inspector_id: string | null
@@ -1056,6 +1060,7 @@ export type Database = {
           completion_sheet_metal_pct?: number | null
           completion_tpo_delivered_pct?: number | null
           created_at?: string
+          custom_photo_labels?: string[] | null
           general_notes?: string | null
           id?: string
           inspector_id?: string | null
@@ -1086,6 +1091,7 @@ export type Database = {
           completion_sheet_metal_pct?: number | null
           completion_tpo_delivered_pct?: number | null
           created_at?: string
+          custom_photo_labels?: string[] | null
           general_notes?: string | null
           id?: string
           inspector_id?: string | null
