@@ -68,6 +68,7 @@ export default function CMProjectDetail() {
   const [visitDate, setVisitDate] = useState<Date>(new Date());
   const [inspectorId, setInspectorId] = useState<string>("");
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
+  const [revertVisit, setRevertVisit] = useState<{ id: string; visit_number: number } | null>(null);
 
   const handleGeneratePdf = async (visitId: string) => {
     setGeneratingPdfId(visitId);
