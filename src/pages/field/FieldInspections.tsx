@@ -17,6 +17,7 @@ export default function FieldInspections() {
   const [search, setSearch] = useState("");
   const [selectedClient, setSelectedClient] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("");
+  const [expandedBuildingId, setExpandedBuildingId] = useState<string | null>(null);
 
   // Filter options — clients & regions
   const { data: filterOptions } = useQuery({
