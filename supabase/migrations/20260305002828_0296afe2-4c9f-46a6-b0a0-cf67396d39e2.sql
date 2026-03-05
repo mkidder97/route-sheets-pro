@@ -1,0 +1,2 @@
+DELETE FROM public.cm_project_sections WHERE cm_project_id IN ('c0246d6f-a18a-4ef9-a2ed-021a9363971d', 'c33783b3-5234-4def-b879-8dd155ca64b9');
+DELETE FROM public.cm_projects WHERE id IN ('c0246d6f-a18a-4ef9-a2ed-021a9363971d', 'c33783b3-5234-4def-b879-8dd155ca64b9');
