@@ -1,25 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-## Campaign-Grouped Collapsible History
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-### Single file: `src/pages/field/FieldInspections.tsx`
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-**Imports**: Add `useMemo` to the React import (line 1). No other import changes needed — `ChevronDown`, `ChevronUp`, `Badge` already imported.
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-**New state** (after line 20):
-- `expandedCampaigns: Set<string>` initialized empty, populated via `useEffect` when `historyItems` loads
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-**New useMemo** (before return):
-- Group `historyItems` by `campaign_name` into `{ campaignName, items, mostRecentDate }[]`
-- Sort groups by `mostRecentDate` descending
-- Items within each group keep existing `completed_at` desc order from query
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-**useEffect**: When `historyItems` changes and has data, set `expandedCampaigns` to a Set of all unique campaign names (all start open).
-
-**History tab rendering** (lines 363-379): Replace flat list with:
-- Iterate `groupedHistory`, render each group as:
-  - Clickable header: campaign name (left) + count Badge (outline) + chevron icon (right), styled `bg-slate-800 border border-slate-700/50 rounded-lg px-3 py-2.5`
-  - Toggle: add/remove campaign name from `expandedCampaigns` Set
-  - When expanded: `space-y-2 mt-2` container with same building cards (property name, address, date)
-- Keep all loading/empty states unchanged
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.

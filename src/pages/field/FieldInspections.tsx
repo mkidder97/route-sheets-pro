@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ export default function FieldInspections() {
   const [selectedClient, setSelectedClient] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("");
   const [expandedBuildingId, setExpandedBuildingId] = useState<string | null>(null);
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
 
   // Filter options — clients & regions
   const { data: filterOptions } = useQuery({
@@ -125,6 +126,38 @@ export default function FieldInspections() {
       });
     },
   });
+
+  const groupedHistory = useMemo(() => {
+    if (!historyItems?.length) return [];
+    const groups: Record<string, { campaignName: string; items: typeof historyItems; mostRecentDate: string }> = {};
+    for (const item of historyItems) {
+      const key = item.campaign_name || "Uncategorized";
+      if (!groups[key]) {
+        groups[key] = { campaignName: key, items: [], mostRecentDate: item.completed_at || "" };
+      }
+      groups[key].items.push(item);
+      if (item.completed_at && item.completed_at > groups[key].mostRecentDate) {
+        groups[key].mostRecentDate = item.completed_at;
+      }
+    }
+    return Object.values(groups).sort((a, b) => b.mostRecentDate.localeCompare(a.mostRecentDate));
+  }, [historyItems]);
+
+  useEffect(() => {
+    if (historyItems?.length) {
+      const names = new Set(historyItems.map((i) => i.campaign_name || "Uncategorized"));
+      setExpandedCampaigns(names);
+    }
+  }, [historyItems]);
+
+  const toggleCampaign = (name: string) => {
+    setExpandedCampaigns((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const filteredRegions = selectedClient
     ? (filterOptions?.regions ?? []).filter((r) => r.client_id === selectedClient)
@@ -361,21 +394,37 @@ export default function FieldInspections() {
               <p className="mt-3 text-sm">No completed inspections yet</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {historyItems.map((item, i) => (
-                <div key={i} className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-100 text-sm truncate">{item.building_name}</span>
-                    {item.campaign_name && (
-                      <Badge variant="secondary" className="text-[10px] shrink-0">{item.campaign_name}</Badge>
+            <div className="space-y-3">
+              {groupedHistory.map((group) => {
+                const isOpen = expandedCampaigns.has(group.campaignName);
+                return (
+                  <div key={group.campaignName}>
+                    <div
+                      className="cursor-pointer flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-800 border border-slate-700/50"
+                      onClick={() => toggleCampaign(group.campaignName)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-100">{group.campaignName}</span>
+                        <Badge variant="outline" className="text-[10px]">{group.items.length}</Badge>
+                      </div>
+                      {isOpen ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+                    </div>
+                    {isOpen && (
+                      <div className="space-y-2 mt-2">
+                        {group.items.map((item, i) => (
+                          <div key={i} className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4 space-y-1.5">
+                            <span className="font-semibold text-slate-100 text-sm truncate block">{item.building_name}</span>
+                            <p className="text-xs text-slate-400 truncate">{item.address}, {item.city}</p>
+                            {item.completed_at && (
+                              <p className="text-xs text-slate-500">{format(new Date(item.completed_at), "MMM d, yyyy")}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400 truncate">{item.address}, {item.city}</p>
-                  {item.completed_at && (
-                    <p className="text-xs text-slate-500">{format(new Date(item.completed_at), "MMM d, yyyy")}</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>
