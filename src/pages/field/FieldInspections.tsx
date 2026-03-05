@@ -127,6 +127,38 @@ export default function FieldInspections() {
     },
   });
 
+  const groupedHistory = useMemo(() => {
+    if (!historyItems?.length) return [];
+    const groups: Record<string, { campaignName: string; items: typeof historyItems; mostRecentDate: string }> = {};
+    for (const item of historyItems) {
+      const key = item.campaign_name || "Uncategorized";
+      if (!groups[key]) {
+        groups[key] = { campaignName: key, items: [], mostRecentDate: item.completed_at || "" };
+      }
+      groups[key].items.push(item);
+      if (item.completed_at && item.completed_at > groups[key].mostRecentDate) {
+        groups[key].mostRecentDate = item.completed_at;
+      }
+    }
+    return Object.values(groups).sort((a, b) => b.mostRecentDate.localeCompare(a.mostRecentDate));
+  }, [historyItems]);
+
+  useEffect(() => {
+    if (historyItems?.length) {
+      const names = new Set(historyItems.map((i) => i.campaign_name || "Uncategorized"));
+      setExpandedCampaigns(names);
+    }
+  }, [historyItems]);
+
+  const toggleCampaign = (name: string) => {
+    setExpandedCampaigns((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
   const filteredRegions = selectedClient
     ? (filterOptions?.regions ?? []).filter((r) => r.client_id === selectedClient)
     : (filterOptions?.regions ?? []);
