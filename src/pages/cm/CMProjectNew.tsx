@@ -697,14 +697,54 @@ export default function CMProjectNew() {
     <div className={cardCls}>
       <div>
         <label className={labelCls}>Owner Company</label>
-        <Input
-          value={form.owner_company}
-          onChange={(e) => updateForm("owner_company", e.target.value)}
-          disabled={submitting}
-          className={inputCls}
-          maxLength={200}
-          placeholder="e.g. Realty Associates"
-        />
+        <Popover open={clientOpen} onOpenChange={setClientOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={clientOpen}
+              className={cn(
+                "w-full justify-between h-11 border-slate-600 bg-slate-900 text-slate-100 hover:bg-slate-800",
+                !form.owner_company && "text-slate-500"
+              )}
+              disabled={submitting}
+            >
+              {form.owner_company || "Select owner company..."}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-full p-0 bg-slate-800 border-slate-700" align="start">
+            <Command className="bg-slate-800">
+              <CommandInput
+                placeholder="Type to search..."
+                value={clientSearch}
+                onValueChange={setClientSearch}
+                className="text-slate-100"
+              />
+              <CommandList>
+                <CommandEmpty className="text-slate-400 text-sm py-4 text-center">
+                  No clients found.
+                </CommandEmpty>
+                <CommandGroup>
+                  {clients.map((c) => (
+                    <CommandItem
+                      key={c.id}
+                      value={c.name}
+                      onSelect={() => {
+                        updateForm("owner_company", c.name);
+                        setClientOpen(false);
+                      }}
+                      className="text-slate-200 hover:bg-slate-700"
+                    >
+                      <Check className={cn("mr-2 h-4 w-4", form.owner_company === c.name ? "opacity-100" : "opacity-0")} />
+                      {c.name}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
       <div>
         <label className={labelCls}>Owner Address</label>
