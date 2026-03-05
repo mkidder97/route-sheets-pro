@@ -1,25 +1,68 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Inspector Reassignment Dropdown on Visit Cards
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+### Change
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+In `src/pages/cm/CMProjectDetail.tsx`, replace the static inspector name display (lines 385-388) with a conditional render: office mode gets an inline `Select` dropdown for reassignment; field mode keeps the read-only text.
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+Add a `handleReassignInspector` function that updates `cm_visits.inspector_id`, invalidates the visits query, and shows a toast.
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+**Lines 385-388 — current:**
+```tsx
+<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+  <User className="h-3 w-3" />
+  {inspName}
+</div>
+```
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
+**Replaced with:**
+```tsx
+{isOffice ? (
+  <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+    <User className="h-3 w-3 text-muted-foreground" />
+    <Select
+      value={visit.inspector_id ?? "unassigned"}
+      onValueChange={(val) => handleReassignInspector(visit.id, val === "unassigned" ? null : val)}
+    >
+      <SelectTrigger className="h-6 text-xs border-none bg-transparent p-0 gap-1 text-muted-foreground hover:text-slate-200 w-auto focus:ring-0">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="unassigned">Unassigned</SelectItem>
+        {assignableInspectors?.map((insp) => (
+          <SelectItem key={insp.id} value={insp.id}>{insp.full_name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+) : (
+  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <User className="h-3 w-3" />
+    {inspName}
+  </div>
+)}
+```
+
+**New function** (added after `revertToDraft` mutation, ~line 216):
+```tsx
+const handleReassignInspector = async (visitId: string, newInspectorId: string | null) => {
+  const { error } = await supabase
+    .from("cm_visits")
+    .update({ inspector_id: newInspectorId })
+    .eq("id", visitId);
+  if (error) {
+    toast.error("Failed to reassign inspector");
+    return;
+  }
+  queryClient.invalidateQueries({ queryKey: ["cm-visits", projectId] });
+  toast.success("Inspector reassigned");
+};
+```
+
+### Files Modified
+- `src/pages/cm/CMProjectDetail.tsx` — visit card inspector display + new handler function
+
+### Not Changed
+- Schedule form, PDF actions, revert logic, field mode behavior, or any other component
+
