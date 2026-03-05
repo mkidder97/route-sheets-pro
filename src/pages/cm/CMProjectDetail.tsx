@@ -407,18 +407,20 @@ export default function CMProjectDetail() {
                                 <Download className="h-3.5 w-3.5" />
                                 Download PDF
                               </Button>
-                              <Button
+                               <Button
                                 variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
+                                size="sm"
+                                className="h-7 gap-1.5 text-xs"
+                                title="Regenerate PDF and send to OneDrive"
                                 disabled={generatingPdfId === visit.id}
                                 onClick={() => handleGeneratePdf(visit.id)}
                               >
                                 {generatingPdfId === visit.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <RefreshCw className="h-3 w-3" />
+                                  <RefreshCw className="h-3.5 w-3.5" />
                                 )}
+                                Send to OneDrive
                               </Button>
                             </>
                           ) : (
