@@ -150,6 +150,15 @@ Deno.serve(async (req) => {
         return json(req, { error: "System already has users. Bootstrap is disabled." }, 403);
       }
 
+      const { data: setting } = await supabaseAdmin
+        .from("system_settings")
+        .select("value")
+        .eq("key", "bootstrap_completed")
+        .single();
+      if (setting?.value === "true") {
+        return json(req, { error: "Bootstrap already completed." }, 403);
+      }
+
       const { email, password, full_name } = payload;
       const bErr = validateEmail(email) || validatePassword(password) || validateFullName(full_name);
       if (bErr) return json(req, { error: bErr }, 400);
@@ -166,6 +175,11 @@ Deno.serve(async (req) => {
       await supabaseAdmin
         .from("user_roles")
         .insert({ user_id: newUser.user.id, role: "admin" });
+
+      await supabaseAdmin
+        .from("system_settings")
+        .update({ value: "true", updated_at: new Date().toISOString() })
+        .eq("key", "bootstrap_completed");
 
       return json(req, { success: true, user_id: newUser.user.id });
     }
