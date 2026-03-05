@@ -1,25 +1,14 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Fix History Tab QueryFn
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+### Single file: `src/pages/field/FieldInspections.tsx`
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+Replace the History queryFn's last section (the `campaign_buildings` fetch with `.eq("inspection_status", "complete")` and the map) with the corrected 3-step approach:
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+1. Fetch all `campaign_buildings` for the campaign IDs (no status filter), select `building_id, campaign_id`
+2. Fetch from `buildings` where `id` in those building IDs AND `inspection_status = 'complete'`, ordered by `completion_date` desc, limit 100
+3. Map results back using `campaignMap` lookup via the `campBuildings` join
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+No other changes to imports, state, or rendering.
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
