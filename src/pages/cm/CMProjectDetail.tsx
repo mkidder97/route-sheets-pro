@@ -260,9 +260,9 @@ export default function CMProjectDetail() {
 
       {/* ── Tabs ── */}
       <Tabs defaultValue="visits">
-        <TabsList>
-          <TabsTrigger value="visits">Visits</TabsTrigger>
-          <TabsTrigger value="info">Project Info</TabsTrigger>
+        <TabsList className="w-full">
+          <TabsTrigger value="visits" className="flex-1">Visits</TabsTrigger>
+          <TabsTrigger value="info" className="flex-1">Project Info</TabsTrigger>
         </TabsList>
 
         {/* ━━ VISITS TAB ━━ */}
