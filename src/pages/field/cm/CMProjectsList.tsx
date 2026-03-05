@@ -10,21 +10,30 @@ import { useAuth } from "@/hooks/useAuth";
 export default function CMProjectsList() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const { user } = useAuth();
 
   const { data: projects, isLoading } = useQuery({
-    queryKey: ["field-cm-projects"],
+    queryKey: ["field-cm-projects", user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
+      // Get project IDs where this inspector has at least one visit
+      const { data: assignedVisits } = await supabase
+        .from("cm_visits")
+        .select("cm_project_id")
+        .eq("inspector_id", user!.id);
+
+      const projectIds = [...new Set(assignedVisits?.map((v) => v.cm_project_id) ?? [])];
+      if (projectIds.length === 0) return [];
+
       const { data, error } = await supabase
         .from("cm_projects")
         .select("id, project_name, membrane_type, status, building_id, buildings(property_name, address, city, state)")
+        .in("id", projectIds)
         .eq("status", "active")
         .order("created_at", { ascending: false });
       if (error) throw error;
 
       // Fetch visit counts per project
-      const projectIds = (data ?? []).map((p: any) => p.id);
-      if (!projectIds.length) return [];
-
       const { data: visits } = await supabase
         .from("cm_visits")
         .select("id, cm_project_id, status")
