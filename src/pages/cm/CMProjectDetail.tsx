@@ -16,6 +16,16 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Pencil,
   Loader2,
   CalendarIcon,
@@ -26,6 +36,7 @@ import {
   User,
   Plus,
   RefreshCw,
+  RotateCcw,
 } from "lucide-react";
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -57,6 +68,7 @@ export default function CMProjectDetail() {
   const [visitDate, setVisitDate] = useState<Date>(new Date());
   const [inspectorId, setInspectorId] = useState<string>("");
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
+  const [revertVisit, setRevertVisit] = useState<{ id: string; visit_number: number } | null>(null);
 
   const handleGeneratePdf = async (visitId: string) => {
     setGeneratingPdfId(visitId);
@@ -181,6 +193,26 @@ export default function CMProjectDetail() {
       toast.success("Visit scheduled");
     },
     onError: (err: any) => toast.error(err.message),
+  });
+
+  // ── Revert to draft mutation ──
+  const revertToDraft = useMutation({
+    mutationFn: async (visitId: string) => {
+      const { error } = await supabase
+        .from("cm_visits")
+        .update({ status: "draft", submitted_at: null })
+        .eq("id", visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cm-visits", projectId] });
+      toast.success(`Visit #${revertVisit?.visit_number} reverted to draft`);
+      setRevertVisit(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message);
+      setRevertVisit(null);
+    },
   });
 
   if (projectLoading) {
@@ -404,6 +436,48 @@ export default function CMProjectDetail() {
                               Generate PDF
                             </Button>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setRevertVisit({ id: visit.id, visit_number: visit.visit_number })}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Revert
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Previous PDF + Generate PDF (office only, draft with existing pdf) */}
+                      {isOffice && visit.status === "draft" && visit.pdf_path && (
+                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-amber-400/70 hover:text-amber-400"
+                            onClick={async () => {
+                              const res = await fetch(visit.pdf_path!);
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = `FOR_${visit.visit_number}_${project?.project_name ?? "report"}_prev.pdf`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }}>
+                            <Download className="h-3.5 w-3.5" />
+                            Previous PDF
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-7 gap-1.5 text-xs"
+                            disabled={generatingPdfId === visit.id}
+                            onClick={() => handleGeneratePdf(visit.id)}
+                          >
+                            {generatingPdfId === visit.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <FileText className="h-3.5 w-3.5" />
+                            )}
+                            Generate PDF
+                          </Button>
                         </div>
                       )}
                     </CardContent>
@@ -534,6 +608,29 @@ export default function CMProjectDetail() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Revert to Draft confirmation */}
+      <AlertDialog open={!!revertVisit} onOpenChange={(open) => !open && setRevertVisit(null)}>
+        <AlertDialogContent className="bg-slate-800 border-slate-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revert Visit #{revertVisit?.visit_number} to Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will unlock Visit #{revertVisit?.visit_number} for editing. The previous PDF will remain available until a new one is generated.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={revertToDraft.isPending}
+              onClick={() => revertVisit && revertToDraft.mutate(revertVisit.id)}
+            >
+              {revertToDraft.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              Revert to Draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
