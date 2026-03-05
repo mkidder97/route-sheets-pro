@@ -608,6 +608,29 @@ export default function CMProjectDetail() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Revert to Draft confirmation */}
+      <AlertDialog open={!!revertVisit} onOpenChange={(open) => !open && setRevertVisit(null)}>
+        <AlertDialogContent className="bg-slate-800 border-slate-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revert Visit #{revertVisit?.visit_number} to Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will unlock Visit #{revertVisit?.visit_number} for editing. The previous PDF will remain available until a new one is generated.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={revertToDraft.isPending}
+              onClick={() => revertVisit && revertToDraft.mutate(revertVisit.id)}
+            >
+              {revertToDraft.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              Revert to Draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
