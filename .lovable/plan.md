@@ -1,28 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-## Expandable Building Cards in FieldInspections.tsx
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-### Single file change: `src/pages/field/FieldInspections.tsx`
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-**Imports to add:**
-- `ChevronDown, ChevronUp, Phone, Mail, Navigation` to lucide-react imports
-- `Button` from `@/components/ui/button`
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-**New state:**
-- `expandedBuildingId: string | null` (default `null`)
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-**Query change (line 65):**
-Update select string to:
-```
-"id, property_name, address, city, state, roof_access_type, lock_gate_codes, special_notes, square_footage, access_location, special_equipment, property_manager_name, property_manager_phone, property_manager_email, inspector_notes, roof_access_description, clients(name), regions(name)"
-```
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-**Card replacement (lines 224-242):**
-Replace static cards with expandable cards:
-
-- **Collapsed state**: property name + access type badge, address line, lock codes with key emoji in mono, ChevronDown/Up icon bottom-right
-- **Expanded state** (toggled by clicking header): divider + detail grid showing Client, Region, Sq Footage, Roof Access, Access Location, Access Description, Lock/Gate Codes, Equipment, Special Notes, Inspector Notes (bg-slate-900/60 block), PM contact section with tappable tel:/mailto: links, and a full-width Navigate button opening Google Maps directions
-- Toggle logic: `expandedBuildingId === b.id` toggles on click
-
-All styling stays dark theme consistent (`bg-slate-800/50`, `border-slate-700/50`).
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
