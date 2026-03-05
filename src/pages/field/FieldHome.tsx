@@ -2,8 +2,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { HardHat, Lock, Calendar, Loader2 } from "lucide-react";
+import { HardHat, Lock, Calendar, Loader2, ClipboardCheck } from "lucide-react";
 import { format } from "date-fns";
+import { Progress } from "@/components/ui/progress";
 
 function getGreeting() {
   const h = new Date().getHours();
