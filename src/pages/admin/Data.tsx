@@ -20,6 +20,9 @@ interface UnmatchedRow {
   propertyCode: string;
   siteContact: string;
   email: string;
+  address: string;
+  city: string;
+  phone: string;
 }
 
 export default function AdminData() {
