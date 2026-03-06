@@ -16,6 +16,12 @@ interface MatchedRow {
   phone: string;
 }
 
+interface UnmatchedRow {
+  propertyCode: string;
+  siteContact: string;
+  email: string;
+}
+
 export default function AdminData() {
   const [step, setStep] = useState<Step>("upload");
   const [loading, setLoading] = useState(false);
@@ -24,6 +30,8 @@ export default function AdminData() {
   const [withEmail, setWithEmail] = useState(0);
   const [unmatched, setUnmatched] = useState(0);
   const [missingCols, setMissingCols] = useState<string[]>([]);
+  const [unmatchedRows, setUnmatchedRows] = useState<UnmatchedRow[]>([]);
+  const [showSkipped, setShowSkipped] = useState(false);
   const [resultUpdated, setResultUpdated] = useState(0);
   const [resultSkipped, setResultSkipped] = useState(0);
 
@@ -34,6 +42,8 @@ export default function AdminData() {
     setWithEmail(0);
     setUnmatched(0);
     setMissingCols([]);
+    setUnmatchedRows([]);
+    setShowSkipped(false);
   };
 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,14 +110,18 @@ export default function AdminData() {
       const phoneCol = col("site contact office phone");
 
       const matchedRows: MatchedRow[] = [];
-      let unmatchedCount = 0;
+      const unmatchedList: UnmatchedRow[] = [];
       let emailCount = 0;
 
       for (const row of rows) {
         const code = String(row[propCodeCol] ?? "").trim();
         const building = codeMap.get(code);
         if (!building) {
-          unmatchedCount++;
+          unmatchedList.push({
+            propertyCode: code,
+            siteContact: siteContactCol ? String(row[siteContactCol] ?? "").trim() : "",
+            email: emailCol ? String(row[emailCol] ?? "").trim() : "",
+          });
           continue;
         }
         const siteContact = siteContactCol ? String(row[siteContactCol] ?? "").trim() : "";
@@ -125,7 +139,8 @@ export default function AdminData() {
       }
 
       setMatched(matchedRows);
-      setUnmatched(unmatchedCount);
+      setUnmatchedRows(unmatchedList);
+      setUnmatched(unmatchedList.length);
       setWithEmail(emailCount);
       setStep("preview");
     } catch {
@@ -258,6 +273,41 @@ export default function AdminData() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {unmatchedRows.length > 0 && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowSkipped(!showSkipped)}
+                className="text-xs text-slate-400 underline hover:text-slate-300"
+              >
+                {showSkipped ? "Hide unmatched rows ▴" : `Show ${unmatchedRows.length} unmatched rows ▾`}
+              </button>
+              {showSkipped && (
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Property Code</th>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Site Contact</th>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Email</th>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unmatchedRows.map((r, i) => (
+                        <tr key={i} className="border-t border-border hover:bg-muted/30">
+                          <td className="px-3 py-2 font-mono text-xs">{r.propertyCode || "—"}</td>
+                          <td className="px-3 py-2">{r.siteContact || "—"}</td>
+                          <td className="px-3 py-2">{r.email || "—"}</td>
+                          <td className="px-3 py-2 text-xs text-yellow-400">No matching building_code in RoofMind</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

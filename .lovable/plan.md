@@ -1,23 +1,25 @@
 
+# Construction Management Module -- Database Migration and Storage
 
-## Add Unmatched Rows View to Preview State
+## Summary
+Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
 
-### Changes (single file: `src/pages/admin/Data.tsx`)
+## Tables to Create
+1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
+2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
+3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
+4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
+5. **cm_photos** -- Visit photos with numbering, with RLS
 
-**1. New state and data:**
-- Add `unmatchedRows` state: `{ propertyCode: string; siteContact: string; email: string }[]`
-- Add `showSkipped` boolean state (default `false`)
-- Both reset in `reset()`
+## Additional Objects
+- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
+- **Trigger**: `auto_set_cm_visit_number` on cm_visits
 
-**2. Collect unmatched rows during parsing:**
-In the existing loop (line ~106-125), when a row doesn't match (`!building`), push it to the `unmatchedRows` array with its property code, site contact, and email extracted from the row.
+## Storage
+- Create **cm-reports** bucket with public read access (for generated PDF reports)
 
-**3. Add collapsible section in Preview UI:**
-After the matched rows table (after line 262), before the action buttons:
-- Toggle button: `text-xs text-slate-400 underline` ghost style, reads `"Show {N} unmatched rows ▾"` / `"Hide unmatched rows ▴"`
-- When expanded: scrollable table (`max-h-48 overflow-y-auto`) with columns: Property Code, Site Contact, Email, Reason
-- Reason column always reads `"No matching building_code in RoofMind"`
-- Only rendered when `unmatchedRows.length > 0`
+## RLS Approach
+All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
 
-No changes to import logic, routing, or other states.
-
+## Execution
+Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
