@@ -14,6 +14,7 @@ interface MatchedRow {
   siteContact: string;
   email: string;
   phone: string;
+  matchMethod: "code" | "address";
 }
 
 interface UnmatchedRow {
@@ -139,6 +140,7 @@ export default function AdminData() {
           siteContact,
           email,
           phone,
+          matchMethod: "code",
         });
       }
 
@@ -174,6 +176,7 @@ export default function AdminData() {
               siteContact: r.siteContact,
               email: r.email,
               phone: r.phone,
+              matchMethod: "address",
             });
           } else {
             stillUnmatched.push(r);
@@ -205,6 +208,9 @@ export default function AdminData() {
       if (row.siteContact) payload.property_manager_name = row.siteContact;
       if (row.email) payload.property_manager_email = row.email;
       if (row.phone) payload.property_manager_phone = row.phone;
+      if (row.matchMethod === "address" && row.propertyCode) {
+        payload.building_code = row.propertyCode;
+      }
 
       if (Object.keys(payload).length === 0) return null;
       return supabase.from("buildings").update(payload).eq("id", row.buildingId);
