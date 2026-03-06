@@ -122,6 +122,11 @@ export default function AdminData() {
       const phoneCol = col("site contact office phone");
       const addressCol = col("address");
       const cityCol = col("city");
+      const stateCol = col("state");
+      const zipCol = col("zip");
+      const propertyNameCol = col("property name");
+      const roofAccessCol = col("roof access");
+      const roofAreaCol = col("roof area");
 
       const matchedRows: MatchedRow[] = [];
       const unmatchedList: UnmatchedRow[] = [];
@@ -135,9 +140,14 @@ export default function AdminData() {
         const phone = phoneCol ? String(row[phoneCol] ?? "").trim() : "";
         const address = addressCol ? String(row[addressCol] ?? "").trim() : "";
         const city = cityCol ? String(row[cityCol] ?? "").trim() : "";
+        const state = stateCol ? String(row[stateCol] ?? "").trim() : "";
+        const zip = zipCol ? String(row[zipCol] ?? "").trim() : "";
+        const propertyName = propertyNameCol ? String(row[propertyNameCol] ?? "").trim() : "";
+        const roofAccess = roofAccessCol ? String(row[roofAccessCol] ?? "").trim() : "";
+        const roofArea = roofAreaCol ? String(row[roofAreaCol] ?? "").trim() : "";
 
         if (!building) {
-          unmatchedList.push({ propertyCode: code, siteContact, email, address, city, phone });
+          unmatchedList.push({ propertyCode: code, propertyName, siteContact, email, address, city, state, zip, phone, roofAccess, roofArea });
           continue;
         }
         if (email) emailCount++;
