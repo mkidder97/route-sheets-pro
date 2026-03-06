@@ -140,6 +140,7 @@ export default function AdminData() {
           siteContact,
           email,
           phone,
+          matchMethod: "code",
         });
       }
 
