@@ -276,6 +276,41 @@ export default function AdminData() {
             </div>
           )}
 
+          {unmatchedRows.length > 0 && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowSkipped(!showSkipped)}
+                className="text-xs text-slate-400 underline hover:text-slate-300"
+              >
+                {showSkipped ? "Hide unmatched rows ▴" : `Show ${unmatchedRows.length} unmatched rows ▾`}
+              </button>
+              {showSkipped && (
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Property Code</th>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Site Contact</th>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Email</th>
+                        <th className="text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unmatchedRows.map((r, i) => (
+                        <tr key={i} className="border-t border-border hover:bg-muted/30">
+                          <td className="px-3 py-2 font-mono text-xs">{r.propertyCode || "—"}</td>
+                          <td className="px-3 py-2">{r.siteContact || "—"}</td>
+                          <td className="px-3 py-2">{r.email || "—"}</td>
+                          <td className="px-3 py-2 text-xs text-yellow-400">No matching building_code in RoofMind</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={reset}>Cancel</Button>
             <Button onClick={handleImport} disabled={matched.length === 0 || loading}>
