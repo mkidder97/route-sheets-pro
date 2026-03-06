@@ -139,7 +139,8 @@ export default function AdminData() {
       }
 
       setMatched(matchedRows);
-      setUnmatched(unmatchedCount);
+      setUnmatchedRows(unmatchedList);
+      setUnmatched(unmatchedList.length);
       setWithEmail(emailCount);
       setStep("preview");
     } catch {
