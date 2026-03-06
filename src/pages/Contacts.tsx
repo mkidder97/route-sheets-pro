@@ -1,30 +1,24 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible, CollapsibleTrigger, CollapsibleContent,
+} from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, Trash2, Loader2, Users } from "lucide-react";
+import { Search, Loader2, Users, Mail, Phone, ChevronDown, Building2 } from "lucide-react";
 
-interface Contact {
-  id: string;
+interface PMContact {
+  email: string;
   name: string;
-  title: string | null;
-  email: string | null;
   phone: string | null;
-  client_id: string | null;
-  notes: string | null;
+  clientName: string | null;
+  clientId: string | null;
+  buildings: string[];
 }
 
 interface ClientOption {
@@ -32,114 +26,83 @@ interface ClientOption {
   name: string;
 }
 
-const emptyForm = {
-  name: "",
-  title: "",
-  email: "",
-  phone: "",
-  client_id: "",
-  notes: "",
-};
-
 export default function Contacts() {
-  const { role } = useAuth();
-  const canWrite = role === "admin" || role === "office_manager";
-
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contacts, setContacts] = useState<PMContact[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
-    const [contactsRes, clientsRes] = await Promise.all([
-      supabase.from("contacts").select("id, name, title, email, phone, client_id, notes").order("name"),
+    const [buildingsRes, clientsRes] = await Promise.all([
+      supabase
+        .from("buildings")
+        .select("id, property_name, property_manager_name, property_manager_email, property_manager_phone, client_id, clients(name)")
+        .not("property_manager_email", "is", null)
+        .order("property_manager_name"),
       supabase.from("clients").select("id, name").eq("is_active", true).order("name"),
     ]);
-    if (contactsRes.error) toast.error("Failed to load contacts");
-    else setContacts((contactsRes.data as Contact[]) ?? []);
+
+    if (buildingsRes.error) {
+      toast.error("Failed to load contacts");
+    } else {
+      const grouped = new Map<string, PMContact>();
+      for (const b of buildingsRes.data ?? []) {
+        const email = (b.property_manager_email as string).toLowerCase();
+        const existing = grouped.get(email);
+        const clientData = b.clients as { name: string } | null;
+        if (existing) {
+          existing.buildings.push(b.property_name);
+          if (!existing.name && b.property_manager_name) existing.name = b.property_manager_name;
+          if (!existing.phone && b.property_manager_phone) existing.phone = b.property_manager_phone;
+          if (!existing.clientName && clientData?.name) {
+            existing.clientName = clientData.name;
+            existing.clientId = b.client_id;
+          }
+        } else {
+          grouped.set(email, {
+            email: b.property_manager_email as string,
+            name: b.property_manager_name ?? "",
+            phone: b.property_manager_phone ?? null,
+            clientName: clientData?.name ?? null,
+            clientId: b.client_id,
+            buildings: [b.property_name],
+          });
+        }
+      }
+      setContacts(Array.from(grouped.values()));
+    }
+
     if (!clientsRes.error) setClients((clientsRes.data as ClientOption[]) ?? []);
     setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, []);
 
-  const clientMap = new Map(clients.map((c) => [c.id, c.name]));
-
   const filtered = contacts.filter((c) => {
-    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
-    const matchesClient = clientFilter === "all" || c.client_id === clientFilter;
+    const q = search.toLowerCase();
+    const matchesSearch = !q || c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+    const matchesClient = clientFilter === "all" || c.clientId === clientFilter;
     return matchesSearch && matchesClient;
   });
-
-  const openAdd = () => { setEditingId(null); setForm(emptyForm); setDialogOpen(true); };
-
-  const openEdit = (c: Contact) => {
-    setEditingId(c.id);
-    setForm({
-      name: c.name,
-      title: c.title ?? "",
-      email: c.email ?? "",
-      phone: c.phone ?? "",
-      client_id: c.client_id ?? "",
-      notes: c.notes ?? "",
-    });
-    setDialogOpen(true);
-  };
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { toast.error("Name is required"); return; }
-    setSaving(true);
-    const payload = {
-      name: form.name.trim(),
-      title: form.title || null,
-      email: form.email || null,
-      phone: form.phone || null,
-      client_id: form.client_id || null,
-      notes: form.notes || null,
-    };
-    if (editingId) {
-      const { error } = await supabase.from("contacts").update(payload).eq("id", editingId);
-      if (error) toast.error("Failed to update contact"); else toast.success("Contact updated");
-    } else {
-      const { error } = await supabase.from("contacts").insert(payload);
-      if (error) toast.error("Failed to add contact"); else toast.success("Contact added");
-    }
-    setSaving(false);
-    setDialogOpen(false);
-    fetchData();
-  };
-
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    const { error } = await supabase.from("contacts").delete().eq("id", deleteId);
-    if (error) toast.error("Failed to delete contact"); else toast.success("Contact deleted");
-    setDeleteId(null);
-    fetchData();
-  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Contacts</h1>
-        {canWrite && (
-          <Button onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Add Contact</Button>
-        )}
+        <h1 className="text-2xl font-bold text-slate-100">Contacts</h1>
+        <span className="text-sm text-slate-400">{filtered.length} contacts</span>
       </div>
 
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-6">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search contacts…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <Input placeholder="Search name or email…" className="pl-9 bg-slate-900 border-slate-600" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={clientFilter} onValueChange={setClientFilter}>
-          <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Clients" /></SelectTrigger>
+          <SelectTrigger className="w-[180px] bg-slate-900 border-slate-600">
+            <SelectValue placeholder="All Clients" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Clients</SelectItem>
             {clients.map((c) => (
@@ -150,98 +113,56 @@ export default function Contacts() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
-          <Users className="h-10 w-10" />
+        <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-2">
+          <Users className="h-10 w-10 opacity-20" />
           <p>No contacts found</p>
         </div>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                {canWrite && <TableHead className="w-[100px]">Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell>{c.title ?? "—"}</TableCell>
-                  <TableCell>{c.client_id ? clientMap.get(c.client_id) ?? "—" : "—"}</TableCell>
-                  <TableCell>{c.email ?? "—"}</TableCell>
-                  <TableCell>{c.phone ?? "—"}</TableCell>
-                  {canWrite && (
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteId(c.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                      </div>
-                    </TableCell>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filtered.map((c) => (
+            <Card key={c.email} className="bg-slate-800 border-slate-700/50 rounded-xl">
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-start justify-between">
+                  <p className="text-slate-100 font-semibold text-sm">{c.name || "—"}</p>
+                  {c.clientName && (
+                    <Badge variant="secondary" className="text-xs bg-slate-700 text-slate-300 border-0">
+                      {c.clientName}
+                    </Badge>
                   )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                </div>
+
+                <div className="space-y-1.5">
+                  <a href={`mailto:${c.email}`} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    {c.email}
+                  </a>
+                  {c.phone && (
+                    <a href={`tel:${c.phone}`} className="flex items-center gap-2 text-sm text-slate-300 hover:text-slate-100 transition-colors">
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      {c.phone}
+                    </a>
+                  )}
+                </div>
+
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors group">
+                    <Building2 className="h-3.5 w-3.5" />
+                    {c.buildings.length} building{c.buildings.length !== 1 ? "s" : ""}
+                    <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2 pl-5 space-y-0.5">
+                    {c.buildings.map((name, i) => (
+                      <p key={i} className="text-xs text-slate-400">{name}</p>
+                    ))}
+                  </CollapsibleContent>
+                </Collapsible>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
-
-      {/* Add/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Contact" : "Add Contact"}</DialogTitle>
-            <DialogDescription>Fill in the contact details below.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-1.5"><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-1.5"><Label>Title</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-              <div className="grid gap-1.5">
-                <Label>Client</Label>
-                <Select value={form.client_id} onValueChange={(v) => setForm({ ...form, client_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">None</SelectItem>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-1.5"><Label>Email</Label><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-              <div className="grid gap-1.5"><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-            </div>
-            <div className="grid gap-1.5"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editingId ? "Save" : "Add"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Contact</DialogTitle>
-            <DialogDescription>Are you sure? This action cannot be undone.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
