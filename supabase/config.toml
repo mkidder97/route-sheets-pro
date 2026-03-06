@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.generate-cm-report]
 verify_jwt = false
+
+[functions.campaign-kickoff-notify]
+verify_jwt = false
