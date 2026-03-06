@@ -176,6 +176,7 @@ export default function AdminData() {
               siteContact: r.siteContact,
               email: r.email,
               phone: r.phone,
+              matchMethod: "address",
             });
           } else {
             stillUnmatched.push(r);
