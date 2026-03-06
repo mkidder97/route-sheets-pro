@@ -16,6 +16,12 @@ interface MatchedRow {
   phone: string;
 }
 
+interface UnmatchedRow {
+  propertyCode: string;
+  siteContact: string;
+  email: string;
+}
+
 export default function AdminData() {
   const [step, setStep] = useState<Step>("upload");
   const [loading, setLoading] = useState(false);
