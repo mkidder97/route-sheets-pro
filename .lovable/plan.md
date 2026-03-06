@@ -1,25 +1,77 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Add Address-Based Fallback Match to Data Import
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+### Changes (single file: `src/pages/admin/Data.tsx`)
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+**1. Extend UnmatchedRow interface** to include `address`, `city`, `phone` fields so we can carry them through the fallback matching step.
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+**2. Capture address/city from XLSX rows** during the initial loop. Use `col("address")` and `col("city")` from the normalized header map to extract address and city values for unmatched rows.
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+**3. After the primary code-match loop, run address fallback:**
+- Collect unique addresses from the unmatched list (non-empty, trimmed)
+- Query `supabase.from("buildings").select("id, building_code, property_name, address, city, state").in("address", uniqueAddresses)` in batches
+- Build an address+city lookup map (both lowercased+trimmed for comparison)
+- Iterate the unmatched list: if a row's address+city matches a building, move it to `matchedRows` and remove from `unmatchedList`
+- Update `emailCount` for any rescued rows with emails
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
+**4. No UI changes** — the existing summary card, matched table, unmatched table, and import logic all work off the same `matched`/`unmatchedRows` state arrays, so rescued rows automatically appear in the right place with correct counts.
+
+**5. Address column detection** — add `"address"` and `"city"` to the missing column detection so the warning banner fires if address fallback won't work.
+
+### Implementation detail
+
+```ts
+// After primary loop, attempt address fallback on unmatchedList
+const addressCol = col("address");
+const cityCol = col("city");
+
+if (addressCol && cityCol && unmatchedList.length > 0) {
+  const unmatchedAddresses = [...new Set(
+    unmatchedList.map(r => r.address).filter(Boolean)
+  )];
+  
+  // Batch fetch buildings by address
+  const addrBuildings = [];
+  for (let i = 0; i < unmatchedAddresses.length; i += batchSize) {
+    const batch = unmatchedAddresses.slice(i, i + batchSize);
+    const { data } = await supabase
+      .from("buildings")
+      .select("id, building_code, property_name, address, city, state")
+      .in("address", batch);
+    if (data) addrBuildings.push(...data);
+  }
+  
+  // Build address+city map (lowercase keys)
+  const addrMap = new Map<string, typeof addrBuildings[0]>();
+  for (const b of addrBuildings) {
+    const key = `${(b.address || "").trim().toLowerCase()}|${(b.city || "").trim().toLowerCase()}`;
+    addrMap.set(key, b);
+  }
+  
+  // Rescue matches from unmatchedList
+  const stillUnmatched: UnmatchedRow[] = [];
+  for (const r of unmatchedList) {
+    const key = `${(r.address || "").trim().toLowerCase()}|${(r.city || "").trim().toLowerCase()}`;
+    const building = addrMap.get(key);
+    if (building) {
+      if (r.email) emailCount++;
+      matchedRows.push({
+        buildingId: building.id,
+        propertyCode: r.propertyCode,
+        propertyName: building.property_name,
+        siteContact: r.siteContact,
+        email: r.email,
+        phone: r.phone,
+      });
+    } else {
+      stillUnmatched.push(r);
+    }
+  }
+  // Replace unmatchedList with stillUnmatched
+}
+```
+
+### Files
+- **Modified:** `src/pages/admin/Data.tsx` (parsing section only)
+
