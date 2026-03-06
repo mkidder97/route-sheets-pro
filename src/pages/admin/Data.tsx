@@ -54,15 +54,19 @@ export default function AdminData() {
       });
       const col = (key: string) => headerMap[key.trim().toLowerCase()] ?? "";
 
-      // Detect missing columns
-      const expectedCols = ["property code", "site contact", "site contact email", "site contact office phone"];
-      const missing = expectedCols.filter((k) => col(k) === "");
+      // Detect missing columns (tolerate "porperty code" typo from Roof Controller)
+      const propCodeFound = col("property code") || col("porperty code");
+      const otherExpected = ["site contact", "site contact email", "site contact office phone"];
+      const missing = [
+        ...(propCodeFound ? [] : ["property code"]),
+        ...otherExpected.filter((k) => col(k) === ""),
+      ];
       setMissingCols(missing);
 
       const rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
       setTotalRows(rows.length);
 
-      const propCodeCol = col("property code");
+      const propCodeCol = col("property code") || col("porperty code");
       if (!propCodeCol) {
         setMatched([]);
         setUnmatched(rows.length);
