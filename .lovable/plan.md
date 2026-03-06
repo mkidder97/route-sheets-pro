@@ -1,25 +1,38 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Harden SheetJS Column Parsing in `src/pages/admin/Data.tsx`
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+**Issue:** The file `src/pages/admin/Data.tsx` does not exist yet — it was planned but never implemented. This plan will **create the file from scratch** with the hardened parsing built in, following the previously approved spec plus these parsing improvements.
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+### What gets built (single file: `src/pages/admin/Data.tsx`)
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+The full AdminData page as previously approved (three-state import tool, SheetJS parsing, Supabase matching/updating), but with the parsing layer hardened as follows:
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+**Normalized header map** — after reading the worksheet, build a lookup:
+```ts
+const rawHeaders = XLSX.utils.sheet_to_json(ws, { header: 1 })[0] as string[];
+const headerMap: Record<string, string> = {};
+rawHeaders.forEach((h) => {
+  if (typeof h === "string") headerMap[h.trim().toLowerCase()] = h;
+});
+const col = (key: string) => headerMap[key.trim().toLowerCase()] ?? "";
+```
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
+All column accesses use `col(...)` instead of exact string keys:
+- `row[col("property code")]` → match key
+- `row[col("site contact")]` → `property_manager_name`
+- `row[col("site contact email")]` → `property_manager_email`
+- `row[col("site contact office phone")]` → `property_manager_phone`
+
+**Missing column warning** — in State 2 (Preview), before the summary card, check if any of the four `col()` lookups returned `""`. If so, render a yellow warning banner (`bg-yellow-500/15 border border-yellow-500/30 text-yellow-200 rounded-lg p-3`) listing which columns were not detected.
+
+### Routing update in `src/App.tsx`
+
+- Add lazy import for `AdminData`
+- Swap `/admin/data` route element from `<DataManager />` to `<AdminData />`
+- Keep `DataManager` import intact
+
+### Files
+- **New:** `src/pages/admin/Data.tsx`
+- **Modified:** `src/App.tsx` (2 lines)
+
