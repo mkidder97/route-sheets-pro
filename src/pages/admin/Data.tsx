@@ -19,11 +19,16 @@ interface MatchedRow {
 
 interface UnmatchedRow {
   propertyCode: string;
+  propertyName: string;
   siteContact: string;
   email: string;
   address: string;
   city: string;
+  state: string;
+  zip: string;
   phone: string;
+  roofAccess: string;
+  roofArea: string;
 }
 
 export default function AdminData() {
