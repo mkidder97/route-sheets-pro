@@ -15,6 +15,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Buildings = lazy(() => import("./pages/Buildings"));
 const BuildingDetail = lazy(() => import("./pages/BuildingDetail"));
 const DataManager = lazy(() => import("./pages/DataManager"));
+const AdminData = lazy(() => import("./pages/admin/Data"));
 const RouteBuilder = lazy(() => import("./pages/RouteBuilder"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Clients = lazy(() => import("./pages/Clients"));
