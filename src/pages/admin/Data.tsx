@@ -305,7 +305,7 @@ export default function AdminData() {
     setInserting(false);
   };
 
-
+  return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Data Import</h1>
