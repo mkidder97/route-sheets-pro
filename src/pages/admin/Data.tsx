@@ -295,7 +295,7 @@ export default function AdminData() {
       if (payloads.length === 0) continue;
 
       const results = await Promise.all(
-        payloads.map((p) => supabase.from("buildings").insert(p))
+        payloads.map((p) => supabase.from("buildings").insert(p as never))
       );
       results.forEach((r) => (r.error ? failed++ : inserted++));
     }
