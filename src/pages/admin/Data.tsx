@@ -110,14 +110,18 @@ export default function AdminData() {
       const phoneCol = col("site contact office phone");
 
       const matchedRows: MatchedRow[] = [];
-      let unmatchedCount = 0;
+      const unmatchedList: UnmatchedRow[] = [];
       let emailCount = 0;
 
       for (const row of rows) {
         const code = String(row[propCodeCol] ?? "").trim();
         const building = codeMap.get(code);
         if (!building) {
-          unmatchedCount++;
+          unmatchedList.push({
+            propertyCode: code,
+            siteContact: siteContactCol ? String(row[siteContactCol] ?? "").trim() : "",
+            email: emailCol ? String(row[emailCol] ?? "").trim() : "",
+          });
           continue;
         }
         const siteContact = siteContactCol ? String(row[siteContactCol] ?? "").trim() : "";
