@@ -433,8 +433,25 @@ export default function AdminData() {
                   </table>
                 </div>
               )}
-            </div>
-          )}
+             </div>
+           )}
+
+           {unmatchedRows.length > 0 && (
+             <div className="flex flex-col gap-2 items-start">
+               <Button variant="outline" onClick={handleInsertNew} disabled={inserting || insertedCount !== null}>
+                 {inserting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                 {inserting ? "Inserting…" : `Insert ${unmatchedRows.length} as New Buildings`}
+               </Button>
+               {insertedCount !== null && (
+                 <div className="flex gap-4 text-sm">
+                   <span className="text-emerald-400">✅ {insertedCount} buildings inserted</span>
+                   {(insertFailedCount ?? 0) > 0 && (
+                     <span className="text-yellow-400">⚠️ {insertFailedCount} failed</span>
+                   )}
+                 </div>
+               )}
+             </div>
+           )}
 
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={reset}>Cancel</Button>
