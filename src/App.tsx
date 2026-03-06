@@ -15,6 +15,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Buildings = lazy(() => import("./pages/Buildings"));
 const BuildingDetail = lazy(() => import("./pages/BuildingDetail"));
 const DataManager = lazy(() => import("./pages/DataManager"));
+const AdminData = lazy(() => import("./pages/admin/Data"));
 const RouteBuilder = lazy(() => import("./pages/RouteBuilder"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Clients = lazy(() => import("./pages/Clients"));
@@ -74,7 +75,7 @@ const App = () => (
 
               <Route path="/buildings" element={<Buildings />} />
               <Route path="/buildings/:id" element={<BuildingDetail />} />
-              <Route path="/admin/data" element={<DataManager />} />
+              <Route path="/admin/data" element={<AdminData />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/contractors" element={<Contractors />} />
