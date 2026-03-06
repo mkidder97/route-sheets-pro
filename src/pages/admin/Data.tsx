@@ -43,6 +43,9 @@ export default function AdminData() {
   const [showSkipped, setShowSkipped] = useState(false);
   const [resultUpdated, setResultUpdated] = useState(0);
   const [resultSkipped, setResultSkipped] = useState(0);
+  const [inserting, setInserting] = useState(false);
+  const [insertedCount, setInsertedCount] = useState<number | null>(null);
+  const [insertFailedCount, setInsertFailedCount] = useState<number | null>(null);
 
   const reset = () => {
     setStep("upload");
