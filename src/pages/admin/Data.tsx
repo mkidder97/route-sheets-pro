@@ -14,6 +14,7 @@ interface MatchedRow {
   siteContact: string;
   email: string;
   phone: string;
+  matchMethod: "code" | "address";
 }
 
 interface UnmatchedRow {
