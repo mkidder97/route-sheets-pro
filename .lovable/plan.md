@@ -1,25 +1,45 @@
 
-# Construction Management Module -- Database Migration and Storage
 
-## Summary
-Execute the user-provided SQL migration to create 5 new tables for the Construction Management module, plus create a "cm-reports" storage bucket with public read access. No UI changes.
+## Add "Insert as New Buildings" for Unmatched Rows
 
-## Tables to Create
-1. **cm_projects** -- Core project record linked to buildings/contractors, with RLS, updated_at trigger
-2. **cm_project_sections** -- Checklist template sections per project, with RLS, updated_at trigger
-3. **cm_visits** -- Individual site visit records with weather/completion/schedule tracking, with RLS, updated_at trigger, and auto-increment visit_number trigger
-4. **cm_visit_sections** -- Per-visit snapshot of checklist sections, with RLS, updated_at trigger
-5. **cm_photos** -- Visit photos with numbering, with RLS
+Single file change: `src/pages/admin/Data.tsx`
 
-## Additional Objects
-- **Function**: `set_cm_visit_number()` -- auto-sets visit_number on insert
-- **Trigger**: `auto_set_cm_visit_number` on cm_visits
+### 1. Extend `UnmatchedRow` interface
+Add `propertyName`, `state`, `zip`, `roofAccess`, `roofArea` fields (all strings).
 
-## Storage
-- Create **cm-reports** bucket with public read access (for generated PDF reports)
+### 2. Populate new fields during parsing
+In the primary unmatched loop and the address-fallback "stillUnmatched" path, read from `col("property name")`, `col("state")`, `col("zip")`, `col("roof access")`, `col("roof area")` and include in the unmatched row objects.
 
-## RLS Approach
-All 5 tables use a simple authenticated-all policy (`USING (true) WITH CHECK (true)`), matching the user's exact SQL.
+### 3. Add state for insert results
+Two new state vars: `insertedCount` and `insertFailedCount` (both `number | null`, default `null`). Plus `inserting` boolean for loading state.
 
-## Execution
-Single migration containing all 5 tables, triggers, and function. Storage bucket created separately via Supabase tooling. No UI files created or modified.
+### 4. Add `mapRoofAccess` helper and `handleInsertNew` function
+
+```ts
+const mapRoofAccess = (val: string): string | null => {
+  const v = val.toLowerCase();
+  if (v.includes("hatch")) return "roof_hatch";
+  if (v.includes("exterior") || v.includes("ext")) return "exterior_ladder";
+  if (v.includes("interior") || v.includes("int")) return "interior_ladder";
+  if (v.includes("ground")) return "ground_level";
+  if (v.trim().length > 0) return "other";
+  return null;
+};
+```
+
+`handleInsertNew`:
+- Batch unmatched rows into groups of 50
+- For each row, build insert payload with hardcoded `client_id` and `region_id`, mapped fields, `inspection_status: "pending"`
+- `roof_access_type`: use `mapRoofAccess(row.roofAccess)`, omit field if null
+- `square_footage`: `parseFloat(row.roofArea)` if parseable, else null
+- Skip rows missing `property_name` (required column)
+- `Promise.all` per batch, count successes/failures
+- Set `insertedCount` and `insertFailedCount`
+
+### 5. Add UI below unmatched table
+- "Insert {N} as New Buildings" button (variant outline), disabled while inserting
+- Inline result text when `insertedCount !== null`: checkmark for inserted, warning for failed
+
+### Files
+- **Modified:** `src/pages/admin/Data.tsx`
+
