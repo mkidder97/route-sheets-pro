@@ -69,7 +69,7 @@ export default function AdminData() {
 
       // Detect missing columns (tolerate "porperty code" typo from Roof Controller)
       const propCodeFound = col("property code") || col("porperty code");
-      const otherExpected = ["site contact", "site contact email", "site contact office phone"];
+      const otherExpected = ["site contact", "site contact email", "site contact office phone", "address", "city"];
       const missing = [
         ...(propCodeFound ? [] : ["property code"]),
         ...otherExpected.filter((k) => col(k) === ""),
