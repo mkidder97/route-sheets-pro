@@ -248,8 +248,64 @@ export default function AdminData() {
     setStep("result");
     setLoading(false);
   };
+  const mapRoofAccess = (val: string): string | null => {
+    const v = val.toLowerCase();
+    if (v.includes("hatch")) return "roof_hatch";
+    if (v.includes("exterior") || v.includes("ext")) return "exterior_ladder";
+    if (v.includes("interior") || v.includes("int")) return "interior_ladder";
+    if (v.includes("ground")) return "ground_level";
+    if (v.trim().length > 0) return "other";
+    return null;
+  };
 
-  return (
+  const handleInsertNew = async () => {
+    setInserting(true);
+    setInsertedCount(null);
+    setInsertFailedCount(null);
+    let inserted = 0;
+    let failed = 0;
+
+    const batchSize = 50;
+    for (let i = 0; i < unmatchedRows.length; i += batchSize) {
+      const batch = unmatchedRows.slice(i, i + batchSize);
+      const payloads = batch
+        .filter((r) => r.propertyName)
+        .map((r) => {
+          const payload: Record<string, unknown> = {
+            property_name: r.propertyName,
+            address: r.address,
+            city: r.city,
+            state: r.state,
+            zip_code: r.zip,
+            client_id: "90cdeb8b-c622-4cd2-b8cd-4e77631b8adf",
+            region_id: "cc0b9de7-8d37-4342-9300-3c0dc2e75ab8",
+            inspection_status: "pending",
+          };
+          if (r.propertyCode) payload.building_code = r.propertyCode;
+          if (r.siteContact) payload.property_manager_name = r.siteContact;
+          if (r.email) payload.property_manager_email = r.email;
+          if (r.phone) payload.property_manager_phone = r.phone;
+          const roofAccess = mapRoofAccess(r.roofAccess);
+          if (roofAccess) payload.roof_access_type = roofAccess;
+          const sqft = parseFloat(r.roofArea);
+          if (!isNaN(sqft)) payload.square_footage = sqft;
+          return payload;
+        });
+
+      if (payloads.length === 0) continue;
+
+      const results = await Promise.all(
+        payloads.map((p) => supabase.from("buildings").insert(p))
+      );
+      results.forEach((r) => (r.error ? failed++ : inserted++));
+    }
+
+    setInsertedCount(inserted);
+    setInsertFailedCount(failed);
+    setInserting(false);
+  };
+
+
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Data Import</h1>
