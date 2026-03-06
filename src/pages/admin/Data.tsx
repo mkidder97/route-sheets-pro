@@ -111,6 +111,8 @@ export default function AdminData() {
       const siteContactCol = col("site contact");
       const emailCol = col("site contact email");
       const phoneCol = col("site contact office phone");
+      const addressCol = col("address");
+      const cityCol = col("city");
 
       const matchedRows: MatchedRow[] = [];
       const unmatchedList: UnmatchedRow[] = [];
@@ -119,17 +121,16 @@ export default function AdminData() {
       for (const row of rows) {
         const code = String(row[propCodeCol] ?? "").trim();
         const building = codeMap.get(code);
-        if (!building) {
-          unmatchedList.push({
-            propertyCode: code,
-            siteContact: siteContactCol ? String(row[siteContactCol] ?? "").trim() : "",
-            email: emailCol ? String(row[emailCol] ?? "").trim() : "",
-          });
-          continue;
-        }
         const siteContact = siteContactCol ? String(row[siteContactCol] ?? "").trim() : "";
         const email = emailCol ? String(row[emailCol] ?? "").trim() : "";
         const phone = phoneCol ? String(row[phoneCol] ?? "").trim() : "";
+        const address = addressCol ? String(row[addressCol] ?? "").trim() : "";
+        const city = cityCol ? String(row[cityCol] ?? "").trim() : "";
+
+        if (!building) {
+          unmatchedList.push({ propertyCode: code, siteContact, email, address, city, phone });
+          continue;
+        }
         if (email) emailCount++;
         matchedRows.push({
           buildingId: building.id,
@@ -139,6 +140,47 @@ export default function AdminData() {
           email,
           phone,
         });
+      }
+
+      // Address-based fallback for unmatched rows
+      if (addressCol && cityCol && unmatchedList.length > 0) {
+        const unmatchedAddresses = [...new Set(unmatchedList.map((r) => r.address).filter(Boolean))];
+        const addrBuildings: { id: string; building_code: string | null; property_name: string; address: string; city: string; state: string }[] = [];
+        for (let i = 0; i < unmatchedAddresses.length; i += batchSize) {
+          const batch = unmatchedAddresses.slice(i, i + batchSize);
+          const { data } = await supabase
+            .from("buildings")
+            .select("id, building_code, property_name, address, city, state")
+            .in("address", batch);
+          if (data) addrBuildings.push(...data);
+        }
+
+        const addrMap = new Map<string, (typeof addrBuildings)[0]>();
+        for (const b of addrBuildings) {
+          const key = `${(b.address || "").trim().toLowerCase()}|${(b.city || "").trim().toLowerCase()}`;
+          addrMap.set(key, b);
+        }
+
+        const stillUnmatched: UnmatchedRow[] = [];
+        for (const r of unmatchedList) {
+          const key = `${(r.address || "").trim().toLowerCase()}|${(r.city || "").trim().toLowerCase()}`;
+          const building = addrMap.get(key);
+          if (building) {
+            if (r.email) emailCount++;
+            matchedRows.push({
+              buildingId: building.id,
+              propertyCode: r.propertyCode,
+              propertyName: building.property_name,
+              siteContact: r.siteContact,
+              email: r.email,
+              phone: r.phone,
+            });
+          } else {
+            stillUnmatched.push(r);
+          }
+        }
+        unmatchedList.length = 0;
+        unmatchedList.push(...stillUnmatched);
       }
 
       setMatched(matchedRows);
