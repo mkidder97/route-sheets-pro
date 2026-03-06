@@ -19,11 +19,16 @@ interface MatchedRow {
 
 interface UnmatchedRow {
   propertyCode: string;
+  propertyName: string;
   siteContact: string;
   email: string;
   address: string;
   city: string;
+  state: string;
+  zip: string;
   phone: string;
+  roofAccess: string;
+  roofArea: string;
 }
 
 export default function AdminData() {
@@ -38,6 +43,9 @@ export default function AdminData() {
   const [showSkipped, setShowSkipped] = useState(false);
   const [resultUpdated, setResultUpdated] = useState(0);
   const [resultSkipped, setResultSkipped] = useState(0);
+  const [inserting, setInserting] = useState(false);
+  const [insertedCount, setInsertedCount] = useState<number | null>(null);
+  const [insertFailedCount, setInsertFailedCount] = useState<number | null>(null);
 
   const reset = () => {
     setStep("upload");
@@ -114,6 +122,11 @@ export default function AdminData() {
       const phoneCol = col("site contact office phone");
       const addressCol = col("address");
       const cityCol = col("city");
+      const stateCol = col("state");
+      const zipCol = col("zip");
+      const propertyNameCol = col("property name");
+      const roofAccessCol = col("roof access");
+      const roofAreaCol = col("roof area");
 
       const matchedRows: MatchedRow[] = [];
       const unmatchedList: UnmatchedRow[] = [];
@@ -127,9 +140,14 @@ export default function AdminData() {
         const phone = phoneCol ? String(row[phoneCol] ?? "").trim() : "";
         const address = addressCol ? String(row[addressCol] ?? "").trim() : "";
         const city = cityCol ? String(row[cityCol] ?? "").trim() : "";
+        const state = stateCol ? String(row[stateCol] ?? "").trim() : "";
+        const zip = zipCol ? String(row[zipCol] ?? "").trim() : "";
+        const propertyName = propertyNameCol ? String(row[propertyNameCol] ?? "").trim() : "";
+        const roofAccess = roofAccessCol ? String(row[roofAccessCol] ?? "").trim() : "";
+        const roofArea = roofAreaCol ? String(row[roofAreaCol] ?? "").trim() : "";
 
         if (!building) {
-          unmatchedList.push({ propertyCode: code, siteContact, email, address, city, phone });
+          unmatchedList.push({ propertyCode: code, propertyName, siteContact, email, address, city, state, zip, phone, roofAccess, roofArea });
           continue;
         }
         if (email) emailCount++;
@@ -229,6 +247,62 @@ export default function AdminData() {
     setResultSkipped(skipped);
     setStep("result");
     setLoading(false);
+  };
+  const mapRoofAccess = (val: string): string | null => {
+    const v = val.toLowerCase();
+    if (v.includes("hatch")) return "roof_hatch";
+    if (v.includes("exterior") || v.includes("ext")) return "exterior_ladder";
+    if (v.includes("interior") || v.includes("int")) return "interior_ladder";
+    if (v.includes("ground")) return "ground_level";
+    if (v.trim().length > 0) return "other";
+    return null;
+  };
+
+  const handleInsertNew = async () => {
+    setInserting(true);
+    setInsertedCount(null);
+    setInsertFailedCount(null);
+    let inserted = 0;
+    let failed = 0;
+
+    const batchSize = 50;
+    for (let i = 0; i < unmatchedRows.length; i += batchSize) {
+      const batch = unmatchedRows.slice(i, i + batchSize);
+      const payloads = batch
+        .filter((r) => r.propertyName)
+        .map((r) => {
+          const payload: Record<string, unknown> = {
+            property_name: r.propertyName,
+            address: r.address,
+            city: r.city,
+            state: r.state,
+            zip_code: r.zip,
+            client_id: "90cdeb8b-c622-4cd2-b8cd-4e77631b8adf",
+            region_id: "cc0b9de7-8d37-4342-9300-3c0dc2e75ab8",
+            inspection_status: "pending",
+          };
+          if (r.propertyCode) payload.building_code = r.propertyCode;
+          if (r.siteContact) payload.property_manager_name = r.siteContact;
+          if (r.email) payload.property_manager_email = r.email;
+          if (r.phone) payload.property_manager_phone = r.phone;
+          const roofAccess = mapRoofAccess(r.roofAccess);
+          if (roofAccess) payload.roof_access_type = roofAccess;
+          const sqft = parseFloat(r.roofArea);
+          if (!isNaN(sqft)) payload.square_footage = sqft;
+          return payload;
+        });
+
+      if (payloads.length === 0) continue;
+
+      const results = await Promise.all(
+        payloads.map((p) => supabase.from("buildings").insert(p as never))
+      );
+      results.forEach((r) => (r.error ? failed++ : inserted++));
+    }
+
+    setInsertedCount(inserted);
+    setInsertFailedCount(failed);
+    setInserting(false);
   };
 
   return (
@@ -359,8 +433,25 @@ export default function AdminData() {
                   </table>
                 </div>
               )}
-            </div>
-          )}
+             </div>
+           )}
+
+           {unmatchedRows.length > 0 && (
+             <div className="flex flex-col gap-2 items-start">
+               <Button variant="outline" onClick={handleInsertNew} disabled={inserting || insertedCount !== null}>
+                 {inserting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                 {inserting ? "Inserting…" : `Insert ${unmatchedRows.length} as New Buildings`}
+               </Button>
+               {insertedCount !== null && (
+                 <div className="flex gap-4 text-sm">
+                   <span className="text-emerald-400">✅ {insertedCount} buildings inserted</span>
+                   {(insertFailedCount ?? 0) > 0 && (
+                     <span className="text-yellow-400">⚠️ {insertFailedCount} failed</span>
+                   )}
+                 </div>
+               )}
+             </div>
+           )}
 
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={reset}>Cancel</Button>
