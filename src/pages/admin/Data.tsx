@@ -30,6 +30,8 @@ export default function AdminData() {
   const [withEmail, setWithEmail] = useState(0);
   const [unmatched, setUnmatched] = useState(0);
   const [missingCols, setMissingCols] = useState<string[]>([]);
+  const [unmatchedRows, setUnmatchedRows] = useState<UnmatchedRow[]>([]);
+  const [showSkipped, setShowSkipped] = useState(false);
   const [resultUpdated, setResultUpdated] = useState(0);
   const [resultSkipped, setResultSkipped] = useState(0);
 
