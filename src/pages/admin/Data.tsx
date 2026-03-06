@@ -42,6 +42,8 @@ export default function AdminData() {
     setWithEmail(0);
     setUnmatched(0);
     setMissingCols([]);
+    setUnmatchedRows([]);
+    setShowSkipped(false);
   };
 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
