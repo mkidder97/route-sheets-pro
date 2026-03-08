@@ -7,51 +7,51 @@
 @layer base {
   :root,
   .dark {
-    --background: 15 23 42;
-    --foreground: 241 245 249;
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 210 40% 96.1%;
 
-    --card: 30 41 59;
-    --card-foreground: 241 245 249;
+    --card: 217.2 32.6% 17.5%;
+    --card-foreground: 210 40% 96.1%;
 
-    --popover: 30 41 59;
-    --popover-foreground: 241 245 249;
+    --popover: 217.2 32.6% 17.5%;
+    --popover-foreground: 210 40% 96.1%;
 
-    --primary: 37 99 235;
-    --primary-foreground: 255 255 255;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 30 41 59;
-    --secondary-foreground: 148 163 184;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 215 20.2% 65.1%;
 
-    --muted: 15 23 42;
-    --muted-foreground: 148 163 184;
+    --muted: 222.2 47.4% 11.2%;
+    --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 14 165 233;
-    --accent-foreground: 255 255 255;
+    --accent: 198.6 88.7% 48.4%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 239 68 68;
-    --destructive-foreground: 255 255 255;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 51 65 85;
-    --input: 30 41 59;
-    --ring: 37 99 235;
+    --border: 215.3 25% 26.7%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 221.2 83.2% 53.3%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 15 23 42;
-    --sidebar-foreground: 148 163 184;
-    --sidebar-primary: 37 99 235;
-    --sidebar-primary-foreground: 255 255 255;
-    --sidebar-accent: 30 41 59;
-    --sidebar-accent-foreground: 241 245 249;
-    --sidebar-border: 51 65 85;
-    --sidebar-ring: 37 99 235;
+    --sidebar-background: 222.2 47.4% 11.2%;
+    --sidebar-foreground: 215 20.2% 65.1%;
+    --sidebar-primary: 221.2 83.2% 53.3%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 96.1%;
+    --sidebar-border: 215.3 25% 26.7%;
+    --sidebar-ring: 221.2 83.2% 53.3%;
 
-    --success: 16 185 129;
-    --success-foreground: 255 255 255;
-    --warning: 245 158 11;
-    --warning-foreground: 15 23 42;
-    --info: 37 99 235;
-    --info-foreground: 255 255 255;
+    --success: 160.1 84.1% 39.4%;
+    --success-foreground: 0 0% 100%;
+    --warning: 37.7 92.1% 50.2%;
+    --warning-foreground: 222.2 47.4% 11.2%;
+    --info: 221.2 83.2% 53.3%;
+    --info-foreground: 0 0% 100%;
   }
 }
 
